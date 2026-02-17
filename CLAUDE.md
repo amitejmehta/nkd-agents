@@ -14,7 +14,9 @@ nkd_agents/
 ├── __init__.py         # Empty (providers imported directly)
 ├── anthropic.py        # Anthropic/Claude provider with complete agentic loop
 ├── openai.py           # OpenAI provider with complete agentic loop
-├── tools.py            # Built-in tool implementations
+├── tools.py            # Built-in tool implementations (Anthropic-specific)
+├── web.py              # Web tools: web_search and fetch_url (requires cli extras)
+├── ctx.py              # Context variables: anthropic_client_ctx, openai_client_ctx, cwd_ctx
 ├── logging.py          # Logging configuration helper
 ├── cli.py              # Command-line interface (Claude Code style agent)
 └── utils.py            # Internal utilities

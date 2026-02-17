@@ -6,7 +6,7 @@ from typing import Literal
 from anthropic.types.tool_result_block_param import Content
 
 from .anthropic import bytes_to_content, llm, user
-from .ctx import client_ctx, cwd_ctx
+from .ctx import anthropic_client_ctx, cwd_ctx
 from .logging import GREEN, RESET, logging_ctx
 from .utils import display_diff
 
@@ -129,7 +129,7 @@ async def subtask(
     Returns:
         Response from the sub-agent
     """
-    client = client_ctx.get()  # Fail fast if not set
+    client = anthropic_client_ctx.get()  # Fail fast if not set
     try:
         logging_ctx.set({"subtask": task_label})
 
@@ -139,7 +139,7 @@ async def subtask(
             fns = [read_file, edit_file, bash, fetch_url, web_search]
         except ImportError:
             fns = [read_file, edit_file, bash]
-        kwargs = {"model": f"claude-{model}-4-5", "max_tokens": 8192}
+        kwargs = {"model": f"claude-{model}-4-6", "max_tokens": 8192}
         response = await llm(client, [user(prompt)], fns=fns, **kwargs)
         logger.info(f"✓ subtask '{task_label}' complete: {response}\n")
         return f"subtask '{task_label}' complete: {response}"

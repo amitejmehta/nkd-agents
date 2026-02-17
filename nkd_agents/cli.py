@@ -9,7 +9,7 @@ from prompt_toolkit import PromptSession, key_binding, styles
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from .anthropic import llm, user
-from .ctx import client_ctx
+from .ctx import anthropic_client_ctx
 from .logging import DIM, GREEN, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, subtask
 from .utils import load_env
@@ -42,7 +42,7 @@ class CLI:
                 "See https://github.com/amitejmehta/nkd-agents#installation"
             )
         self.client = AsyncAnthropic(api_key=os.environ["NKD_AGENTS_ANTHROPIC_API_KEY"])
-        client_ctx.set(self.client)
+        anthropic_client_ctx.set(self.client)
 
         self.messages: list[MessageParam] = []
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
