@@ -24,8 +24,8 @@ class TestInit:
             CLI()
 
     def test_defaults(self, cli: CLI):
-        assert cli.model_idx == 1
-        assert cli.settings["model"] == MODELS[1]
+        assert cli.model_idx == 0
+        assert cli.settings["model"] == MODELS[0]
         assert cli.settings["max_tokens"] == 20000
         assert cli.settings["thinking"] is omit
         assert cli.plan_mode == ""
@@ -44,23 +44,23 @@ class TestInit:
 
 class TestSwitchModel:
     def test_cycles_through_models(self, cli: CLI):
-        assert cli.settings["model"] == MODELS[1]
+        assert cli.settings["model"] == MODELS[0]
         cli.switch_model()
-        assert cli.model_idx == 2
-        assert cli.settings["model"] == MODELS[2]
+        assert cli.model_idx == 1
+        assert cli.settings["model"] == MODELS[1]
 
     def test_wraps_around(self, cli: CLI):
         for _ in range(len(MODELS)):
             cli.switch_model()
-        assert cli.model_idx == 1
-        assert cli.settings["model"] == MODELS[1]
+        assert cli.model_idx == 0
+        assert cli.settings["model"] == MODELS[0]
 
 
 class TestToggleThinking:
     def test_enable(self, cli: CLI):
         assert cli.settings["thinking"] is omit
         cli.toggle_thinking()
-        assert cli.settings["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+        assert cli.settings["thinking"] == {"type": "adaptive"}
 
     def test_disable(self, cli):
         cli.toggle_thinking()
