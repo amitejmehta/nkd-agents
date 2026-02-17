@@ -17,11 +17,11 @@ from .web import fetch_url, web_search
 
 logger = logging.getLogger(__name__)
 
-MODELS = ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-6"]
+MODELS = ["claude-sonnet-4-6", "claude-haiku-4-6", "claude-opus-4-6"]
 STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacting.")
 PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
-THINKING = {"type": "enabled", "budget_tokens": 2048}
+THINKING = {"type": "adaptive"}
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
@@ -48,7 +48,7 @@ class CLI:
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
         self.plan_mode = ""
-        self.model_idx = 1
+        self.model_idx = 0
         self.settings = {
             "model": MODELS[self.model_idx],
             "max_tokens": 20000,
