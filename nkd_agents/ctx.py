@@ -5,7 +5,9 @@ from anthropic import AsyncAnthropic, AsyncAnthropicVertex
 from openai import AsyncOpenAI
 
 # anthropic client for tools that need LLM access
-anthropic_client_ctx = ContextVar[AsyncAnthropic | AsyncAnthropicVertex]("anthropic_client_ctx")
+anthropic_client_ctx = ContextVar[AsyncAnthropic | AsyncAnthropicVertex](
+    "anthropic_client_ctx"
+)
 
 # openai client for tools that need LLM access
 openai_client_ctx = ContextVar[AsyncOpenAI]("openai_client_ctx")
