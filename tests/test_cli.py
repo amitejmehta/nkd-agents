@@ -182,6 +182,72 @@ class TestCompactHistory:
         assert len(cli.messages) == 2
 
 
+class TestPickSkill:
+    def test_returns_file_content(self, cli: CLI, tmp_path, monkeypatch):
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        skill_file = skills_dir / "my_skill.md"
+        skill_file.write_text("# My Skill\nDo the thing.")
+
+        with patch("builtins.input", return_value="1"):
+            result = cli.pick_skill(skills_dir=skills_dir)
+
+        assert result == "# My Skill\nDo the thing."
+
+    def test_invalid_number_returns_none(self, cli: CLI, tmp_path):
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        (skills_dir / "a.md").write_text("content a")
+
+        with patch("builtins.input", return_value="99"):
+            result = cli.pick_skill(skills_dir=skills_dir)
+
+        assert result is None
+
+    def test_non_numeric_input_returns_none(self, cli: CLI, tmp_path):
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        (skills_dir / "a.md").write_text("content a")
+
+        with patch("builtins.input", return_value="abc"):
+            result = cli.pick_skill(skills_dir=skills_dir)
+
+        assert result is None
+
+    def test_empty_dir_returns_none(self, cli: CLI, tmp_path):
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+
+        with patch("builtins.input", return_value="1"):
+            result = cli.pick_skill(skills_dir=skills_dir)
+
+        assert result is None
+
+    def test_picks_correct_skill_among_multiple(self, cli: CLI, tmp_path):
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        (skills_dir / "alpha.md").write_text("alpha content")
+        (skills_dir / "beta.md").write_text("beta content")
+        (skills_dir / "gamma.md").write_text("gamma content")
+
+        with patch("builtins.input", return_value="2"):
+            result = cli.pick_skill(skills_dir=skills_dir)
+
+        # sorted() gives alpha, beta, gamma — index 2 is beta
+        assert result == "beta content"
+
+    def test_uses_default_skills_dir(self, cli: CLI):
+        from pathlib import Path
+
+        import nkd_agents.cli as cli_module
+        from nkd_agents.cli import SKILLS_DIR
+
+        assert SKILLS_DIR.is_dir()
+        # Verify the default dir resolves alongside cli.py
+        expected = Path(cli_module.__file__).parent / "skills"
+        assert SKILLS_DIR == expected
+
+
 class TestLLMLoop:
     async def test_processes_queue(self, cli: CLI):
         with patch("nkd_agents.cli.llm", new_callable=AsyncMock) as mock_llm:

@@ -30,8 +30,10 @@ BANNER = (
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history\n"
+    "'ctrl+p':    pick skill\n"
     f"'ctrl+c':    exit{RESET}\n"
 )
+SKILLS_DIR = Path(__file__).parent / "skills"
 
 
 class CLI:
@@ -76,6 +78,23 @@ class CLI:
         self.plan_mode = "" if self.plan_mode else PLAN_MODE_PREFIX
         logger.info(f"{DIM}Plan mode: {'✓' if self.plan_mode else '✗'}{RESET}")
 
+    def pick_skill(self, skills_dir: Path = SKILLS_DIR) -> str | None:
+        skills = sorted(skills_dir.glob("*.md"))
+        if not skills:
+            print("No skills found.")
+            return None
+        for i, s in enumerate(skills, 1):
+            print(f"  {i}. {s.stem}")
+        raw = input("Pick skill (number): ").strip()
+        try:
+            idx = int(raw) - 1
+            if not (0 <= idx < len(skills)):
+                raise ValueError
+        except ValueError:
+            print("Invalid selection.")
+            return None
+        return skills[idx].read_text(encoding="utf-8")
+
     def compact_history(self) -> None:
         kept = []
         for x in self.messages:
@@ -110,6 +129,16 @@ class CLI:
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.toggle_plan_mode())
         kb.add("c-k")(lambda e: self.compact_history())
+
+        @kb.add("c-p")
+        def _pick_skill_binding(event):
+            def _do():
+                text = self.pick_skill()
+                if text is not None:
+                    event.app.current_buffer.set_text(text)
+
+            event.app.run_in_terminal(_do)
+
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
 
