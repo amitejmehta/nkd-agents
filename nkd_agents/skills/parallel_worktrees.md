@@ -3,14 +3,19 @@
 Use git worktrees + subtasks to run agents in fully isolated branches simultaneously.
 Each subtask gets its own worktree — no file conflicts, no index races.
 
+## Dependencies
+
+| Tool | Check | Install |
+|------|-------|---------|
+| git | `command -v git` | mac: `brew install git` / linux: `apt-get install -y git` |
+| gh | `command -v gh` | mac: `brew install gh` / linux: `apt-get install -y gh` |
+
 ## Core Steps (always the same)
 
 1. **Setup** (sequential): `git worktree add /tmp/wt-{name} -b {branch}`
 2. **Launch** (simultaneous): fire all `subtask()` calls in one shot
 3. **Each subtask**: does work entirely under `/tmp/wt-{name}/`, commits, pushes, opens PR
 4. **Teardown** (after all complete): `git worktree remove /tmp/wt-{name} --force`
-
----
 
 ## Prompt Template
 
@@ -41,14 +46,3 @@ Each subtask prompt:
 Teardown: git worktree remove {wt} --force for each.
 Report all PR URLs.
 ```
-
----
-
-## Rules
-
-| Rule | Why |
-|---|---|
-| All paths in subtask prompts must be absolute under `/tmp/wt-*` | Subtasks inherit parent `cwd` — must be explicit |
-| Setup before launching subtasks | Worktree must exist before subtask runs |
-| One branch per worktree | Git enforces this; reusing a branch errors |
-| Launch all subtasks in one message | Enables true parallelism |
