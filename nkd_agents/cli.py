@@ -30,8 +30,28 @@ BANNER = (
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history\n"
+    "'ctrl+p':    pick skill\n"
     f"'ctrl+c':    exit{RESET}\n"
 )
+
+
+def pick_skill(skills_dir: Path) -> str | None:
+    """List available skill files, prompt the user to pick one, return its content."""
+    skills = sorted(skills_dir.glob("*.md"))
+    if not skills:
+        print("No skills found.")
+        return None
+    for i, skill in enumerate(skills, 1):
+        print(f"  {i}. {skill.stem}")
+    try:
+        choice = input("Pick a skill (number): ").strip()
+        idx = int(choice) - 1
+        if 0 <= idx < len(skills):
+            return skills[idx].read_text(encoding="utf-8")
+        print("Invalid selection.")
+    except (ValueError, EOFError):
+        print("Cancelled.")
+    return None
 
 
 class CLI:
@@ -110,6 +130,17 @@ class CLI:
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.toggle_plan_mode())
         kb.add("c-k")(lambda e: self.compact_history())
+        skills_dir = Path(__file__).parent / "skills"
+
+        def _pick(e: key_binding.KeyPressEvent) -> None:
+            def callback() -> None:
+                content = pick_skill(skills_dir)
+                if content is not None:
+                    e.app.current_buffer.set_text(content)
+
+            e.app.run_in_terminal(callback)
+
+        kb.add("c-p")(_pick)
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
 

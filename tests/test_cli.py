@@ -5,7 +5,7 @@ import pytest
 from anthropic import omit
 from anthropic.types import TextBlock, ToolUseBlock
 
-from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS
+from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS, pick_skill
 
 
 @pytest.fixture
@@ -180,6 +180,46 @@ class TestCompactHistory:
         ]
         cli.compact_history()
         assert len(cli.messages) == 2
+
+
+class TestPickSkill:
+    def test_returns_file_content(self, tmp_path):
+        skill_file = tmp_path / "my_skill.md"
+        skill_file.write_text("# My Skill\nDo the thing.", encoding="utf-8")
+        with patch("builtins.input", return_value="1"):
+            result = pick_skill(tmp_path)
+        assert result == "# My Skill\nDo the thing."
+
+    def test_no_skills(self, tmp_path):
+        with patch("builtins.input", return_value="1"):
+            result = pick_skill(tmp_path)
+        assert result is None
+
+    def test_invalid_number(self, tmp_path):
+        (tmp_path / "skill.md").write_text("content")
+        with patch("builtins.input", return_value="99"):
+            result = pick_skill(tmp_path)
+        assert result is None
+
+    def test_non_numeric_input(self, tmp_path):
+        (tmp_path / "skill.md").write_text("content")
+        with patch("builtins.input", return_value="abc"):
+            result = pick_skill(tmp_path)
+        assert result is None
+
+    def test_selects_correct_file_among_multiple(self, tmp_path):
+        (tmp_path / "alpha.md").write_text("alpha content")
+        (tmp_path / "beta.md").write_text("beta content")
+        # sorted order: alpha=1, beta=2
+        with patch("builtins.input", return_value="2"):
+            result = pick_skill(tmp_path)
+        assert result == "beta content"
+
+    def test_eof_returns_none(self, tmp_path):
+        (tmp_path / "skill.md").write_text("content")
+        with patch("builtins.input", side_effect=EOFError):
+            result = pick_skill(tmp_path)
+        assert result is None
 
 
 class TestLLMLoop:
