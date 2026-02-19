@@ -1,10 +1,12 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from anthropic import omit
 from anthropic.types import TextBlock, ToolUseBlock
 
+import nkd_agents.cli as cli_module
 from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS
 
 
@@ -182,70 +184,65 @@ class TestCompactHistory:
         assert len(cli.messages) == 2
 
 
-class TestPickSkill:
-    def test_returns_file_content(self, cli: CLI, tmp_path, monkeypatch):
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        skill_file = skills_dir / "my_skill.md"
-        skill_file.write_text("# My Skill\nDo the thing.")
+class TestCycleSkillPrompt:
+    def test_xml_tags_match(self, cli: CLI):
+        """Opening and closing tags wrap content with matching stem."""
+        doc = cli.cycle_skill_prompt()
+        stem = doc.text.splitlines()[0][len("<skill ") : -1]
+        assert doc.text.startswith(f"<skill {stem}>\n")
+        assert doc.text.strip().endswith(f"</skill {stem}>")
 
-        with patch("builtins.input", return_value="1"):
-            result = cli.pick_skill(skills_dir=skills_dir)
+    def test_cursor_at_end(self, cli: CLI):
+        doc = cli.cycle_skill_prompt()
+        assert doc.cursor_position == len(doc.text)
 
-        assert result == "# My Skill\nDo the thing."
+    def test_cycles_through_all_builtins(self, cli: CLI):
+        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        n = len(list(nkd_dir.glob("*.md")))
+        docs = [cli.cycle_skill_prompt() for _ in range(n)]
+        assert len({d.text for d in docs}) == n
 
-    def test_invalid_number_returns_none(self, cli: CLI, tmp_path):
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "a.md").write_text("content a")
+    def test_wraps_around(self, cli: CLI):
+        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        n = len(list(nkd_dir.glob("*.md")))
+        first = cli.cycle_skill_prompt().text
+        for _ in range(n - 1):
+            cli.cycle_skill_prompt()
+        assert cli.cycle_skill_prompt().text == first
 
-        with patch("builtins.input", return_value="99"):
-            result = cli.pick_skill(skills_dir=skills_dir)
+    def test_local_skills_included(self, cli: CLI, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "skills").mkdir()
+        (tmp_path / "skills" / "aaa_local.md").write_text("local content")
+        cli.skill_idx = 0
+        doc = cli.cycle_skill_prompt()
+        assert "<skill aaa_local>" in doc.text
+        assert "local content" in doc.text
 
-        assert result is None
+    def test_alphabetical_order(self, cli: CLI, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "skills").mkdir()
+        (tmp_path / "skills" / "zzz_last.md").write_text("last")
+        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        n = len(list(nkd_dir.glob("*.md")))
+        cli.skill_idx = 0
+        docs = [cli.cycle_skill_prompt() for _ in range(n + 1)]
+        assert "<skill zzz_last>" in docs[-1].text
 
-    def test_non_numeric_input_returns_none(self, cli: CLI, tmp_path):
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "a.md").write_text("content a")
-
-        with patch("builtins.input", return_value="abc"):
-            result = cli.pick_skill(skills_dir=skills_dir)
-
-        assert result is None
-
-    def test_empty_dir_returns_none(self, cli: CLI, tmp_path):
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-
-        with patch("builtins.input", return_value="1"):
-            result = cli.pick_skill(skills_dir=skills_dir)
-
-        assert result is None
-
-    def test_picks_correct_skill_among_multiple(self, cli: CLI, tmp_path):
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "alpha.md").write_text("alpha content")
-        (skills_dir / "beta.md").write_text("beta content")
-        (skills_dir / "gamma.md").write_text("gamma content")
-
-        with patch("builtins.input", return_value="2"):
-            result = cli.pick_skill(skills_dir=skills_dir)
-
-        # sorted() gives alpha, beta, gamma — index 2 is beta
-        assert result == "beta content"
-
-    def test_uses_default_skills_dir(self, cli: CLI):
-        from pathlib import Path
-
-        import nkd_agents.cli as cli_module
-        from nkd_agents.cli import SKILLS_DIR
-
-        assert SKILLS_DIR.is_dir()
-        # Verify the default dir resolves alongside cli.py
-        expected = Path(cli_module.__file__).parent / "skills"
-        assert SKILLS_DIR == expected
+    def test_local_overrides_same_name(self, cli: CLI, tmp_path, monkeypatch):
+        """Local skill with same name as builtin: both appear."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "skills").mkdir()
+        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        builtin = next(nkd_dir.glob("*.md"))
+        (tmp_path / "skills" / builtin.name).write_text("local override")
+        cli.skill_idx = 0
+        nkd_count = len(list(nkd_dir.glob("*.md")))
+        docs = [cli.cycle_skill_prompt() for _ in range(nkd_count + 1)]
+        # same stem appears twice — one with local content
+        matches = [d for d in docs if f"<skill {builtin.stem}>" in d.text]
+        assert len(matches) == 2
+        assert any("local override" in d.text for d in matches)
 
 
 class TestLLMLoop:

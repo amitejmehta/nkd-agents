@@ -6,6 +6,7 @@ from pathlib import Path
 from anthropic import AsyncAnthropic, omit
 from anthropic.types import MessageParam
 from prompt_toolkit import PromptSession, key_binding, styles
+from prompt_toolkit.document import Document
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from .anthropic import llm, user
@@ -17,7 +18,7 @@ from .web import fetch_url, web_search
 
 logger = logging.getLogger(__name__)
 
-MODELS = ["claude-sonnet-4-6", "claude-haiku-4-6", "claude-opus-4-6"]
+MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-6"]
 STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacting.")
 PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
@@ -27,13 +28,12 @@ BANNER = (
     "'tab':       toggle thinking\n"
     "'shift+tab': toggle plan mode\n"
     "'esc esc':   interrupt\n"
-    "'ctrl+u':    clear input\n"
+    "'ctrl+u':    clear input line\n"
     "'ctrl+l':    next model\n"
-    "'ctrl+k':    compact history\n"
-    "'ctrl+p':    pick skill\n"
+    "'ctrl+k':    compact history (clears tool calls/results)\n"
+    "'ctrl+p':    cycle skill prompts (local and nkd-agents)\n"
     f"'ctrl+c':    exit{RESET}\n"
 )
-SKILLS_DIR = Path(__file__).parent / "skills"
 
 
 class CLI:
@@ -51,6 +51,7 @@ class CLI:
         self.llm_task: asyncio.Task | None = None
         self.plan_mode = ""
         self.model_idx = 0
+        self.skill_idx = 0
         self.settings = {
             "model": MODELS[self.model_idx],
             "max_tokens": 20000,
@@ -78,22 +79,17 @@ class CLI:
         self.plan_mode = "" if self.plan_mode else PLAN_MODE_PREFIX
         logger.info(f"{DIM}Plan mode: {'✓' if self.plan_mode else '✗'}{RESET}")
 
-    def pick_skill(self, skills_dir: Path = SKILLS_DIR) -> str | None:
-        skills = sorted(skills_dir.glob("*.md"))
-        if not skills:
-            print("No skills found.")
-            return None
-        for i, s in enumerate(skills, 1):
-            print(f"  {i}. {s.stem}")
-        raw = input("Pick skill (number): ").strip()
-        try:
-            idx = int(raw) - 1
-            if not (0 <= idx < len(skills)):
-                raise ValueError
-        except ValueError:
-            print("Invalid selection.")
-            return None
-        return skills[idx].read_text(encoding="utf-8")
+    def cycle_skill_prompt(self) -> Document:
+        skills = sorted(
+            list((Path(__file__).parent / "skills").glob("*.md"))
+            + list((Path.cwd() / "skills").glob("*.md")),
+            key=lambda p: p.stem,
+        )
+        skill = skills[self.skill_idx % len(skills)]
+        self.skill_idx += 1
+        tag = f"skill {skill.stem}"
+        text = f"<{tag}>\n{skill.read_text(encoding='utf-8')}\n</{tag}>\n"
+        return Document(text, len(text))
 
     def compact_history(self) -> None:
         kept = []
@@ -129,15 +125,11 @@ class CLI:
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.toggle_plan_mode())
         kb.add("c-k")(lambda e: self.compact_history())
-
-        @kb.add("c-p")
-        def _pick_skill_binding(event):
-            def _do():
-                text = self.pick_skill()
-                if text is not None:
-                    event.app.current_buffer.set_text(text)
-
-            event.app.run_in_terminal(_do)
+        kb.add("c-p")(
+            lambda e: e.app.current_buffer.set_document(
+                self.cycle_skill_prompt(), bypass_readonly=True
+            )
+        )
 
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
@@ -160,4 +152,4 @@ def main() -> None:
             logger.info(BANNER)
             asyncio.run(CLI().run())
         except (KeyboardInterrupt, EOFError):
-            logger.info(f"{DIM}Exiting...{RESET}")
+            print(f"\n{DIM}Exiting...{RESET}")
