@@ -5,7 +5,7 @@ import pytest
 from anthropic import omit
 from anthropic.types import TextBlock, ToolUseBlock
 
-from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS
+from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS, _load_skill
 
 
 @pytest.fixture
@@ -180,6 +180,33 @@ class TestCompactHistory:
         ]
         cli.compact_history()
         assert len(cli.messages) == 2
+
+
+class TestLoadSkill:
+    def test_returns_correct_content(self, tmp_path):
+        (tmp_path / "alpha.md").write_text("skill alpha content")
+        (tmp_path / "beta.md").write_text("skill beta content")
+        assert _load_skill(tmp_path, "1") == "skill alpha content"
+        assert _load_skill(tmp_path, "2") == "skill beta content"
+
+    def test_invalid_number_returns_none(self, tmp_path):
+        (tmp_path / "alpha.md").write_text("skill alpha content")
+        assert _load_skill(tmp_path, "99") is None
+
+    def test_non_numeric_input_returns_none(self, tmp_path):
+        (tmp_path / "alpha.md").write_text("skill alpha content")
+        assert _load_skill(tmp_path, "abc") is None
+
+    def test_empty_dir_returns_none(self, tmp_path):
+        assert _load_skill(tmp_path, "1") is None
+
+    def test_only_md_files_listed(self, tmp_path):
+        (tmp_path / "alpha.md").write_text("md content")
+        (tmp_path / "ignored.txt").write_text("txt content")
+        # Only the .md file counts, so "1" should return the md content
+        assert _load_skill(tmp_path, "1") == "md content"
+        # "2" should return None (no second .md file)
+        assert _load_skill(tmp_path, "2") is None
 
 
 class TestLLMLoop:

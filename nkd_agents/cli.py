@@ -30,8 +30,18 @@ BANNER = (
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history\n"
+    "'ctrl+p':    pick skill\n"
     f"'ctrl+c':    exit{RESET}\n"
 )
+
+
+def _load_skill(skills_dir: Path, choice: str) -> str | None:
+    skills = sorted(skills_dir.glob("*.md"))
+    try:
+        idx = int(choice) - 1
+        return skills[idx].read_text(encoding="utf-8") if 0 <= idx < len(skills) else None
+    except (ValueError, IndexError):
+        return None
 
 
 class CLI:
@@ -110,6 +120,24 @@ class CLI:
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.toggle_plan_mode())
         kb.add("c-k")(lambda e: self.compact_history())
+
+        skills_dir = Path(__file__).parent / "skills"
+
+        @kb.add("c-p")
+        def _pick_skill(event):
+            def _do():
+                skills = sorted(skills_dir.glob("*.md"))
+                if not skills:
+                    print("No skills found.")
+                    return
+                for i, s in enumerate(skills, 1):
+                    print(f"  {i}. {s.stem}")
+                text = _load_skill(skills_dir, input("Pick skill: "))
+                if text:
+                    event.app.current_buffer.set_text(text)
+
+            event.app.run_in_terminal(_do)
+
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
 
