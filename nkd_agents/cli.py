@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from pathlib import Path
 
 from anthropic import AsyncAnthropic, omit
@@ -9,7 +10,7 @@ from prompt_toolkit import PromptSession, key_binding, styles
 from prompt_toolkit.document import Document
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from .anthropic import llm, user
+from .anthropic import llm, tool_schema, user
 from .ctx import anthropic_client_ctx
 from .logging import DIM, GREEN, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, subtask
@@ -23,6 +24,8 @@ STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacti
 PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
 THINKING = {"type": "adaptive"}
+COMPACT_MSG = "FYI - tool call/result messages pruned from history (no action needed on your part)"
+CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
@@ -49,6 +52,9 @@ class CLI:
         self.messages: list[MessageParam] = []
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
+        self.last_message_at: float = 0.0
+        self.warm_count: int = 0
+
         self.plan_mode = ""
         self.model_idx = 0
         self.skill_idx = 0
@@ -56,6 +62,7 @@ class CLI:
             "model": MODELS[self.model_idx],
             "max_tokens": 20000,
             "thinking": omit,
+            "tools": [tool_schema(fn) for fn in TOOLS],
         }
         if Path("CLAUDE.md").exists():
             self.settings["system"] = Path("CLAUDE.md").read_text(encoding="utf-8")
@@ -81,8 +88,8 @@ class CLI:
 
     def cycle_skill_prompt(self) -> Document:
         skills = sorted(
-            list((Path(__file__).parent / "skills").glob("*.md"))
-            + list((Path.cwd() / "skills").glob("*.md")),
+            list[Path]((Path(__file__).parent / "skills").glob("*.md"))
+            + list[Path]((Path.cwd() / "skills").glob("*.md")),
             key=lambda p: p.stem,
         )
         skill = skills[self.skill_idx % len(skills)]
@@ -103,11 +110,36 @@ class CLI:
                 kept.append(x)
         removed = len(self.messages) - len(kept)
         self.messages[:] = kept
+        if removed > 0:
+            self.messages.append(user(COMPACT_MSG))
         logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
+
+    async def cache_warmer(self) -> None:
+        while True:
+            await asyncio.sleep(30)  # check every 30 seconds
+            idle = time.monotonic() - self.last_message_at
+            if (
+                self.messages
+                and idle >= 270
+                and self.warm_count < 7  # max of 7 warmups in a row (1.25 + 0.1*7 < 2)
+                and (not self.llm_task or self.llm_task.done())
+            ):
+                warm_msg = user(CACHE_WARM_MSG)
+                warm_msg["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore
+                await self.client.messages.create(
+                    model=self.settings["model"],
+                    messages=self.messages + [warm_msg],
+                    max_tokens=10,
+                    tools=self.settings["tools"],
+                )
+                self.last_message_at = time.monotonic()
+                self.warm_count += 1
+                logger.info(f"{DIM}Warmed cache ({self.warm_count}/7){RESET}")
 
     async def llm_loop(self) -> None:
         while True:
             self.messages.append(await self.queue.get())
+            self.warm_count = 0
             self.llm_task = asyncio.create_task(
                 llm(self.client, self.messages, TOOLS, **self.settings)
             )
@@ -117,6 +149,8 @@ class CLI:
                 pass  # catch so we can go back to queue.get()
             except Exception as e:
                 logger.exception(f"{RED}Error in llm loop: {e}{RESET}")
+            finally:
+                self.last_message_at = time.monotonic()
 
     async def prompt_loop(self) -> None:
         kb = key_binding.KeyBindings()
@@ -141,7 +175,7 @@ class CLI:
                 await self.queue.put(user(f"{prefix} {text.strip()}"))
 
     async def run(self) -> None:
-        await asyncio.gather(self.llm_loop(), self.prompt_loop())
+        await asyncio.gather(self.llm_loop(), self.prompt_loop(), self.cache_warmer())
 
 
 def main() -> None:
