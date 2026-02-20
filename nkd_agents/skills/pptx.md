@@ -13,17 +13,28 @@ Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with Li
 ## Core Steps
 
 1. **Install if needed**: `npm install pptxgenjs`
-2. **Write & run** `node make_presentation.js` — build **1–3 slides at a time**, verify PDF, then continue.
-3. **Convert & verify**: `SOFFICE=$(command -v libreoffice25.2 || command -v libreoffice || command -v soffice) && $SOFFICE --headless --convert-to pdf output.pptx && [ -s output.pdf ] && echo "OK" || echo "FAILED"`
+2. **Create the skeleton** — `make_presentation.js` with `require()` for imports, the `txt()` helper, and an async IIFE for `writeFile`. Slides will be filled in next:
+   ```js
+   const pptx = new (require('pptxgenjs'))();
 
----
+   function txt(s, content, opts = {}) {
+     s.addText(content, Object.assign({}, opts, { shrinkText: true, autoFit: true }));
+   }
 
-## Rules
+   // slides go here
 
-| Rule | Why |
-|---|---|
-| Always `await pptx.writeFile()` | It's async; missing await = empty/missing file |
-| Use explicit relative or absolute paths | Avoids "file not found" at convert time |
-| Use the `command -v` chain to find LibreOffice | Version-specific binaries (e.g. `libreoffice25.2`) may shadow `libreoffice`/`soffice` |
-| Set `shrinkText: true` and `autoFit: 'shrink'` on every text element | Prevents overflow — LibreOffice clips text that exceeds element bounds |
-| Coordinates are in inches by default | `x`, `y`, `w`, `h` all in inches unless a `'%'` string is used |
+   (async () => { await pptx.writeFile({ fileName: 'slide_deck.pptx' }); })();
+   ```
+3. **Repeat until all slides are done** — fill in **1–3 slides at a time**:
+   a. Write the 1–3 slides and run `node make_presentation.js`
+   b. Convert:
+      ```bash
+      SOFFICE=$(command -v libreoffice25.2 || command -v libreoffice || command -v soffice) && $SOFFICE --headless --convert-to pdf slide_deck.pptx
+      ```
+   c. Read `slide_deck.pdf` via `read_file`. Verify every page for:
+      - No text overflow (all text fits within slide boundaries)
+      - No element overlap
+      - Visual elements render correctly
+      - Charts and graphs are complete — no missing data, truncated series, or empty plot areas
+      - Every `addText` call goes through `txt()`
+   d. If any page has overflow, overlap, rendering issues, or a missing `txt()` call, fix the offending slide and re-run before adding more slides.
