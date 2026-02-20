@@ -110,8 +110,8 @@ class CLI:
                 kept.append(x)
         removed = len(self.messages) - len(kept)
         self.messages[:] = kept
-        if removed > 0:
-            self.messages.append(user(COMPACT_MSG))
+        # if removed > 0:
+        #     self.messages.append(user(COMPACT_MSG))
         logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
 
     async def cache_warmer(self) -> None:

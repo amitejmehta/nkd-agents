@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import logging
-from typing import Any, Awaitable, Callable, Iterable, Literal, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Sequence
 
 from anthropic import AsyncAnthropic, AsyncAnthropicVertex, transform_schema
 from anthropic.types import (
