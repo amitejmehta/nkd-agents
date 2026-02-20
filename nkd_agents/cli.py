@@ -154,12 +154,8 @@ class CLI:
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.toggle_plan_mode())
         kb.add("c-k")(lambda e: self.compact_history())
-        kb.add("c-p")(
-            lambda e: e.app.current_buffer.set_document(
-                self.cycle_prompt(), bypass_readonly=True
-            )
-        )
         kb.add("c-u")(lambda e: e.app.current_buffer.reset())
+        kb.add("c-p")(lambda e: e.app.current_buffer.set_document(self.cycle_prompt()))
 
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
