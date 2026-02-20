@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import logging
-from typing import Any, Awaitable, Callable, Iterable, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Literal, Sequence
 
 from anthropic import AsyncAnthropic, AsyncAnthropicVertex, transform_schema
 from anthropic.types import (
@@ -120,6 +120,7 @@ async def llm(
     client: AsyncAnthropic | AsyncAnthropicVertex,
     input: list[MessageParam],
     fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
+    cache_ttl: Literal["5m", "1h"] = "5m",
     **kwargs: Any,
 ) -> str:
     """Run Claude in agentic loop (run until no tool calls, then return text).
@@ -141,7 +142,8 @@ async def llm(
     while True:
         try:
             if fns:
-                input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
+                cache_control = {"type": "ephemeral", "ttl": cache_ttl}
+                input[-1]["content"][-1]["cache_control"] = cache_control  # type: ignore # TODO: fix this
 
             resp: Message = await client.messages.create(messages=input, **kwargs)
             logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
