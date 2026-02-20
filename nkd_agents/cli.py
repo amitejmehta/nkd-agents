@@ -109,7 +109,7 @@ class CLI:
         while True:
             self.messages.append(await self.queue.get())
             self.llm_task = asyncio.create_task(
-                llm(self.client, self.messages, TOOLS, **self.settings)
+                llm(self.client, self.messages, TOOLS, cache_ttl="1h", **self.settings)
             )
             try:
                 await self.llm_task
