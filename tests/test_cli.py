@@ -187,60 +187,60 @@ class TestCompactHistory:
 class TestCycleSkillPrompt:
     def test_xml_tags_match(self, cli: CLI):
         """Opening and closing tags wrap content with matching stem."""
-        doc = cli.cycle_skill_prompt()
-        stem = doc.text.splitlines()[0][len("<skill ") : -1]
-        assert doc.text.startswith(f"<skill {stem}>\n")
-        assert doc.text.strip().endswith(f"</skill {stem}>")
+        doc = cli.cycle_prompt()
+        stem = doc.text.splitlines()[0][len("<prompt ") : -1]
+        assert doc.text.startswith(f"<prompt {stem}>\n")
+        assert doc.text.strip().endswith(f"</prompt {stem}>")
 
     def test_cursor_at_end(self, cli: CLI):
-        doc = cli.cycle_skill_prompt()
+        doc = cli.cycle_prompt()
         assert doc.cursor_position == len(doc.text)
 
     def test_cycles_through_all_builtins(self, cli: CLI):
-        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        nkd_dir = Path(cli_module.__file__).parent / "prompts"
         n = len(list(nkd_dir.glob("*.md")))
-        docs = [cli.cycle_skill_prompt() for _ in range(n)]
+        docs = [cli.cycle_prompt() for _ in range(n)]
         assert len({d.text for d in docs}) == n
 
     def test_wraps_around(self, cli: CLI):
-        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        nkd_dir = Path(cli_module.__file__).parent / "prompts"
         n = len(list(nkd_dir.glob("*.md")))
-        first = cli.cycle_skill_prompt().text
+        first = cli.cycle_prompt().text
         for _ in range(n - 1):
-            cli.cycle_skill_prompt()
-        assert cli.cycle_skill_prompt().text == first
+            cli.cycle_prompt()
+        assert cli.cycle_prompt().text == first
 
-    def test_local_skills_included(self, cli: CLI, tmp_path, monkeypatch):
+    def test_local_prompts_included(self, cli: CLI, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "skills").mkdir()
-        (tmp_path / "skills" / "aaa_local.md").write_text("local content")
-        cli.skill_idx = 0
-        doc = cli.cycle_skill_prompt()
-        assert "<skill aaa_local>" in doc.text
+        (tmp_path / "prompts").mkdir()
+        (tmp_path / "prompts" / "aaa_local.md").write_text("local content")
+        cli.prompt_idx = 0
+        doc = cli.cycle_prompt()
+        assert "<prompt aaa_local>" in doc.text
         assert "local content" in doc.text
 
     def test_alphabetical_order(self, cli: CLI, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "skills").mkdir()
-        (tmp_path / "skills" / "zzz_last.md").write_text("last")
-        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        (tmp_path / "prompts").mkdir()
+        (tmp_path / "prompts" / "zzz_last.md").write_text("last")
+        nkd_dir = Path(cli_module.__file__).parent / "prompts"
         n = len(list(nkd_dir.glob("*.md")))
-        cli.skill_idx = 0
-        docs = [cli.cycle_skill_prompt() for _ in range(n + 1)]
-        assert "<skill zzz_last>" in docs[-1].text
+        cli.prompt_idx = 0
+        docs = [cli.cycle_prompt() for _ in range(n + 1)]
+        assert "<prompt zzz_last>" in docs[-1].text
 
     def test_local_overrides_same_name(self, cli: CLI, tmp_path, monkeypatch):
-        """Local skill with same name as builtin: both appear."""
+        """Local prompt with same name as builtin: both appear."""
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "skills").mkdir()
-        nkd_dir = Path(cli_module.__file__).parent / "skills"
+        (tmp_path / "prompts").mkdir()
+        nkd_dir = Path(cli_module.__file__).parent / "prompts"
         builtin = next(nkd_dir.glob("*.md"))
-        (tmp_path / "skills" / builtin.name).write_text("local override")
-        cli.skill_idx = 0
+        (tmp_path / "prompts" / builtin.name).write_text("local override")
+        cli.prompt_idx = 0
         nkd_count = len(list(nkd_dir.glob("*.md")))
-        docs = [cli.cycle_skill_prompt() for _ in range(nkd_count + 1)]
+        docs = [cli.cycle_prompt() for _ in range(nkd_count + 1)]
         # same stem appears twice — one with local content
-        matches = [d for d in docs if f"<skill {builtin.stem}>" in d.text]
+        matches = [d for d in docs if f"<prompt {builtin.stem}>" in d.text]
         assert len(matches) == 2
         assert any("local override" in d.text for d in matches)
 

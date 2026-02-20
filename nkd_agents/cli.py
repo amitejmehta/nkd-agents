@@ -31,22 +31,23 @@ BANNER = (
     "'tab':       toggle thinking\n"
     "'shift+tab': toggle plan mode\n"
     "'esc esc':   interrupt\n"
-    "'ctrl+u':    clear input line\n"
+    "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
-    "'ctrl+p':    cycle skill prompts (local and nkd-agents)\n"
+    "'ctrl+p':    cycle prompts (local and nkd-agents)\n"
     f"'ctrl+c':    exit{RESET}\n"
 )
 
 
 class CLI:
     def __init__(self) -> None:
-        if not os.environ.get("NKD_AGENTS_ANTHROPIC_API_KEY"):
+        api_key = os.environ.get("NKD_AGENTS_ANTHROPIC_API_KEY")
+        if not api_key:
             raise ValueError(
                 "NKD_AGENTS_ANTHROPIC_API_KEY is not set. "
                 "See https://github.com/amitejmehta/nkd-agents#installation"
             )
-        self.client = AsyncAnthropic(api_key=os.environ["NKD_AGENTS_ANTHROPIC_API_KEY"])
+        self.client = AsyncAnthropic(api_key=api_key)
         anthropic_client_ctx.set(self.client)
 
         self.messages: list[MessageParam] = []
@@ -57,7 +58,7 @@ class CLI:
 
         self.plan_mode = ""
         self.model_idx = 0
-        self.skill_idx = 0
+        self.prompt_idx = 0
         self.settings = {
             "model": MODELS[self.model_idx],
             "max_tokens": 20000,
@@ -86,16 +87,14 @@ class CLI:
         self.plan_mode = "" if self.plan_mode else PLAN_MODE_PREFIX
         logger.info(f"{DIM}Plan mode: {'✓' if self.plan_mode else '✗'}{RESET}")
 
-    def cycle_skill_prompt(self) -> Document:
-        skills = sorted(
-            list[Path]((Path(__file__).parent / "skills").glob("*.md"))
-            + list[Path]((Path.cwd() / "skills").glob("*.md")),
-            key=lambda p: p.stem,
-        )
-        skill = skills[self.skill_idx % len(skills)]
-        self.skill_idx += 1
-        tag = f"skill {skill.stem}"
-        text = f"<{tag}>\n{skill.read_text(encoding='utf-8')}\n</{tag}>\n"
+    def cycle_prompt(self) -> Document:
+        nkd_prompts = list((Path(__file__).parent / "prompts").glob("*.md"))
+        local_prompts = list((Path.cwd() / "prompts").glob("*.md"))
+        prompts = sorted(nkd_prompts + local_prompts, key=lambda p: p.stem)
+        prompt = prompts[self.prompt_idx % len(prompts)]
+        self.prompt_idx += 1
+        tag = f"prompt {prompt.stem}"
+        text = f"<{tag}>\n{prompt.read_text(encoding='utf-8')}\n</{tag}>\n"
         return Document(text, len(text))
 
     def compact_history(self) -> None:
@@ -110,8 +109,6 @@ class CLI:
                 kept.append(x)
         removed = len(self.messages) - len(kept)
         self.messages[:] = kept
-        # if removed > 0:
-        #     self.messages.append(user(COMPACT_MSG))
         logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
 
     async def cache_warmer(self) -> None:
@@ -159,9 +156,10 @@ class CLI:
         kb.add("c-k")(lambda e: self.compact_history())
         kb.add("c-p")(
             lambda e: e.app.current_buffer.set_document(
-                self.cycle_skill_prompt(), bypass_readonly=True
+                self.cycle_prompt(), bypass_readonly=True
             )
         )
+        kb.add("c-u")(lambda e: e.app.current_buffer.reset())
 
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
