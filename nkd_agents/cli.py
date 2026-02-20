@@ -24,7 +24,7 @@ STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacti
 PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
 THINKING = {"type": "adaptive"}
-COMPACT_MSG = "FYI - tool call/result messages pruned from history (no action needed on your part)"
+COMPACT_MSG = "FYI - tool call/result messages pruned from history (no action needed on your part)."
 CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
@@ -121,16 +121,14 @@ class CLI:
             if (
                 self.messages
                 and idle >= 270
-                and self.warm_count < 7  # max of 7 warmups in a row (1.25 + 0.1*7 < 2)
+                and self.warm_count < 7
                 and (not self.llm_task or self.llm_task.done())
             ):
                 warm_msg = user(CACHE_WARM_MSG)
                 warm_msg["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore
                 await self.client.messages.create(
-                    model=self.settings["model"],
                     messages=self.messages + [warm_msg],
-                    max_tokens=10,
-                    tools=self.settings["tools"],
+                    **{**self.settings, "max_tokens": 1, "thinking": omit},
                 )
                 self.last_message_at = time.monotonic()
                 self.warm_count += 1
