@@ -142,10 +142,8 @@ async def llm(
     while True:
         try:
             if fns:
-                input[-1]["content"][-1]["cache_control"] = {
-                    "type": "ephemeral",
-                    "ttl": cache_ttl,
-                }  # type: ignore # TODO: fix this
+                cache_control = {"type": "ephemeral", "ttl": cache_ttl}
+                input[-1]["content"][-1]["cache_control"] = cache_control  # type: ignore # TODO: fix this
 
             resp: Message = await client.messages.create(messages=input, **kwargs)
             logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
