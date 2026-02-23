@@ -19,6 +19,7 @@ nkd_agents/
 ├── ctx.py              # Context variables: anthropic_client_ctx, openai_client_ctx, cwd_ctx
 ├── logging.py          # Logging configuration helper
 ├── cli.py              # Command-line interface (Claude Code style agent)
+├── tracing.py          # Optional OpenTelemetry tracing (GenAI Semantic Conventions)
 └── utils.py            # Internal utilities
 
 Supporting Files:
