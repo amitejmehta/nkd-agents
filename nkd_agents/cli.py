@@ -88,9 +88,8 @@ class CLI:
             return Document("", 0)
         self.prompt_idx += 1
         prompt = prompts[self.prompt_idx % len(prompts)]
-        tag = f"prompt {prompt.stem}"
-        text = f"<{tag}>\n{prompt.read_text(encoding='utf-8')}\n</{tag}>\n"
-        return Document(text, len(text))
+        text = prompt.read_text(encoding="utf-8")
+        return Document(f"<{prompt.stem}>\n{text}\n</{prompt.stem}>\n", len(text))
 
     def compact_history(self) -> None:
         kept = []
@@ -116,12 +115,9 @@ class CLI:
                 and self.warm_count < 7
                 and (not self.llm_task or self.llm_task.done())
             ):
-                warm_msg = user(CACHE_WARM_MSG)
-                warm_msg["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore
-                await self.client.messages.create(
-                    messages=self.messages + [warm_msg],
-                    **{**self.settings, "max_tokens": 1, "thinking": omit},
-                )
+                messages = self.messages + [user(CACHE_WARM_MSG)]
+                messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
+                await self.client.messages.create(messages=messages, **self.settings)
                 self.last_message_at = time.monotonic()
                 self.warm_count += 1
                 logger.info(f"{DIM}Warmed cache ({self.warm_count}/7){RESET}")
