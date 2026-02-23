@@ -139,7 +139,8 @@ async def subtask(
             fns = [read_file, edit_file, bash, fetch_url, web_search]
         except ImportError:
             fns = [read_file, edit_file, bash]
-        kwargs = {"model": f"claude-{model}-4-6", "max_tokens": 8192}
+        models = {"haiku": "claude-haiku-4-6", "sonnet": "claude-sonnet-4-6"}
+        kwargs = {"model": models[model], "max_tokens": 8192}
         response = await llm(client, [user(prompt)], fns=fns, **kwargs)
         logger.info(f"✓ subtask '{task_label}' complete: {response}\n")
         return f"subtask '{task_label}' complete: {response}"

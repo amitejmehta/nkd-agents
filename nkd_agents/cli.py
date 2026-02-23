@@ -19,12 +19,11 @@ from .web import fetch_url, web_search
 
 logger = logging.getLogger(__name__)
 
-MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-6"]
+MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
 STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacting.")
 PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
 THINKING = {"type": "adaptive"}
-COMPACT_MSG = "FYI - tool call/result messages pruned from history (no action needed on your part)."
 CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
@@ -41,13 +40,7 @@ BANNER = (
 
 class CLI:
     def __init__(self) -> None:
-        api_key = os.environ.get("NKD_AGENTS_ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "NKD_AGENTS_ANTHROPIC_API_KEY is not set. "
-                "See https://github.com/amitejmehta/nkd-agents#installation"
-            )
-        self.client = AsyncAnthropic(api_key=api_key)
+        self.client = AsyncAnthropic(max_retries=4)
         anthropic_client_ctx.set(self.client)
 
         self.messages: list[MessageParam] = []
@@ -58,7 +51,7 @@ class CLI:
 
         self.plan_mode = ""
         self.model_idx = 0
-        self.prompt_idx = 0
+        self.prompt_idx = -1
         self.settings = {
             "model": MODELS[self.model_idx],
             "max_tokens": 20000,
@@ -88,11 +81,13 @@ class CLI:
         logger.info(f"{DIM}Plan mode: {'✓' if self.plan_mode else '✗'}{RESET}")
 
     def cycle_prompt(self) -> Document:
-        nkd_prompts = list((Path(__file__).parent / "prompts").glob("*.md"))
-        local_prompts = list((Path.cwd() / "prompts").glob("*.md"))
+        nkd_prompts = list((Path(__file__).parent / "prompts").glob("*.*"))
+        local_prompts = list((Path.cwd() / "prompts").glob("*.*"))
         prompts = sorted(nkd_prompts + local_prompts, key=lambda p: p.stem)
-        prompt = prompts[self.prompt_idx % len(prompts)]
+        if not prompts:
+            return Document("", 0)
         self.prompt_idx += 1
+        prompt = prompts[self.prompt_idx % len(prompts)]
         tag = f"prompt {prompt.stem}"
         text = f"<{tag}>\n{prompt.read_text(encoding='utf-8')}\n</{tag}>\n"
         return Document(text, len(text))
@@ -153,8 +148,8 @@ class CLI:
         kb.add("escape", "escape")(lambda e: self.interrupt())
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.toggle_plan_mode())
-        kb.add("c-k")(lambda e: self.compact_history())
         kb.add("c-u")(lambda e: e.app.current_buffer.reset())
+        kb.add("c-k")(lambda e: self.compact_history())
         kb.add("c-p")(lambda e: e.app.current_buffer.set_document(self.cycle_prompt()))
 
         style = styles.Style.from_dict({"": "ansibrightblack"})

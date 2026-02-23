@@ -22,8 +22,9 @@ class TestInit:
     def test_missing_api_key(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("NKD_AGENTS_ANTHROPIC_API_KEY", raising=False)
-        with pytest.raises(ValueError, match="NKD_AGENTS_ANTHROPIC_API_KEY"):
-            CLI()
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # CLI no longer validates key at init; AsyncAnthropic accepts missing key
+        CLI()  # should not raise
 
     def test_defaults(self, cli: CLI):
         assert cli.model_idx == 0
@@ -214,7 +215,7 @@ class TestCycleSkillPrompt:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "prompts").mkdir()
         (tmp_path / "prompts" / "aaa_local.md").write_text("local content")
-        cli.prompt_idx = 0
+        cli.prompt_idx = -1
         doc = cli.cycle_prompt()
         assert "<prompt aaa_local>" in doc.text
         assert "local content" in doc.text
@@ -225,7 +226,7 @@ class TestCycleSkillPrompt:
         (tmp_path / "prompts" / "zzz_last.md").write_text("last")
         nkd_dir = Path(cli_module.__file__).parent / "prompts"
         n = len(list(nkd_dir.glob("*.md")))
-        cli.prompt_idx = 0
+        cli.prompt_idx = -1
         docs = [cli.cycle_prompt() for _ in range(n + 1)]
         assert "<prompt zzz_last>" in docs[-1].text
 

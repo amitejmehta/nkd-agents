@@ -19,7 +19,7 @@ response = await llm(
     AsyncAnthropic(),
     [user("What's the weather in Paris?")],
     fns=[get_weather],
-    model="claude-sonnet-4-5", max_tokens=1024
+    model="claude-sonnet-4-6", max_tokens=1024
 )
 ```
 
@@ -53,8 +53,10 @@ It supports queueing messages while Claude is working, and the following control
 | `shift+tab` | Toggle plan mode |
 | `esc esc` | Interrupt current LLM call or tool execution |
 | `ctrl+l` | Cycle model (sonnet → opus → haiku → sonnet) |
-| `ctrl+k` | Compact history (strip tool call/result messages) |
 | `ctrl+u` | Clear input line |
+
+| `ctrl+k` | Compact history (clears tool calls/results) |
+| `ctrl+p` | Cycle prompts (local `prompts/` and built-in) |
 | `ctrl+c` | Exit |
 
 **Context-Efficient Web Search**
@@ -94,12 +96,12 @@ via `uv tool` (or `pipx`)
 ```bash
 uv tool install nkd-agents[cli]  # or: pipx install nkd-agents[cli]
 
-# Configure (one-time)
-mkdir -p ~/.nkd-agents
-echo "NKD_AGENTS_ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > ~/.nkd-agents/.env
-
-# Launch
+# Launch (uses ANTHROPIC_API_KEY from env, or configure once)
 nkd
+
+# Optional: override API key or set other env vars
+mkdir -p ~/.nkd-agents
+echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > ~/.nkd-agents/.env
 ```
 
 > **Requirements:** Chrome/Chromium for web search. No Chrome? Use Docker instead (see below).
@@ -108,9 +110,9 @@ via Docker (can only access files you mount)
 ```bash
 docker build -t nkd-agents https://github.com/amitejmehta/nkd-agents.git
 
-# Configure (one-time)
+# Optional: configure env vars
 mkdir -p ~/.nkd-agents
-echo "NKD_AGENTS_ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > ~/.nkd-agents/.env
+echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > ~/.nkd-agents/.env
 
 # Add alias to your shell config (~/.bashrc, ~/.zshrc, etc.)
 echo "alias nkd-sandbox='docker run -it --env-file ~/.nkd-agents/.env -v \$(pwd):/workspace nkd-agents'" >> ~/.zshrc

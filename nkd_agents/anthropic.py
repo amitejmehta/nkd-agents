@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def user(content: str) -> MessageParam:
-    "Take a string and return a full Anthropicuser message."
+    "Take a string and return a full Anthropic user message."
     return {"role": "user", "content": [{"type": "text", "text": content}]}
 
 
