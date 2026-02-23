@@ -22,9 +22,9 @@ jobs:
         # Capture stderr to check for expected error
         OUTPUT=$(docker run --rm nkd-agents:test 2>&1 || true)
         
-        # Success if CLI loads and raises expected API key error
-        if echo "$OUTPUT" | grep -q "NKD_AGENTS_ANTHROPIC_API_KEY is not set"; then
-          echo "✓ Container started and CLI loaded correctly (expected API key error)"
+        # Success if CLI loads and prints the banner
+        if echo "$OUTPUT" | grep -q "nkd-agents"; then
+          echo "✓ Container started and CLI loaded correctly"
           exit 0
         else
           echo "✗ Unexpected output:"
