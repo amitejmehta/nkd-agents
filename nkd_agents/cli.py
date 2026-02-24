@@ -52,6 +52,7 @@ class CLI:
         self.plan_mode = ""
         self.model_idx = 0
         self.prompt_idx = -1
+        self.injected_skill: str = ""
         self.settings = {
             "model": MODELS[self.model_idx],
             "max_tokens": 20000,
@@ -80,7 +81,7 @@ class CLI:
         self.plan_mode = "" if self.plan_mode else PLAN_MODE_PREFIX
         logger.info(f"{DIM}Plan mode: {'✓' if self.plan_mode else '✗'}{RESET}")
 
-    def cycle_prompt(self) -> Document:
+    def cycle_prompt(self) -> str:
         def load_skills(directory: Path) -> list[tuple[str, Path]]:
             """Return (stem, path) pairs: flat *.md and nested */skill.md."""
             if not directory.exists():
@@ -99,11 +100,10 @@ class CLI:
             key=lambda t: t[0],
         )
         if not skills:
-            return Document("", 0)
+            return ""
         self.prompt_idx += 1
         stem, path = skills[self.prompt_idx % len(skills)]
-        text = f"<skill {stem}>\n{path.read_text(encoding='utf-8')}\n</skill {stem}>\n"
-        return Document(text, len(text))
+        return f"<skill {stem}>\n{path.read_text(encoding='utf-8')}\n</skill {stem}>\n"
 
     def compact_history(self) -> None:
         kept = []
@@ -160,7 +160,27 @@ class CLI:
         kb.add("s-tab")(lambda e: self.toggle_plan_mode())
         kb.add("c-u")(lambda e: e.app.current_buffer.reset())
         kb.add("c-k")(lambda e: self.compact_history())
-        kb.add("c-p")(lambda e: e.app.current_buffer.set_document(self.cycle_prompt()))
+        def _cycle_skill(event) -> None:
+            new_skill = self.cycle_prompt()
+            if not new_skill:
+                return
+            current_text = event.app.current_buffer.text
+            # Strip the previously injected skill prefix (if any) to recover
+            # the user's original preamble text.
+            if self.injected_skill and current_text.startswith(self.injected_skill):
+                user_text = current_text[len(self.injected_skill):]
+            else:
+                user_text = current_text
+            # Prepend the new skill block; add a newline separator when there
+            # is already some preamble text typed by the user.
+            if user_text:
+                combined = new_skill + "\n" + user_text
+            else:
+                combined = new_skill
+            self.injected_skill = new_skill
+            event.app.current_buffer.set_document(Document(combined, len(combined)))
+
+        kb.add("c-p")(_cycle_skill)
 
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
