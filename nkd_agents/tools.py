@@ -30,14 +30,14 @@ async def read_file(path: str) -> str | list[Content]:
 
 async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> str:
     """Create or edit an existing file.
-    For creation: provide the new path and set old_str=""
+    For creation: provide the new path and set old_str="create_file"
     For editing: Replaces occurrences of old_str with new_str in the file at the provided path.
     By default, only the first occurrence is replaced. Set count=-1 to replace all occurrences.
     For multiple edits to the same file, call this function multiple times with smaller edits rather than one large edit.
 
     Args:
         path: Path to the file
-        old_str: String to search for (use "" for file creation)
+        old_str: String to search for (use "create_file" for file creation)
         new_str: String to replace with
         count: Maximum number of occurrences to replace (default: 1, use -1 for all)
 
@@ -55,13 +55,19 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
         p = Path(path)
         file_path = p if p.is_absolute() else cwd_ctx.get() / p
 
+        _is_create = old_str == "create_file"
+
         if file_path.exists():
             content = file_path.read_text(encoding="utf-8")
-            if old_str != "" and old_str not in content:
+            if not _is_create and old_str not in content:
                 return "Error: old_str not found in file content"
-            edited_content = content.replace(old_str, new_str, count)
+            edited_content = (
+                content if _is_create else content.replace(old_str, new_str, count)
+            )
+            if _is_create:
+                edited_content = new_str
         else:
-            if old_str != "":
+            if not _is_create:
                 return f"Error: File '{path}' not found"
             content, edited_content = "", new_str
 

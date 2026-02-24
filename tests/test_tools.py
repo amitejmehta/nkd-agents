@@ -123,7 +123,7 @@ class TestEditFile:
         file_path = tmp_path / "new_file.txt"
         content = "New file content"
 
-        result = await edit_file(str(file_path), "", content)
+        result = await edit_file(str(file_path), "create_file", content)
 
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == content
@@ -134,7 +134,7 @@ class TestEditFile:
         file_path = tmp_path / "a" / "b" / "c" / "file.txt"
         content = "Nested file"
 
-        result = await edit_file(str(file_path), "", content)
+        result = await edit_file(str(file_path), "create_file", content)
 
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == content
@@ -420,7 +420,7 @@ class TestCwdContext:
 
         token = cwd_ctx.set(subdir)
         try:
-            result = await edit_file("new.txt", "", "created")
+            result = await edit_file("new.txt", "create_file", "created")
             assert "Success" in result
             assert (subdir / "new.txt").read_text() == "created"
         finally:
