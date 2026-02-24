@@ -42,7 +42,7 @@ class TestInit:
         assert "system prompt" in CLI().settings["system"]
 
     def test_no_claude_md(self, cli: CLI):
-        assert cli.settings["system"].startswith("## Environment")
+        assert cli.settings["system"].startswith("# Environment")
 
 
 class TestSwitchModel:

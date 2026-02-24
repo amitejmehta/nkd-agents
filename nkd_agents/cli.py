@@ -58,10 +58,9 @@ class CLI:
             "thinking": omit,
             "tools": [tool_schema(fn) for fn in TOOLS],
         }
-        env = f"## Environment\nWorking directory: {Path.cwd()} (home: {Path.home()})"
-        system = env
+        system = f"# Environment\nWorking directory: {Path.cwd()} (home: {Path.home()})"
         if Path("CLAUDE.md").exists():
-            system = Path("CLAUDE.md").read_text(encoding="utf-8") + "\n\n" + env
+            system = Path("CLAUDE.md").read_text(encoding="utf-8") + "\n\n" + system
         self.settings["system"] = system
 
     def switch_model(self) -> None:
