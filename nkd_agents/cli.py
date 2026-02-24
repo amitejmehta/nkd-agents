@@ -102,9 +102,7 @@ class CLI:
             return Document("", 0)
         self.prompt_idx += 1
         stem, path = skills[self.prompt_idx % len(skills)]
-        text = (
-            f"<skill {stem}>\n{path.read_text(encoding='utf-8')}\n</skill {stem}>\n"
-        )
+        text = f"<skill {stem}>\n{path.read_text(encoding='utf-8')}\n</skill {stem}>\n"
         return Document(text, len(text))
 
     def compact_history(self) -> None:

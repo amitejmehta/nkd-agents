@@ -224,6 +224,7 @@ class TestCycleSkillPrompt:
         cli.prompt_idx = -1
         # number of builtins + 2 local skills
         from nkd_agents import cli as m
+
         n_builtins = len(list((Path(m.__file__).parent / "skills").glob("*.md")))
         docs = [cli.cycle_prompt() for _ in range(n_builtins + 2)]
         texts = [d.text for d in docs]
@@ -234,6 +235,7 @@ class TestCycleSkillPrompt:
         (skills_dir / "a.md").write_text("a")
         (skills_dir / "b.md").write_text("b")
         from nkd_agents import cli as m
+
         n_builtins = len(list((Path(m.__file__).parent / "skills").glob("*.md")))
         n = n_builtins + 2
         cli.prompt_idx = -1
