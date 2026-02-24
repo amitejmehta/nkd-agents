@@ -86,18 +86,25 @@ class CLI:
             if not directory.exists():
                 return []
             flat = [(p.stem, p) for p in directory.glob("*.md")]
-            nested = [(p.parent.name, p) for p in directory.glob("**/skill.md") if p.parent != directory]
+            nested = [
+                (p.parent.name, p)
+                for p in directory.glob("**/skill.md")
+                if p.parent != directory
+            ]
             return flat + nested
 
         skills = sorted(
-            load_skills(Path(__file__).parent / "skills") + load_skills(Path.cwd() / "skills"),
+            load_skills(Path(__file__).parent / "skills")
+            + load_skills(Path.cwd() / "skills"),
             key=lambda t: t[0],
         )
         if not skills:
             return Document("", 0)
         self.prompt_idx += 1
         stem, path = skills[self.prompt_idx % len(skills)]
-        text = f"<prompt {stem}>\n{path.read_text(encoding='utf-8')}\n</prompt {stem}>\n"
+        text = (
+            f"<prompt {stem}>\n{path.read_text(encoding='utf-8')}\n</prompt {stem}>\n"
+        )
         return Document(text, len(text))
 
     def compact_history(self) -> None:

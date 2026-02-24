@@ -1,14 +1,11 @@
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from anthropic import omit
 from anthropic.types import TextBlock, ToolUseBlock
-
 from prompt_toolkit.document import Document
 
-import nkd_agents.cli as cli_module
 from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS
 
 
