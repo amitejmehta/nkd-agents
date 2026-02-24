@@ -126,7 +126,7 @@ class CLI:
             if (
                 self.messages
                 and idle >= 270
-                and self.warm_count < 7
+                and self.warm_count < 4
                 and (not self.llm_task or self.llm_task.done())
             ):
                 messages = self.messages + [user(CACHE_WARM_MSG)]
@@ -134,7 +134,7 @@ class CLI:
                 await self.client.messages.create(messages=messages, **self.settings)
                 self.last_message_at = time.monotonic()
                 self.warm_count += 1
-                logger.info(f"{DIM}Warmed cache ({self.warm_count}/7){RESET}")
+                logger.info(f"{DIM}Warmed cache ({self.warm_count}/4){RESET}")
 
     async def llm_loop(self) -> None:
         while True:
