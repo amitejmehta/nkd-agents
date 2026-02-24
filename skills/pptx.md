@@ -25,8 +25,8 @@ Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with Li
 
    (async () => { await pptx.writeFile({ fileName: 'slide_deck.pptx' }); })();
    ```
-3. **Repeat until all slides are done** — fill in **1–2 slides at a time**:
-   a. Write the 1–2 slides and run `node make_presentation.js`
+3. **Repeat until all slides are done** — fill in **a maximum of 1–2 slides at a time, never more**:
+   a. Write the 1–2 slides (MAX) and run `node make_presentation.js` (NOTE: MUST use `edit_file` tool here)
    b. Convert:
       ```bash
       SOFFICE=$(command -v libreoffice25.2 || command -v libreoffice || command -v soffice) && $SOFFICE --headless --convert-to pdf slide_deck.pptx
