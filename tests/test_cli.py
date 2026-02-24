@@ -39,10 +39,10 @@ class TestInit:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("NKD_AGENTS_ANTHROPIC_API_KEY", "test-key")
         (tmp_path / "CLAUDE.md").write_text("system prompt")
-        assert CLI().settings["system"] == "system prompt"
+        assert "system prompt" in CLI().settings["system"]
 
     def test_no_claude_md(self, cli: CLI):
-        assert "system" not in cli.settings
+        assert cli.settings["system"].startswith("# Environment")
 
 
 class TestSwitchModel:
