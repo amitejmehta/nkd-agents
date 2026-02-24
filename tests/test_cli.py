@@ -230,6 +230,26 @@ class TestCycleSkillPrompt:
         docs = [cli.cycle_prompt() for _ in range(n + 1)]
         assert "<prompt zzz_last>" in docs[-1].text
 
+    def test_nkd_prompts_dir_env_var(self, cli: CLI, tmp_path, monkeypatch):
+        """NKD_PROMPTS_DIR overrides the default ./prompts directory."""
+        custom_dir = tmp_path / "custom_prompts"
+        custom_dir.mkdir()
+        (custom_dir / "aaa_custom.md").write_text("custom content")
+        monkeypatch.setenv("NKD_PROMPTS_DIR", str(custom_dir))
+        cli.prompt_idx = -1
+        doc = cli.cycle_prompt()
+        assert "<prompt aaa_custom>" in doc.text
+        assert "custom content" in doc.text
+
+    def test_nkd_prompts_dir_nonexistent(self, cli: CLI, tmp_path, monkeypatch):
+        """NKD_PROMPTS_DIR pointing to a nonexistent dir returns only builtins."""
+        monkeypatch.setenv("NKD_PROMPTS_DIR", str(tmp_path / "no_such_dir"))
+        nkd_dir = Path(cli_module.__file__).parent / "prompts"
+        n = len(list(nkd_dir.glob("*.md")))
+        cli.prompt_idx = -1
+        docs = [cli.cycle_prompt() for _ in range(n)]
+        assert len({d.text for d in docs}) == n
+
     def test_local_overrides_same_name(self, cli: CLI, tmp_path, monkeypatch):
         """Local prompt with same name as builtin: both appear."""
         monkeypatch.chdir(tmp_path)

@@ -82,14 +82,15 @@ class CLI:
 
     def cycle_prompt(self) -> Document:
         nkd_prompts = list((Path(__file__).parent / "prompts").glob("*.*"))
-        local_prompts = list((Path.cwd() / "prompts").glob("*.*"))
+        prompts_dir = Path(os.environ.get("NKD_PROMPTS_DIR", Path.cwd() / "prompts"))
+        local_prompts = list(prompts_dir.glob("*.*"))
         prompts = sorted(nkd_prompts + local_prompts, key=lambda p: p.stem)
         if not prompts:
             return Document("", 0)
         self.prompt_idx += 1
         prompt = prompts[self.prompt_idx % len(prompts)]
-        text = prompt.read_text(encoding="utf-8")
-        return Document(f"<{prompt.stem}>\n{text}\n</{prompt.stem}>\n", len(text))
+        text = f"<prompt {prompt.stem}>\n{prompt.read_text(encoding='utf-8')}\n</prompt {prompt.stem}>\n"
+        return Document(text, len(text))
 
     def compact_history(self) -> None:
         kept = []
