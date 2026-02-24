@@ -13,7 +13,7 @@ Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with Li
 ## Core Steps
 
 1. **Install if needed**: `npm install pptxgenjs`
-2. **Create the skeleton** — `make_presentation.js` with `require()` for imports, the `txt()` helper, and an async IIFE for `writeFile`. Slides will be filled in next:
+2. **Create the skeleton** — call `edit_file` with `path="make_presentation.js"`, `old_str="create_file"`, and `new_str` set to the full skeleton below. Do not use bash to write this file.
    ```js
    const pptx = new (require('pptxgenjs'))();
 
@@ -25,13 +25,13 @@ Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with Li
 
    (async () => { await pptx.writeFile({ fileName: 'slide_deck.pptx' }); })();
    ```
-3. **Repeat until all slides are done** — fill in **1–3 slides at a time**:
-   a. Write the 1–3 slides and run `node make_presentation.js`
+3. **Repeat until all slides are done** — fill in **a maximum of 1–2 slides at a time, never more**:
+   a. Write the 1–2 slides (MAX) and run `node make_presentation.js` (NOTE: MUST use `edit_file` tool here)
    b. Convert:
       ```bash
       SOFFICE=$(command -v libreoffice25.2 || command -v libreoffice || command -v soffice) && $SOFFICE --headless --convert-to pdf slide_deck.pptx
       ```
-   c. Read `slide_deck.pdf` via `read_file`. Verify every page for:
+   c. Read `slide_deck.pdf` via the `read_file` tool. Verify every page for:
       - No text overflow (all text fits within slide boundaries)
       - No element overlap
       - Visual elements render correctly
