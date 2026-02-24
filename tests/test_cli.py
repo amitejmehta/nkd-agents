@@ -6,6 +6,8 @@ import pytest
 from anthropic import omit
 from anthropic.types import TextBlock, ToolUseBlock
 
+from prompt_toolkit.document import Document
+
 import nkd_agents.cli as cli_module
 from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS
 
@@ -186,84 +188,51 @@ class TestCompactHistory:
 
 
 class TestCycleSkillPrompt:
-    def test_xml_tags_match(self, cli: CLI):
-        """Opening and closing tags wrap content with matching stem."""
-        doc = cli.cycle_prompt()
-        stem = doc.text.splitlines()[0][len("<prompt ") : -1]
-        assert doc.text.startswith(f"<prompt {stem}>\n")
-        assert doc.text.strip().endswith(f"</prompt {stem}>")
+    @pytest.fixture
+    def skills_dir(self, tmp_path, monkeypatch):
+        """Isolated skills dir with no builtins."""
+        monkeypatch.chdir(tmp_path)
+        d = tmp_path / "skills"
+        d.mkdir()
+        return d
 
-    def test_cursor_at_end(self, cli: CLI):
+    def test_empty_returns_blank(self, cli: CLI, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)  # no skills/ dir at all
+        assert cli.cycle_prompt() == Document("", 0)
+
+    def test_flat_skill_xml_and_cursor(self, cli: CLI, skills_dir):
+        """Flat *.md: correct XML tags, stem, content, cursor at end."""
+        (skills_dir / "debug.md").write_text("debug content")
+        cli.prompt_idx = -1
         doc = cli.cycle_prompt()
+        assert doc.text == "<prompt debug>\ndebug content\n</prompt debug>\n"
         assert doc.cursor_position == len(doc.text)
 
-    def test_cycles_through_all_builtins(self, cli: CLI):
-        nkd_dir = Path(cli_module.__file__).parent / "prompts"
-        n = len(list(nkd_dir.glob("*.md")))
-        docs = [cli.cycle_prompt() for _ in range(n)]
-        assert len({d.text for d in docs}) == n
+    def test_nested_anthropic_style(self, cli: CLI, skills_dir):
+        """Nested skills/debug/skill.md uses parent dir name as stem."""
+        (skills_dir / "debug").mkdir()
+        (skills_dir / "debug" / "skill.md").write_text("nested content")
+        cli.prompt_idx = -1
+        doc = cli.cycle_prompt()
+        assert doc.text == "<prompt debug>\nnested content\n</prompt debug>\n"
 
-    def test_wraps_around(self, cli: CLI):
-        nkd_dir = Path(cli_module.__file__).parent / "prompts"
-        n = len(list(nkd_dir.glob("*.md")))
+    def test_flat_and_nested_together(self, cli: CLI, skills_dir):
+        """Both formats coexist and are sorted alphabetically."""
+        (skills_dir / "aaa.md").write_text("flat")
+        (skills_dir / "zzz").mkdir()
+        (skills_dir / "zzz" / "skill.md").write_text("nested")
+        cli.prompt_idx = -1
+        docs = [cli.cycle_prompt(), cli.cycle_prompt()]
+        assert "<prompt aaa>" in docs[0].text
+        assert "<prompt zzz>" in docs[1].text
+
+    def test_wraps_around(self, cli: CLI, skills_dir):
+        (skills_dir / "a.md").write_text("a")
+        (skills_dir / "b.md").write_text("b")
+        cli.prompt_idx = -1
         first = cli.cycle_prompt().text
-        for _ in range(n - 1):
-            cli.cycle_prompt()
+        cli.cycle_prompt()
         assert cli.cycle_prompt().text == first
-
-    def test_local_prompts_included(self, cli: CLI, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "prompts").mkdir()
-        (tmp_path / "prompts" / "aaa_local.md").write_text("local content")
-        cli.prompt_idx = -1
-        doc = cli.cycle_prompt()
-        assert "<prompt aaa_local>" in doc.text
-        assert "local content" in doc.text
-
-    def test_alphabetical_order(self, cli: CLI, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "prompts").mkdir()
-        (tmp_path / "prompts" / "zzz_last.md").write_text("last")
-        nkd_dir = Path(cli_module.__file__).parent / "prompts"
-        n = len(list(nkd_dir.glob("*.md")))
-        cli.prompt_idx = -1
-        docs = [cli.cycle_prompt() for _ in range(n + 1)]
-        assert "<prompt zzz_last>" in docs[-1].text
-
-    def test_nkd_prompts_dir_env_var(self, cli: CLI, tmp_path, monkeypatch):
-        """NKD_PROMPTS_DIR overrides the default ./prompts directory."""
-        custom_dir = tmp_path / "custom_prompts"
-        custom_dir.mkdir()
-        (custom_dir / "aaa_custom.md").write_text("custom content")
-        monkeypatch.setenv("NKD_PROMPTS_DIR", str(custom_dir))
-        cli.prompt_idx = -1
-        doc = cli.cycle_prompt()
-        assert "<prompt aaa_custom>" in doc.text
-        assert "custom content" in doc.text
-
-    def test_nkd_prompts_dir_nonexistent(self, cli: CLI, tmp_path, monkeypatch):
-        """NKD_PROMPTS_DIR pointing to a nonexistent dir returns only builtins."""
-        monkeypatch.setenv("NKD_PROMPTS_DIR", str(tmp_path / "no_such_dir"))
-        nkd_dir = Path(cli_module.__file__).parent / "prompts"
-        n = len(list(nkd_dir.glob("*.md")))
-        cli.prompt_idx = -1
-        docs = [cli.cycle_prompt() for _ in range(n)]
-        assert len({d.text for d in docs}) == n
-
-    def test_local_overrides_same_name(self, cli: CLI, tmp_path, monkeypatch):
-        """Local prompt with same name as builtin: both appear."""
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "prompts").mkdir()
-        nkd_dir = Path(cli_module.__file__).parent / "prompts"
-        builtin = next(nkd_dir.glob("*.md"))
-        (tmp_path / "prompts" / builtin.name).write_text("local override")
-        cli.prompt_idx = 0
-        nkd_count = len(list(nkd_dir.glob("*.md")))
-        docs = [cli.cycle_prompt() for _ in range(nkd_count + 1)]
-        # same stem appears twice — one with local content
-        matches = [d for d in docs if f"<prompt {builtin.stem}>" in d.text]
-        assert len(matches) == 2
-        assert any("local override" in d.text for d in matches)
 
 
 class TestLLMLoop:
