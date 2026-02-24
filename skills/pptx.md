@@ -31,7 +31,7 @@ Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with Li
       ```bash
       SOFFICE=$(command -v libreoffice25.2 || command -v libreoffice || command -v soffice) && $SOFFICE --headless --convert-to pdf slide_deck.pptx
       ```
-   c. Read `slide_deck.pdf` via `read_file`. Verify every page for:
+   c. Read `slide_deck.pdf` via the `read_file` tool. Verify every page for:
       - No text overflow (all text fits within slide boundaries)
       - No element overlap
       - Visual elements render correctly
