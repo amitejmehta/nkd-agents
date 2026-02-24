@@ -103,7 +103,7 @@ class CLI:
         self.prompt_idx += 1
         stem, path = skills[self.prompt_idx % len(skills)]
         text = (
-            f"<prompt {stem}>\n{path.read_text(encoding='utf-8')}\n</prompt {stem}>\n"
+            f"<skill {stem}>\n{path.read_text(encoding='utf-8')}\n</skill {stem}>\n"
         )
         return Document(text, len(text))
 

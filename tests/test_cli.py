@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -189,12 +190,14 @@ class TestCycleSkillPrompt:
     def skills_dir(self, tmp_path, monkeypatch):
         """Isolated skills dir with no builtins."""
         monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("nkd_agents.cli.__file__", str(tmp_path / "fake_cli.py"))
         d = tmp_path / "skills"
         d.mkdir()
         return d
 
     def test_empty_returns_blank(self, cli: CLI, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)  # no skills/ dir at all
+        monkeypatch.setattr("nkd_agents.cli.__file__", str(tmp_path / "fake_cli.py"))
         assert cli.cycle_prompt() == Document("", 0)
 
     def test_flat_skill_xml_and_cursor(self, cli: CLI, skills_dir):
@@ -202,7 +205,7 @@ class TestCycleSkillPrompt:
         (skills_dir / "debug.md").write_text("debug content")
         cli.prompt_idx = -1
         doc = cli.cycle_prompt()
-        assert doc.text == "<prompt debug>\ndebug content\n</prompt debug>\n"
+        assert doc.text == "<skill debug>\ndebug content\n</skill debug>\n"
         assert doc.cursor_position == len(doc.text)
 
     def test_nested_anthropic_style(self, cli: CLI, skills_dir):
@@ -211,24 +214,32 @@ class TestCycleSkillPrompt:
         (skills_dir / "debug" / "skill.md").write_text("nested content")
         cli.prompt_idx = -1
         doc = cli.cycle_prompt()
-        assert doc.text == "<prompt debug>\nnested content\n</prompt debug>\n"
+        assert doc.text == "<skill debug>\nnested content\n</skill debug>\n"
 
     def test_flat_and_nested_together(self, cli: CLI, skills_dir):
-        """Both formats coexist and are sorted alphabetically."""
+        """Both formats coexist; collect all docs and verify both stems appear."""
         (skills_dir / "aaa.md").write_text("flat")
         (skills_dir / "zzz").mkdir()
         (skills_dir / "zzz" / "skill.md").write_text("nested")
         cli.prompt_idx = -1
-        docs = [cli.cycle_prompt(), cli.cycle_prompt()]
-        assert "<prompt aaa>" in docs[0].text
-        assert "<prompt zzz>" in docs[1].text
+        # number of builtins + 2 local skills
+        from nkd_agents import cli as m
+        n_builtins = len(list((Path(m.__file__).parent / "skills").glob("*.md")))
+        docs = [cli.cycle_prompt() for _ in range(n_builtins + 2)]
+        texts = [d.text for d in docs]
+        assert any("<skill aaa>" in t for t in texts)
+        assert any("<skill zzz>" in t for t in texts)
 
     def test_wraps_around(self, cli: CLI, skills_dir):
         (skills_dir / "a.md").write_text("a")
         (skills_dir / "b.md").write_text("b")
+        from nkd_agents import cli as m
+        n_builtins = len(list((Path(m.__file__).parent / "skills").glob("*.md")))
+        n = n_builtins + 2
         cli.prompt_idx = -1
         first = cli.cycle_prompt().text
-        cli.cycle_prompt()
+        for _ in range(n - 1):
+            cli.cycle_prompt()
         assert cli.cycle_prompt().text == first
 
 
