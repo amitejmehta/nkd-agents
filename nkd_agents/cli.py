@@ -58,13 +58,14 @@ class CLI:
             "thinking": omit,
             "tools": [tool_schema(fn) for fn in TOOLS],
         }
-        self.settings["system"] = (
-            f"Working directory: {Path.cwd()} (home: {Path.home()})"
-        )
+        self.settings["system"] = ""
         if Path("CLAUDE.md").exists():
-            self.settings["system"] += "\n\n" + Path("CLAUDE.md").read_text(
-                encoding="utf-8"
+            self.settings["system"] += (
+                Path("CLAUDE.md").read_text(encoding="utf-8") + "\n\n"
             )
+        self.settings["system"] += (
+            f"## Environment\nWorking directory: {Path.cwd()} (home: {Path.home()})"
+        )
 
     def switch_model(self) -> None:
         self.model_idx = (self.model_idx + 1) % len(MODELS)
