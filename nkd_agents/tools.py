@@ -55,21 +55,15 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
         p = Path(path)
         file_path = p if p.is_absolute() else cwd_ctx.get() / p
 
-        _is_create = old_str == "create_file"
-
-        if file_path.exists():
-            content = file_path.read_text(encoding="utf-8")
-            if not _is_create and old_str not in content:
-                return "Error: old_str not found in file content"
-            edited_content = (
-                content if _is_create else content.replace(old_str, new_str, count)
-            )
-            if _is_create:
-                edited_content = new_str
-        else:
-            if not _is_create:
-                return f"Error: File '{path}' not found"
+        if old_str == "create_file":
             content, edited_content = "", new_str
+        elif not file_path.exists():
+            return f"Error: File '{path}' not found"
+        else:
+            content = file_path.read_text(encoding="utf-8")
+            if old_str not in content:
+                return "Error: old_str not found in file content"
+            edited_content = content.replace(old_str, new_str, count)
 
         display_diff(content, edited_content, str(file_path))
         file_path.parent.mkdir(parents=True, exist_ok=True)
