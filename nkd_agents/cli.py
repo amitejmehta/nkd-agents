@@ -58,8 +58,10 @@ class CLI:
             "thinking": omit,
             "tools": [tool_schema(fn) for fn in TOOLS],
         }
+        system_parts = [f"Working directory: {Path.cwd()} (home: {Path.home()})"]
         if Path("CLAUDE.md").exists():
-            self.settings["system"] = Path("CLAUDE.md").read_text(encoding="utf-8")
+            system_parts.append(Path("CLAUDE.md").read_text(encoding="utf-8"))
+        self.settings["system"] = "\n\n".join(system_parts)
 
     def switch_model(self) -> None:
         self.model_idx = (self.model_idx + 1) % len(MODELS)
