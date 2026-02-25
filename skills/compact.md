@@ -1,6 +1,6 @@
 Summarize this conversation into a structured markdown document that captures everything needed to continue seamlessly — without losing important context — while discarding raw tool call/result noise.
 
-Use the `edit_file` tool to write the summary to `~/.nkd-agents/sessions/<unix_timestamp>.md` (use the actual current unix timestamp). Then confirm the path to the user.
+Use the `edit_file` tool to write the summary to `~/.nkd-agents/sessions/<unix_timestamp>_<descriptive-1-3-word-phrase>.md` (use the actual current unix timestamp; derive the short phrase from the session's main topic, lowercase, hyphen-separated). Then confirm the path to the user.
 
 Produce output in the following structure. Omit any section that has nothing to report (do not include empty headings).
 
