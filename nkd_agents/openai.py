@@ -13,6 +13,7 @@ from openai.types.responses import (
 )
 from openai.types.responses.response_input_item_param import FunctionCallOutput
 
+from .tracing import agent_span, request_span, set_usage, tool_span
 from .utils import extract_function_params
 
 logger = logging.getLogger(__name__)
@@ -116,20 +117,46 @@ async def llm(
     """
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
+    model_name = kwargs.get("model", "unknown")
+    tool_names = [fn.__name__ for fn in fns]
 
-    while True:
-        resp = await client.responses.parse(input=input, **kwargs)
-        logger.info(f"usage={resp.usage}")
+    with agent_span(system="openai", model=model_name, tools=tool_names) as a_span:
+        while True:
+            with request_span(
+                system="openai", model=model_name, parent=a_span
+            ) as r_span:
+                resp = await client.responses.parse(input=input, **kwargs)
+                logger.info(f"usage={resp.usage}")
+                set_usage(r_span, resp.usage)
 
-        text, tool_calls = extract_text_and_tool_calls(resp)
-        input += resp.output  # type: ignore # TODO: fix this
+            text, tool_calls = extract_text_and_tool_calls(resp)
+            input += resp.output  # type: ignore # TODO: fix this
 
-        if not tool_calls:
-            return text
+            if not tool_calls:
+                return text
 
-        try:
-            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
-            input += format_tool_results(tool_calls, results)
-        except asyncio.CancelledError:
-            input += format_tool_results(tool_calls, ["Interrupted"] * len(tool_calls))
-            raise
+            try:
+                results = await asyncio.gather(
+                    *[
+                        _traced_tool(tool_dict, c, parent=a_span)
+                        for c in tool_calls
+                    ]
+                )
+                input += format_tool_results(tool_calls, results)
+            except asyncio.CancelledError:
+                input += format_tool_results(
+                    tool_calls, ["Interrupted"] * len(tool_calls)
+                )
+                raise
+
+
+async def _traced_tool(
+    tool_dict: dict[
+        str, Callable[..., Awaitable[str | ResponseFunctionCallOutputItemListParam]]
+    ],
+    tool_call: ParsedResponseFunctionToolCall,
+    parent: Any = None,
+) -> str | ResponseFunctionCallOutputItemListParam:
+    """Execute a tool call with optional tracing."""
+    with tool_span(name=tool_call.name, parent=parent):
+        return await tool(tool_dict, tool_call)
