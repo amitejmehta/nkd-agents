@@ -1,8 +1,9 @@
 import asyncio
+import json
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from anthropic import AsyncAnthropic, omit
@@ -21,7 +22,6 @@ from .web import fetch_url, web_search
 logger = logging.getLogger(__name__)
 
 MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
-PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 
 
 @dataclass
@@ -32,10 +32,19 @@ class CLIConfig:
     model: str = "claude-sonnet-4-6"  # NKD_AGENTS_MODEL
     max_tokens: int = 20000  # NKD_AGENTS_MAX_TOKENS
     log_level: int = logging.INFO  # LOG_LEVEL
+    plan_mode_prefix: str = "PLAN MODE - READ ONLY."  # NKD_AGENTS_PLAN_MODE_PREFIX
+    thinking: dict[str, str] = field(
+        default_factory=lambda: {"type": "adaptive"}
+    )  # NKD_AGENTS_THINKING (JSON)
+    cache_warm_msg: str = (
+        'Sending msg to warm cache. Just respond: "okay"'  # NKD_AGENTS_CACHE_WARM_MSG
+    )
+    compact_notice: str = "FYI: tool call/result messages were removed to reduce context size."  # NKD_AGENTS_COMPACT_NOTICE
 
     @classmethod
     def from_env(cls) -> "CLIConfig":
         defaults = cls()
+        thinking_env = os.environ.get("NKD_AGENTS_THINKING")
         return cls(
             start_phrase=os.environ.get(
                 "NKD_AGENTS_START_PHRASE", defaults.start_phrase
@@ -45,13 +54,20 @@ class CLIConfig:
                 os.environ.get("NKD_AGENTS_MAX_TOKENS", defaults.max_tokens)
             ),
             log_level=int(os.environ.get("LOG_LEVEL", defaults.log_level)),
+            plan_mode_prefix=os.environ.get(
+                "NKD_AGENTS_PLAN_MODE_PREFIX", defaults.plan_mode_prefix
+            ),
+            thinking=json.loads(thinking_env) if thinking_env else defaults.thinking,
+            cache_warm_msg=os.environ.get(
+                "NKD_AGENTS_CACHE_WARM_MSG", defaults.cache_warm_msg
+            ),
+            compact_notice=os.environ.get(
+                "NKD_AGENTS_COMPACT_NOTICE", defaults.compact_notice
+            ),
         )
 
 
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
-THINKING = {"type": "adaptive"}
-CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
-COMPACT_NOTICE = "FYI: tool call/result messages were removed to reduce context size."
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
@@ -103,11 +119,11 @@ class CLI:
 
     def toggle_thinking(self) -> None:
         current = self.settings["thinking"] != omit
-        self.settings["thinking"] = omit if current else THINKING
+        self.settings["thinking"] = omit if current else self.config.thinking
         logger.info(f"{DIM}Thinking: {'✓' if not current else '✗'}{RESET}")
 
     def toggle_plan_mode(self) -> None:
-        self.plan_mode = "" if self.plan_mode else PLAN_MODE_PREFIX
+        self.plan_mode = "" if self.plan_mode else self.config.plan_mode_prefix
         logger.info(f"{DIM}Plan mode: {'✓' if self.plan_mode else '✗'}{RESET}")
 
     def cycle_prompt(self) -> Document:
@@ -148,7 +164,7 @@ class CLI:
         removed = len(self.messages) - len(kept)
         self.messages[:] = kept
         if removed:
-            self.messages.append(user(COMPACT_NOTICE))
+            self.messages.append(user(self.config.compact_notice))
         logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
 
     async def cache_warmer(self) -> None:
@@ -161,7 +177,7 @@ class CLI:
                 and self.warm_count < 4
                 and (not self.llm_task or self.llm_task.done())
             ):
-                messages = self.messages + [user(CACHE_WARM_MSG)]
+                messages = self.messages + [user(self.config.cache_warm_msg)]
                 messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
                 await self.client.messages.create(messages=messages, **self.settings)
                 self.last_message_at = time.monotonic()
