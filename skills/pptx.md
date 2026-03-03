@@ -33,7 +33,14 @@ Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with Li
       ```
    c. Extract and read **only the newly added pages** (never the full PDF) via:
       ```bash
-      python3 -c "from pypdf import PdfReader, PdfWriter; r = PdfReader('slide_deck.pdf'); n = len(r.pages); w = PdfWriter(); [w.add_page(r.pages[i]) for i in range(max(0, n-2), n)]; w.write(open('verify_slides.pdf','wb'))"
+      python3 -c "
+      from pypdf import PdfReader, PdfWriter
+      r = PdfReader('slide_deck.pdf')
+      n = len(r.pages)
+      w = PdfWriter()
+      for i in range(max(0, n-2), n): w.add_page(r.pages[i])
+      w.write(open('verify_slides.pdf','wb'))
+      "
       ```
       then `read_file` on `verify_slides.pdf` (never on `slide_deck.pdf`). Verify the last 1–2 pages for:
       - No text overflow (all text fits within slide boundaries)
