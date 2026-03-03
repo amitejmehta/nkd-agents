@@ -7,7 +7,8 @@ from anthropic import omit
 from anthropic.types import TextBlock, ToolUseBlock
 from prompt_toolkit.document import Document
 
-from nkd_agents.cli import CLI, MODELS, PLAN_MODE_PREFIX, TOOLS
+from nkd_agents.anthropic import user
+from nkd_agents.cli import CLI, COMPACT_NOTICE, MODELS, PLAN_MODE_PREFIX, TOOLS
 
 
 @pytest.fixture
@@ -116,9 +117,10 @@ class TestCompactHistory:
             {"role": "assistant", "content": [TextBlock(type="text", text="done")]},
         ]
         cli.compact_history()
-        assert len(cli.messages) == 2
+        assert len(cli.messages) == 3
         assert cli.messages[0]["content"][0]["type"] == "text"
         assert cli.messages[1]["content"][0].type == "text"
+        assert cli.messages[2] == user(COMPACT_NOTICE)
 
     def test_empty(self, cli: CLI):
         cli.compact_history()
@@ -154,9 +156,10 @@ class TestCompactHistory:
             {"role": "assistant", "content": [TextBlock(type="text", text="done")]},
         ]
         cli.compact_history()
-        assert len(cli.messages) == 2
+        assert len(cli.messages) == 3
         assert cli.messages[0]["role"] == "user"
         assert cli.messages[1]["role"] == "assistant"
+        assert cli.messages[2] == user(COMPACT_NOTICE)
 
     def test_all_tool_messages(self, cli: CLI):
         cli.messages[:] = [
@@ -174,7 +177,7 @@ class TestCompactHistory:
             },
         ]
         cli.compact_history()
-        assert cli.messages == []
+        assert cli.messages == [user(COMPACT_NOTICE)]
 
     def test_no_tool_messages(self, cli: CLI):
         cli.messages[:] = [

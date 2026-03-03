@@ -25,6 +25,7 @@ PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
 THINKING = {"type": "adaptive"}
 CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
+COMPACT_NOTICE = "FYI: tool call/result messages were removed to reduce context size."
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
@@ -119,6 +120,8 @@ class CLI:
                 kept.append(x)
         removed = len(self.messages) - len(kept)
         self.messages[:] = kept
+        if removed:
+            self.messages.append(user(COMPACT_NOTICE))
         logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
 
     async def cache_warmer(self) -> None:
