@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from anthropic import AsyncAnthropic, omit
@@ -20,8 +21,33 @@ from .web import fetch_url, web_search
 logger = logging.getLogger(__name__)
 
 MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
-STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacting.")
 PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
+
+
+@dataclass
+class CLIConfig:
+    """CLI configuration. All fields are overridable via environment variables."""
+
+    start_phrase: str = "Be brief and exacting."  # NKD_AGENTS_START_PHRASE
+    model: str = "claude-sonnet-4-6"  # NKD_AGENTS_MODEL
+    max_tokens: int = 20000  # NKD_AGENTS_MAX_TOKENS
+    log_level: int = logging.INFO  # LOG_LEVEL
+
+    @classmethod
+    def from_env(cls) -> "CLIConfig":
+        defaults = cls()
+        return cls(
+            start_phrase=os.environ.get(
+                "NKD_AGENTS_START_PHRASE", defaults.start_phrase
+            ),
+            model=os.environ.get("NKD_AGENTS_MODEL", defaults.model),
+            max_tokens=int(
+                os.environ.get("NKD_AGENTS_MAX_TOKENS", defaults.max_tokens)
+            ),
+            log_level=int(os.environ.get("LOG_LEVEL", defaults.log_level)),
+        )
+
+
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
 THINKING = {"type": "adaptive"}
 CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
@@ -40,7 +66,7 @@ BANNER = (
 
 
 class CLI:
-    def __init__(self) -> None:
+    def __init__(self, config: CLIConfig) -> None:
         self.client = AsyncAnthropic(max_retries=4)
         anthropic_client_ctx.set(self.client)
 
@@ -50,12 +76,13 @@ class CLI:
         self.last_message_at: float = 0.0
         self.warm_count: int = 0
 
+        self.config = config
         self.plan_mode = ""
-        self.model_idx = 0
+        self.model_idx = MODELS.index(config.model) if config.model in MODELS else 0
         self.prompt_idx = -1
         self.settings = {
-            "model": MODELS[self.model_idx],
-            "max_tokens": 20000,
+            "model": config.model,
+            "max_tokens": config.max_tokens,
             "thinking": omit,
             "tools": [tool_schema(fn) for fn in TOOLS],
         }
@@ -173,7 +200,7 @@ class CLI:
         while True:
             text: str = await session.prompt_async("> ")
             if text and text.strip():
-                prefix = self.plan_mode + STARTING_PHRASE
+                prefix = self.plan_mode + self.config.start_phrase
                 await self.queue.put(user(f"{prefix} {text.strip()}"))
 
     async def run(self) -> None:
@@ -182,10 +209,11 @@ class CLI:
 
 def main() -> None:
     load_env((Path.home() / ".nkd-agents" / ".env").as_posix())
+    config = CLIConfig.from_env()
     with patch_stdout(raw=True):
         try:
-            configure_logging(int(os.environ.get("LOG_LEVEL", logging.INFO)))
+            configure_logging(config.log_level)
             logger.info(BANNER)
-            asyncio.run(CLI().run())
+            asyncio.run(CLI(config).run())
         except (KeyboardInterrupt, EOFError):
             print(f"\n{DIM}Exiting...{RESET}")
