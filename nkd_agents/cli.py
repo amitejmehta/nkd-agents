@@ -25,9 +25,7 @@ PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
 TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
 THINKING = {"type": "adaptive"}
 CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
-COMPACT_NOTICE = (
-    "FYI: tool call/result messages were removed to reduce context size."
-)
+COMPACT_NOTICE = "FYI: tool call/result messages were removed to reduce context size."
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
