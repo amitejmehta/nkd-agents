@@ -25,13 +25,24 @@ Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with Li
 
    (async () => { await pptx.writeFile({ fileName: 'slide_deck.pptx' }); })();
    ```
-3. **Repeat until all slides are done** — fill in **a maximum of 1–2 slides at a time, never more**:
-   a. Write the 1–2 slides (MAX) and run `node make_presentation.js` (NOTE: MUST use `edit_file` tool here)
+3. **Repeat until all slides are done** — fill in **exactly 2 slides at a time** (1 if it's the last odd slide):
+   a. Write the 2 slides and run `node make_presentation.js` (NOTE: MUST use `edit_file` tool here)
    b. Convert:
       ```bash
       SOFFICE=$(command -v libreoffice25.2 || command -v libreoffice || command -v soffice) && $SOFFICE --headless --convert-to pdf slide_deck.pptx
       ```
-   c. Read `slide_deck.pdf` via the `read_file` tool. Verify every page for:
+   c. Extract and read **only the newly added pages** (never the full PDF) via:
+      ```bash
+      python3 -c "
+      from pypdf import PdfReader, PdfWriter
+      r = PdfReader('slide_deck.pdf')
+      n = len(r.pages)
+      w = PdfWriter()
+      for i in range(max(0, n-2), n): w.add_page(r.pages[i])
+      w.write(open('verify_slides.pdf','wb'))
+      "
+      ```
+      then `read_file` on `verify_slides.pdf` (never on `slide_deck.pdf`). Verify those pages for:
       - No text overflow (all text fits within slide boundaries)
       - No element overlap
       - Visual elements render correctly
