@@ -82,6 +82,22 @@ NKD_AGENTS_START_PHRASE="Your custom phrase." nkd
 echo 'NKD_AGENTS_START_PHRASE="Your custom phrase."' >> ~/.nkd-agents/.env
 ```
 
+**Configuration**
+
+All CLI settings are configurable via environment variables (set inline or in `~/.nkd-agents/.env`):
+
+| Variable | Default | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | — | Anthropic API key |
+| `NKD_AGENTS_START_PHRASE` | `Be brief and exacting.` | Prefix prepended to every message |
+| `NKD_AGENTS_PLAN_MODE_PREFIX` | `PLAN MODE - READ ONLY.` | Prefix prepended in plan mode |
+| `NKD_AGENTS_MODEL` | `claude-sonnet-4-6` | Default model on startup |
+| `NKD_AGENTS_MAX_TOKENS` | `20000` | Max tokens per response |
+| `NKD_AGENTS_THINKING` | `{"type": "adaptive"}` | Thinking param when toggled on (JSON) |
+| `NKD_AGENTS_CACHE_WARM_MSG` | `Sending msg to warm cache...` | Message used to warm prompt cache |
+| `NKD_AGENTS_COMPACT_NOTICE` | `FYI: tool call/result messages were removed...` | Notice appended after history compaction |
+| `LOG_LEVEL` | `20` (INFO) | Python logging level |
+
 ## Installation
 
 **Package**:
