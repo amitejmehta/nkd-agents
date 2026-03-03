@@ -8,7 +8,7 @@ from anthropic.types import TextBlock, ToolUseBlock
 from prompt_toolkit.document import Document
 
 from nkd_agents.anthropic import user
-from nkd_agents.cli import CLI, MODELS, TOOLS, CLIConfig
+from nkd_agents.cli import CLI, COMPACT_NOTICE, MODELS, PLAN_MODE_PREFIX, TOOLS
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def cli(tmp_path, monkeypatch):
     """Create a CLI instance with a mock API key, in a clean directory."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("NKD_AGENTS_ANTHROPIC_API_KEY", "test-key")
-    return CLI(CLIConfig())
+    return CLI()
 
 
 class TestInit:
@@ -25,7 +25,7 @@ class TestInit:
         monkeypatch.delenv("NKD_AGENTS_ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         # CLI no longer validates key at init; AsyncAnthropic accepts missing key
-        CLI(CLIConfig())  # should not raise
+        CLI()  # should not raise
 
     def test_defaults(self, cli: CLI):
         assert cli.model_idx == 0
@@ -40,7 +40,7 @@ class TestInit:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("NKD_AGENTS_ANTHROPIC_API_KEY", "test-key")
         (tmp_path / "CLAUDE.md").write_text("system prompt")
-        assert "system prompt" in CLI(CLIConfig()).settings["system"]
+        assert "system prompt" in CLI().settings["system"]
 
     def test_no_claude_md(self, cli: CLI):
         assert cli.settings["system"].startswith("# Environment")
@@ -76,7 +76,7 @@ class TestTogglePlanMode:
     def test_toggle_on_off(self, cli: CLI):
         assert cli.plan_mode == ""
         cli.toggle_plan_mode()
-        assert cli.plan_mode == CLIConfig().plan_mode_prefix
+        assert cli.plan_mode == PLAN_MODE_PREFIX
         cli.toggle_plan_mode()
         assert cli.plan_mode == ""
 
@@ -120,7 +120,7 @@ class TestCompactHistory:
         assert len(cli.messages) == 3
         assert cli.messages[0]["content"][0]["type"] == "text"
         assert cli.messages[1]["content"][0].type == "text"
-        assert cli.messages[2] == user(CLIConfig().compact_notice)
+        assert cli.messages[2] == user(COMPACT_NOTICE)
 
     def test_empty(self, cli: CLI):
         cli.compact_history()
@@ -159,7 +159,7 @@ class TestCompactHistory:
         assert len(cli.messages) == 3
         assert cli.messages[0]["role"] == "user"
         assert cli.messages[1]["role"] == "assistant"
-        assert cli.messages[2] == user(CLIConfig().compact_notice)
+        assert cli.messages[2] == user(COMPACT_NOTICE)
 
     def test_all_tool_messages(self, cli: CLI):
         cli.messages[:] = [
@@ -177,7 +177,7 @@ class TestCompactHistory:
             },
         ]
         cli.compact_history()
-        assert cli.messages == [user(CLIConfig().compact_notice)]
+        assert cli.messages == [user(COMPACT_NOTICE)]
 
     def test_no_tool_messages(self, cli: CLI):
         cli.messages[:] = [
