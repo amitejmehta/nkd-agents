@@ -51,7 +51,14 @@ Supporting Files:
 for f in examples/anthropic/test_*.py; do python3 -m "$(echo "${f%.py}" | tr / .)" & done; wait
 ```
 
-**Tests** - Unit tests with pytest (no LLM calls):
+## Verify
+
+Run all checks before pushing:
+
 ```bash
-pytest tests/ -v --cov=nkd_agents --cov-report=term-missing
+ruff check --fix nkd_agents/ examples/ tests/
+ruff format nkd_agents/ examples/ tests/
+pyright
+xenon --max-average A --max-modules A --max-absolute B nkd_agents/
+pytest tests/ -v --cov=nkd_agents --cov-report=term-missing 2>&1 | tail -20
 ```
