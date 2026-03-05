@@ -45,10 +45,10 @@ Tracked bugs, status, and fix notes.
 
 ### BUG-005: `anthropic.py` prompt cache mutation uses `# type: ignore`
 **Severity**: Low — type safety hole  
-**Status**: Open  
-**File**: `nkd_agents/anthropic.py:144,150`  
-**Description**: Cache control is mutated directly onto a TypedDict content block. Two `# type: ignore` comments suppress the type error. If the content list is empty this will raise `IndexError`.  
-**Fix**: Build a proper helper that constructs cache-aware messages without mutating in-place. Guard against empty content lists.
+**Status**: Fixed  
+**File**: `nkd_agents/anthropic.py`  
+**Description**: Cache control was mutated directly onto a TypedDict content block with `# type: ignore`. Empty content lists would raise `IndexError`. Thinking blocks (`ThinkingBlockParam`) don't support `cache_control`.  
+**Fix**: Extracted `_ephemeral_cache(input)` context manager that finds the last `type="text"` block, sets `CacheControlEphemeralParam(type="ephemeral")` with proper type, and restores on exit. Guards against empty/non-dict/non-text blocks.
 
 ---
 
