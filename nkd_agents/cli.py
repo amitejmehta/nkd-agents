@@ -1,7 +1,10 @@
+import argparse
 import asyncio
+import json
 import logging
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 from anthropic import AsyncAnthropic, omit
@@ -9,6 +12,7 @@ from anthropic.types import MessageParam
 from prompt_toolkit import PromptSession, key_binding, styles
 from prompt_toolkit.document import Document
 from prompt_toolkit.patch_stdout import patch_stdout
+from pydantic import BaseModel
 
 from .anthropic import llm, tool_schema, user
 from .ctx import anthropic_client_ctx
@@ -180,12 +184,43 @@ class CLI:
         await asyncio.gather(self.llm_loop(), self.prompt_loop(), self.cache_warmer())
 
 
+def save_session(messages: list[MessageParam], path: Path | None = None) -> None:
+    if path is None:
+        sessions_dir = Path.home() / ".nkd-agents" / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        path = sessions_dir / f"{datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.json"
+
+    def serialize(obj: object) -> object:
+        if isinstance(obj, BaseModel):
+            return obj.model_dump()
+        if isinstance(obj, list):
+            return [serialize(i) for i in obj]
+        if isinstance(obj, dict):
+            return {k: serialize(v) for k, v in obj.items()}
+        return obj
+
+    path.write_text(json.dumps(serialize(messages), indent=2))
+    print(f"{DIM}Session saved: {path}{RESET}")
+
+
 def main() -> None:
     load_env((Path.home() / ".nkd-agents" / ".env").as_posix())
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-s", "--session", type=Path, help="Path to a saved session JSON file"
+    )
+    args = parser.parse_args()
+
     with patch_stdout(raw=True):
+        cli = CLI()
+        if args.session:
+            cli.messages = json.loads(args.session.read_text())
+            print(f"{DIM}Loaded session: {args.session}{RESET}")
         try:
             configure_logging(int(os.environ.get("LOG_LEVEL", logging.INFO)))
-            logger.info(BANNER)
-            asyncio.run(CLI().run())
+            print(BANNER)
+            asyncio.run(cli.run())
         except (KeyboardInterrupt, EOFError):
             print(f"\n{DIM}Exiting...{RESET}")
+            if cli.messages:
+                save_session(cli.messages, path=args.session)
