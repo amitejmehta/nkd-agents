@@ -19,14 +19,20 @@ from .ctx import anthropic_client_ctx
 from .logging import DIM, GREEN, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, subtask
 from .utils import load_env
-from .web import fetch_url, web_search
+
+try:
+    from .web import fetch_url, web_search
+
+    _WEB_TOOLS = [fetch_url, web_search]
+except ImportError:
+    _WEB_TOOLS = []
 
 logger = logging.getLogger(__name__)
 
 MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
 STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacting.")
 PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
-TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
+TOOLS = [read_file, edit_file, bash, subtask, *_WEB_TOOLS]
 THINKING = {"type": "adaptive"}
 CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
 COMPACT_NOTICE = "FYI: tool call/result messages were removed to reduce context size."

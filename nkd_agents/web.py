@@ -99,7 +99,7 @@ async def fetch_url(url: str, save_path: str) -> str:
         file_path.write_text(markdown, encoding="utf-8")
 
         logger.info(f"Saved {len(markdown):,} chars to {file_path}")
-        return f"Saved {len(markdown):,} chars to {file_path}. Don't read the full file, use bash grep/head/tail w/ keywords to explore)"
+        return f"Saved {len(markdown):,} chars to {file_path}. Don't read the full file, use bash grep/head/tail w/ keywords to explore."
     except Exception as e:
         logger.warning(f"Error fetching '{url}': {str(e)}")
         return f"Error fetching '{url}': {str(e)}"
