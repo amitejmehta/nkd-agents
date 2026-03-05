@@ -1,12 +1,23 @@
 import asyncio
 import base64
+import contextlib
 import logging
-from typing import Any, Awaitable, Callable, Iterable, Sequence
+from typing import (
+    Any,
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Iterator,
+    Sequence,
+    cast,
+)
 
 from anthropic import AsyncAnthropic, AsyncAnthropicVertex, transform_schema
 from anthropic.types import (
     Base64ImageSourceParam,
     Base64PDFSourceParam,
+    CacheControlEphemeralParam,
     Message,
     MessageParam,
     OutputConfigParam,
@@ -19,6 +30,42 @@ from anthropic.types.tool_result_block_param import Content
 from pydantic import BaseModel
 
 from .utils import extract_function_params
+
+
+@contextlib.contextmanager
+def _ephemeral_cache(input: list[MessageParam]) -> Iterator[None]:
+    """Temporarily set ephemeral cache_control on the last text content block.
+
+    Only applies to dict blocks with type='text' (TextBlockParam), which support
+    cache_control. Skips silently if no suitable block is found.
+    """
+    last_content = input[-1].get("content") if input else None
+    if not last_content or not isinstance(last_content, list):
+        yield
+        return
+    # find last text block (dict with type="text")
+    last_block: TextBlockParam | None = cast(
+        "TextBlockParam | None",
+        next(
+            (
+                b
+                for b in reversed(last_content)
+                if isinstance(b, dict) and b.get("type") == "text"
+            ),
+            None,
+        ),
+    )
+    if last_block is None:
+        yield
+        return
+    had_cache = "cache_control" in last_block
+    last_block["cache_control"] = CacheControlEphemeralParam(type="ephemeral")
+    try:
+        yield
+    finally:
+        if not had_cache:
+            last_block.pop("cache_control", None)
+
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +163,49 @@ def format_tool_results(
     return [{"role": "user", "content": content}]
 
 
+async def stream_llm(
+    client: AsyncAnthropic | AsyncAnthropicVertex,
+    input: list[MessageParam],
+    fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
+    **kwargs: Any,
+) -> AsyncGenerator[str, None]:
+    """Run Claude in agentic loop, streaming text deltas as they arrive.
+
+    Yields text chunks in real time. Tool call turns are executed silently
+    (no streaming — tool results are awaited before the next LLM call).
+    The generator is exhausted once Claude returns a final text response.
+
+    Args:
+        client: Anthropic client instance
+        input: List of messages forming the conversation history
+        fns: Optional list of async tool functions
+        **kwargs: API parameters (model, max_tokens, system, temperature, etc.)
+    """
+    tool_dict = {fn.__name__: fn for fn in fns}
+    kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
+
+    while True:
+        with _ephemeral_cache(input) if fns else contextlib.nullcontext():
+            async with client.messages.stream(messages=input, **kwargs) as stream:
+                async for chunk in stream.text_stream:
+                    yield chunk
+                resp: Message = await stream.get_final_message()
+
+        logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
+        _, tool_calls = extract_text_and_tool_calls(resp)
+        input.append({"role": "assistant", "content": resp.content})
+
+        if not tool_calls:
+            return
+
+        try:
+            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
+            input += format_tool_results(tool_calls, results)
+        except asyncio.CancelledError:
+            input += format_tool_results(tool_calls, ["Interrupted"] * len(tool_calls))
+            raise
+
+
 async def llm(
     client: AsyncAnthropic | AsyncAnthropicVertex,
     input: list[MessageParam],
@@ -139,15 +229,9 @@ async def llm(
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
 
     while True:
-        try:
-            if fns:
-                input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
-
+        with _ephemeral_cache(input) if fns else contextlib.nullcontext():
             resp: Message = await client.messages.create(messages=input, **kwargs)
-            logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-        finally:
-            if fns:
-                del input[-1]["content"][-1]["cache_control"]  # type: ignore # TODO: fix this
+        logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
 
         text, tool_calls = extract_text_and_tool_calls(resp)
         input.append({"role": "assistant", "content": resp.content})
