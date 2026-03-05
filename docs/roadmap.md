@@ -9,13 +9,14 @@ Feature plans and ideas. Ordered by priority within each horizon.
 ### Fix known bugs
 All bugs in [bugs.md](bugs.md) are blocking good developer experience. Fix BUG-001 through BUG-004 first — they're all small, concrete, and high-value.
 
-### `dict` param support in `extract_function_params`
-Right now `dict` params raise `ValueError`. Many real tools want `dict` inputs (e.g. headers, metadata). 
-- Add `dict` → `{"type": "object"}` mapping
-- Add `dict[str, T]` → `{"type": "object", "additionalProperties": {"type": T}}` for typed dicts
+### ~~`dict` param support in `extract_function_params`~~ ✅ Done
+- `dict` → `{"type": "object"}`
+- `dict[str, T]` → `{"type": "object", "additionalProperties": {"type": T}}`
+- `dict[int, ...]` → raises with clear error ("dict key must be str")
+- 4 new tests added
 
-### Streaming output support (Anthropic)
-`llm()` currently blocks until the full response arrives. Add a `stream=True` path that yields text chunks via async generator. CLI already renders incrementally (it prints on `logger.info` calls) but this would make programmatic use feel snappier and allow early cancellation.
+### ~~Streaming output support (Anthropic)~~ ✅ Done
+Added `stream_llm()` — same interface as `llm()` but returns `AsyncGenerator[str, None]`. Yields text chunks in real time; tool turns are executed silently between streams. CLI now uses `stream_llm` so responses appear token-by-token instead of all-at-once.
 
 ---
 

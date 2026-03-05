@@ -14,7 +14,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel
 
-from .anthropic import llm, tool_schema, user
+from .anthropic import stream_llm, tool_schema, user
 from .ctx import anthropic_client_ctx
 from .logging import DIM, GREEN, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, subtask
@@ -151,13 +151,20 @@ class CLI:
                 self.warm_count += 1
                 logger.info(f"{DIM}Warmed cache ({self.warm_count}/4){RESET}")
 
+    async def _stream_response(self) -> None:
+        """Stream LLM response, printing text chunks as they arrive."""
+        print()  # newline before response
+        async for chunk in stream_llm(
+            self.client, self.messages, TOOLS, **self.settings
+        ):
+            print(chunk, end="", flush=True)
+        print()  # newline after response
+
     async def llm_loop(self) -> None:
         while True:
             self.messages.append(await self.queue.get())
             self.warm_count = 0
-            self.llm_task = asyncio.create_task(
-                llm(self.client, self.messages, TOOLS, **self.settings)
-            )
+            self.llm_task = asyncio.create_task(self._stream_response())
             try:
                 await self.llm_task
             except asyncio.CancelledError:

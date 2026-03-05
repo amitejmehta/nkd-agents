@@ -48,28 +48,54 @@ def _handle_list_annotation(
     return {"type": "array", "items": {"type": type_map[item_type]}}
 
 
-def process_param_annotation(annotation: Any, param_sig: str) -> dict[str, Any]:
-    """Convert a parameter annotation to JSON schema.
-    Supports core types: str, int, float, bool as well as list[T] and Literal of core types.
-    """
-    type_map = {str: "string", int: "integer", float: "number", bool: "boolean"}
+def _handle_dict_annotation(
+    args: tuple, param_sig: str, type_map: dict
+) -> dict[str, Any]:
+    """Process dict type annotation. dict → object, dict[str, T] → typed additionalProperties."""
+    if not args:
+        return {"type": "object"}
+    if len(args) != 2 or args[0] is not str:
+        raise ValueError(f"dict key must be str: {param_sig}")
+    val_type = args[1]
+    if val_type not in type_map:
+        raise ValueError(f"Unsupported dict value type: {param_sig}")
+    return {"type": "object", "additionalProperties": {"type": type_map[val_type]}}
 
-    origin, args = get_origin(annotation), get_args(annotation)
 
+def _handle_origin_type(
+    origin: Any, args: tuple, annotation: Any, param_sig: str, type_map: dict
+) -> dict[str, Any] | None:
+    """Dispatch on generic origin types. Returns None if not handled."""
     if origin is Literal:
         return _handle_literal_annotation(args, param_sig, type_map)
-    elif origin is types.UnionType:
+    if origin is types.UnionType:
         if len(args) != 2 or args[1] is not type(None):
             raise ValueError(f"Only T | None unions supported: {param_sig}")
         return process_param_annotation(args[0], param_sig)
-    elif origin is list:
+    if origin is list:
         return _handle_list_annotation(args, param_sig, type_map)
-    elif annotation is list or annotation is List:
+    if origin is dict:
+        return _handle_dict_annotation(args, param_sig, type_map)
+    return None
+
+
+def process_param_annotation(annotation: Any, param_sig: str) -> dict[str, Any]:
+    """Convert a parameter annotation to JSON schema.
+    Supports: str, int, float, bool, dict, dict[str,T], list[T], Literal[...], T | None.
+    """
+    type_map = {str: "string", int: "integer", float: "number", bool: "boolean"}
+    origin, args = get_origin(annotation), get_args(annotation)
+
+    result = _handle_origin_type(origin, args, annotation, param_sig, type_map)
+    if result is not None:
+        return result
+    if annotation is list or annotation is List:
         raise ValueError(f"List must have type parameter: {param_sig}")
-    elif annotation is not inspect._empty and annotation not in type_map:
+    if annotation is dict:
+        return {"type": "object"}
+    if annotation is not inspect._empty and annotation not in type_map:
         raise ValueError(f"Unsupported type: {param_sig}")
-    else:
-        return {"type": type_map.get(annotation, "string")}
+    return {"type": type_map.get(annotation, "string")}
 
 
 def extract_function_params(

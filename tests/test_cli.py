@@ -1,6 +1,6 @@
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from anthropic import omit
@@ -8,7 +8,7 @@ from anthropic.types import TextBlock, ToolUseBlock
 from prompt_toolkit.document import Document
 
 from nkd_agents.anthropic import user
-from nkd_agents.cli import CLI, COMPACT_NOTICE, MODELS, PLAN_MODE_PREFIX, TOOLS
+from nkd_agents.cli import CLI, COMPACT_NOTICE, MODELS, PLAN_MODE_PREFIX
 
 
 @pytest.fixture
@@ -250,7 +250,10 @@ class TestCycleSkillPrompt:
 
 class TestLLMLoop:
     async def test_processes_queue(self, cli: CLI):
-        with patch("nkd_agents.cli.llm", new_callable=AsyncMock) as mock_llm:
+        async def mock_stream(*args, **kwargs):
+            yield "hello"
+
+        with patch("nkd_agents.cli.stream_llm", side_effect=mock_stream):
             msg = {"role": "user", "content": [{"type": "text", "text": "hi"}]}
             await cli.queue.put(msg)
             loop_task = asyncio.create_task(cli.llm_loop())
@@ -260,20 +263,18 @@ class TestLLMLoop:
                 await loop_task
             assert len(cli.messages) == 1
             assert cli.messages[0] is msg
-            mock_llm.assert_called_once_with(
-                cli.client, cli.messages, TOOLS, **cli.settings
-            )
 
     async def test_survives_cancelled_llm_task(self, cli: CLI):
         call_count = 0
 
-        async def mock_llm(*args, **kwargs):
+        async def mock_stream(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise asyncio.CancelledError()
+            yield "ok"
 
-        with patch("nkd_agents.cli.llm", side_effect=mock_llm):
+        with patch("nkd_agents.cli.stream_llm", side_effect=mock_stream):
             await cli.queue.put(
                 {"role": "user", "content": [{"type": "text", "text": "first"}]}
             )

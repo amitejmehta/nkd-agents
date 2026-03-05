@@ -13,6 +13,9 @@ Most recent first. Follows [Conventional Commits](https://www.conventionalcommit
 
 ### Added
 - `docs/` directory with full documentation: architecture, API reference, CLI reference, tools reference, roadmap, bugs, changelog, contributing
+- `stream_llm()` in `nkd_agents/anthropic.py` — async generator that streams text chunks in real time while still executing tool calls between turns
+- CLI now uses `stream_llm` — responses appear token-by-token
+- `dict` / `dict[str, T]` support in `extract_function_params` — tools can now accept dict params; `dict[int, ...]` raises with clear error
 
 ---
 

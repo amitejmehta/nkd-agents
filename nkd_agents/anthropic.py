@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import logging
-from typing import Any, Awaitable, Callable, Iterable, Sequence
+from typing import Any, AsyncGenerator, Awaitable, Callable, Iterable, Sequence
 
 from anthropic import AsyncAnthropic, AsyncAnthropicVertex, transform_schema
 from anthropic.types import (
@@ -114,6 +114,58 @@ def format_tool_results(
         b = ToolResultBlockParam(type="tool_result", tool_use_id=c.id, content=r)
         content.append(b)
     return [{"role": "user", "content": content}]
+
+
+async def stream_llm(
+    client: AsyncAnthropic | AsyncAnthropicVertex,
+    input: list[MessageParam],
+    fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
+    **kwargs: Any,
+) -> AsyncGenerator[str, None]:
+    """Run Claude in agentic loop, streaming text deltas as they arrive.
+
+    Yields text chunks in real time. Tool call turns are executed silently
+    (no streaming — tool results are awaited before the next LLM call).
+    The generator is exhausted once Claude returns a final text response.
+
+    Args:
+        client: Anthropic client instance
+        input: List of messages forming the conversation history
+        fns: Optional list of async tool functions
+        **kwargs: API parameters (model, max_tokens, system, temperature, etc.)
+    """
+    tool_dict = {fn.__name__: fn for fn in fns}
+    kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
+
+    while True:
+        try:
+            if fns:
+                input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore
+
+            async with client.messages.stream(messages=input, **kwargs) as stream:
+                # Stream text chunks for non-tool turns; collect full message always
+                chunks: list[str] = []
+                async for chunk in stream.text_stream:
+                    chunks.append(chunk)
+                    yield chunk
+                resp: Message = await stream.get_final_message()
+        finally:
+            if fns:
+                del input[-1]["content"][-1]["cache_control"]  # type: ignore
+
+        logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
+        _, tool_calls = extract_text_and_tool_calls(resp)
+        input.append({"role": "assistant", "content": resp.content})
+
+        if not tool_calls:
+            return
+
+        try:
+            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
+            input += format_tool_results(tool_calls, results)
+        except asyncio.CancelledError:
+            input += format_tool_results(tool_calls, ["Interrupted"] * len(tool_calls))
+            raise
 
 
 async def llm(

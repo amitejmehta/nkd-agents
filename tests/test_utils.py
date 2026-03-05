@@ -116,14 +116,68 @@ class TestExtractFunctionParams:
 
     @pytest.mark.asyncio
     async def test_unsupported_types(self):
-        """Dict and custom classes raise errors."""
+        """Custom classes raise errors."""
 
-        async def func(data: dict):
+        class Custom:
+            pass
+
+        async def func(data: Custom):
             pass
 
         with pytest.raises(ValueError) as exc:
             extract_function_params(func)
         assert "Unsupported type" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_bare_dict(self):
+        """Bare dict maps to object schema."""
+
+        async def func(data: dict):
+            pass
+
+        params, required = extract_function_params(func)
+        assert params["data"] == {"type": "object"}
+        assert required == ["data"]
+
+    @pytest.mark.asyncio
+    async def test_typed_dict(self):
+        """dict[str, T] maps to object with additionalProperties."""
+
+        async def func(headers: dict[str, str], counts: dict[str, int]):
+            pass
+
+        params, _ = extract_function_params(func)
+        assert params["headers"] == {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        }
+        assert params["counts"] == {
+            "type": "object",
+            "additionalProperties": {"type": "integer"},
+        }
+
+    @pytest.mark.asyncio
+    async def test_optional_dict(self):
+        """dict | None is supported."""
+
+        async def func(metadata: dict | None = None):
+            pass
+
+        params, required = extract_function_params(func)
+        assert params["metadata"]["type"] == "object"
+        assert required == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.asyncio
+    async def test_dict_non_str_key_error(self):
+        """dict[int, str] raises error — key must be str."""
+
+        async def func(data: dict[int, str]):
+            pass
+
+        with pytest.raises(ValueError) as exc:
+            extract_function_params(func)
+        assert "dict key must be str" in str(exc.value)
 
     @pytest.mark.asyncio
     async def test_mixed_literal_types(self):
