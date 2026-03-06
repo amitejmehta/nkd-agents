@@ -138,12 +138,17 @@ class CLI:
                 and self.warm_count < 4
                 and (not self.llm_task or self.llm_task.done())
             ):
-                messages = self.messages + [user(CACHE_WARM_MSG)]
-                messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
-                await self.client.messages.create(messages=messages, **self.settings)
-                self.last_message_at = time.monotonic()
-                self.warm_count += 1
-                logger.info(f"{DIM}Warmed cache ({self.warm_count}/4){RESET}")
+                try:
+                    messages = self.messages + [user(CACHE_WARM_MSG)]
+                    messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
+                    await self.client.messages.create(
+                        messages=messages, **self.settings
+                    )
+                    self.last_message_at = time.monotonic()
+                    self.warm_count += 1
+                    logger.info(f"{DIM}Warmed cache ({self.warm_count}/4){RESET}")
+                except Exception as e:
+                    logger.warning(f"{DIM}Cache warm failed (will retry): {e}{RESET}")
 
     async def llm_loop(self) -> None:
         while True:
@@ -222,5 +227,6 @@ def main() -> None:
             asyncio.run(cli.run())
         except (KeyboardInterrupt, EOFError):
             print(f"\n{DIM}Exiting...{RESET}")
+        finally:
             if cli.messages:
                 save_session(cli.messages, path=args.session)
