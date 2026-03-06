@@ -28,41 +28,37 @@ async def web_search(query: str, max_results: int = 5) -> str:
         Formatted string with titles, URLs, and snippets
     """
     logger.info(f"Searching: {GREEN}{query}{RESET}")
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, channel="chrome")
-            ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-            ctx = await browser.new_context(user_agent=ua)
-            page = await ctx.new_page()
-            await page.goto(f"https://duckduckgo.com/?q={quote_plus(query)}&ia=web")
-            await page.wait_for_selector("article", timeout=10000)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, channel="chrome")
+        ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        ctx = await browser.new_context(user_agent=ua)
+        page = await ctx.new_page()
+        await page.goto(f"https://duckduckgo.com/?q={quote_plus(query)}&ia=web")
+        await page.wait_for_selector("article", timeout=10000)
 
-            results = await page.eval_on_selector_all(
-                "article",
-                """els => els.slice(0, %d).map(el => {
-                    const a = el.querySelector('a[data-testid="result-title-a"]');
-                    const snippet = el.querySelector('div[data-result="snippet"]');
-                    return {
-                        title: a?.innerText || '',
-                        url: a?.href || '',
-                        snippet: snippet?.innerText || ''
-                    };
-                }).filter(r => r.url)"""
-                % max_results,
-            )
-
-        if not results:
-            return "No results found"
-
-        output = "\n\n".join(
-            f"Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}"
-            for r in results
+        results = await page.eval_on_selector_all(
+            "article",
+            """els => els.slice(0, %d).map(el => {
+                const a = el.querySelector('a[data-testid="result-title-a"]');
+                const snippet = el.querySelector('div[data-result="snippet"]');
+                return {
+                    title: a?.innerText || '',
+                    url: a?.href || '',
+                    snippet: snippet?.innerText || ''
+                };
+            }).filter(r => r.url)"""
+            % max_results,
         )
-        logger.info(f"Found {len(results)} results:\n{output}")
-        return output
-    except Exception as e:
-        logger.warning(f"Error searching '{query}': {str(e)}")
-        return f"Error searching '{query}': {str(e)}"
+
+    if not results:
+        return "No results found"
+
+    output = "\n\n".join(
+        f"Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}"
+        for r in results
+    )
+    logger.info(f"Found {len(results)} results:\n{output}")
+    return output
 
 
 async def fetch_url(url: str, save_path: str) -> str:
@@ -75,31 +71,27 @@ async def fetch_url(url: str, save_path: str) -> str:
     Returns:
         Success message with character count and path, or error message.
     """
-    try:
-        logger.info(f"Fetching: {GREEN}{url}{RESET}")
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            html = response.text
+    logger.info(f"Fetching: {GREEN}{url}{RESET}")
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        html = response.text
 
-        markdown = trafilatura.extract(
-            html,
-            output_format="markdown",
-            include_comments=False,
-            include_tables=True,
-            favor_recall=True,
-        )
+    markdown = trafilatura.extract(
+        html,
+        output_format="markdown",
+        include_comments=False,
+        include_tables=True,
+        favor_recall=True,
+    )
 
-        if not markdown:
-            return f"Error fetching '{url}': No content extracted"
+    if not markdown:
+        return f"Error fetching '{url}': No content extracted"
 
-        p = Path(save_path)
-        file_path = p if p.is_absolute() else cwd_ctx.get() / p
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(markdown, encoding="utf-8")
+    p = Path(save_path)
+    file_path = p if p.is_absolute() else cwd_ctx.get() / p
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(markdown, encoding="utf-8")
 
-        logger.info(f"Saved {len(markdown):,} chars to {file_path}")
-        return f"Saved {len(markdown):,} chars to {file_path}. Don't read the full file, use bash grep/head/tail w/ keywords to explore)"
-    except Exception as e:
-        logger.warning(f"Error fetching '{url}': {str(e)}")
-        return f"Error fetching '{url}': {str(e)}"
+    logger.info(f"Saved {len(markdown):,} chars to {file_path}")
+    return f"Saved {len(markdown):,} chars to {file_path}. Don't read the full file, use bash grep/head/tail w/ keywords to explore)"
