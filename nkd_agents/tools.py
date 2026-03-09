@@ -90,8 +90,6 @@ async def bash(command: str, timeout: int = 30) -> str:
         return result_str
     except asyncio.TimeoutError:
         return f"Error: Command timed out after {timeout} seconds"
-    except asyncio.CancelledError:
-        raise
     finally:
         if process is not None and process.returncode is None:
             process.kill()
