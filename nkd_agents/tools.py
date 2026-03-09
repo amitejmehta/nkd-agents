@@ -17,15 +17,11 @@ logger = logging.getLogger(__name__)
 async def read_file(path: str) -> str | list[Content]:
     """Read and return the contents of a file at the given path. Only works with files, not directories.
     Supports image (jpg, jpeg, png, gif, webp), PDF, and all text files."""
-    try:
-        p = Path(path)
-        file_path = p if p.is_absolute() else cwd_ctx.get() / p
-        logger.info(f"\nReading: {GREEN}{file_path}{RESET}\n")
-        bytes, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
-        return [bytes_to_content(bytes, ext)]
-    except Exception as e:
-        logger.warning(f"Error reading file '{path}': {str(e)}")
-        return f"Error reading file '{path}': {str(e)}"
+    p = Path(path)
+    file_path = p if p.is_absolute() else cwd_ctx.get() / p
+    logger.info(f"\nReading: {GREEN}{file_path}{RESET}\n")
+    bytes, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
+    return [bytes_to_content(bytes, ext)]
 
 
 async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> str:
@@ -48,30 +44,26 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
     - "Error: File '{path}' not found"
     - "Error editing file '{path}': {error description}" (for other failures)
     """
-    try:
-        if old_str == new_str:
-            return "Error: old_str and new_str must be different"
+    if old_str == new_str:
+        return "Error: old_str and new_str must be different"
 
-        p = Path(path)
-        file_path = p if p.is_absolute() else cwd_ctx.get() / p
+    p = Path(path)
+    file_path = p if p.is_absolute() else cwd_ctx.get() / p
 
-        if old_str == "create_file":
-            content, edited_content = "", new_str
-        elif not file_path.exists():
-            return f"Error: File '{path}' not found"
-        else:
-            content = file_path.read_text(encoding="utf-8")
-            if old_str not in content:
-                return "Error: old_str not found in file content"
-            edited_content = content.replace(old_str, new_str, count)
+    if old_str == "create_file":
+        content, edited_content = "", new_str
+    elif not file_path.exists():
+        return f"Error: File '{path}' not found"
+    else:
+        content = file_path.read_text(encoding="utf-8")
+        if old_str not in content:
+            return "Error: old_str not found in file content"
+        edited_content = content.replace(old_str, new_str, count)
 
-        display_diff(content, edited_content, str(file_path))
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(edited_content, encoding="utf-8")
-        return f"Success: Updated {file_path}"
-    except Exception as e:
-        logger.warning(f"Error editing file '{path}': {str(e)}")
-        return f"Error editing file '{path}': {str(e)}"
+    display_diff(content, edited_content, str(file_path))
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(edited_content, encoding="utf-8")
+    return f"Success: Updated {file_path}"
 
 
 async def bash(command: str, timeout: int = 30) -> str:
@@ -100,9 +92,6 @@ async def bash(command: str, timeout: int = 30) -> str:
         return f"Error: Command timed out after {timeout} seconds"
     except asyncio.CancelledError:
         raise
-    except Exception as e:
-        logger.warning(f"Error executing bash command: {str(e)}")
-        return f"Error executing bash command: {str(e)}"
     finally:
         if process is not None and process.returncode is None:
             process.kill()
@@ -130,20 +119,16 @@ async def subtask(
         Response from the sub-agent
     """
     client = anthropic_client_ctx.get()  # Fail fast if not set
+    logging_ctx.set({"subtask": task_label})
+
     try:
-        logging_ctx.set({"subtask": task_label})
+        from .web import fetch_url, web_search
 
-        try:
-            from .web import fetch_url, web_search
-
-            fns = [read_file, edit_file, bash, fetch_url, web_search]
-        except ImportError:
-            fns = [read_file, edit_file, bash]
-        models = {"haiku": "claude-haiku-4-6", "sonnet": "claude-sonnet-4-6"}
-        kwargs = {"model": models[model], "max_tokens": 8192}
-        response = await llm(client, [user(prompt)], fns=fns, **kwargs)
-        logger.info(f"✓ subtask '{task_label}' complete: {response}\n")
-        return f"subtask '{task_label}' complete: {response}"
-    except Exception as e:
-        logger.warning(f"Error executing subtask '{task_label}': {str(e)}")
-        return f"Error executing subtask '{task_label}': {str(e)}"
+        fns = [read_file, edit_file, bash, fetch_url, web_search]
+    except ImportError:
+        fns = [read_file, edit_file, bash]
+    models = {"haiku": "claude-haiku-4-6", "sonnet": "claude-sonnet-4-6"}
+    kwargs = {"model": models[model], "max_tokens": 8192}
+    response = await llm(client, [user(prompt)], fns=fns, **kwargs)
+    logger.info(f"✓ subtask '{task_label}' complete: {response}\n")
+    return f"subtask '{task_label}' complete: {response}"

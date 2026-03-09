@@ -70,9 +70,9 @@ async def test_fetch_url_http_error(mock_cwd):
         client.__aexit__ = AsyncMock(return_value=None)
         mock.return_value = client
 
-        result = await fetch_url("https://example.com/404", "output.md")
+        with pytest.raises(httpx.HTTPStatusError):
+            await fetch_url("https://example.com/404", "output.md")
 
-    assert "Error" in result
     assert not (mock_cwd / "output.md").exists()
 
 

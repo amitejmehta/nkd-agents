@@ -97,12 +97,9 @@ class TestReadFile:
 
     @pytest.mark.asyncio
     async def test_read_file_not_found(self):
-        """Test reading a non-existent file returns error message."""
-        result = await read_file("/nonexistent/file.txt")
-
-        assert isinstance(result, str)
-        assert "Error reading file" in result
-        assert "/nonexistent/file.txt" in result
+        """Test reading a non-existent file raises FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            await read_file("/nonexistent/file.txt")
 
     @pytest.mark.asyncio
     async def test_read_file_directory(self, tmp_path):
@@ -110,10 +107,8 @@ class TestReadFile:
         dir_path = tmp_path / "testdir"
         dir_path.mkdir()
 
-        result = await read_file(str(dir_path))
-
-        assert isinstance(result, str)
-        assert "Error reading file" in result
+        with pytest.raises(IsADirectoryError):
+            await read_file(str(dir_path))
 
 
 class TestEditFile:
@@ -212,10 +207,8 @@ class TestEditFile:
         with patch(
             "pathlib.Path.read_text", side_effect=PermissionError("Access denied")
         ):
-            result = await edit_file(str(file_path), "old", "new")
-
-            assert "Error editing file" in result
-            assert "Access denied" in result
+            with pytest.raises(PermissionError, match="Access denied"):
+                await edit_file(str(file_path), "old", "new")
 
 
 class TestBash:
@@ -299,10 +292,8 @@ class TestBash:
         with patch(
             "asyncio.create_subprocess_exec", side_effect=OSError("Exec failed")
         ):
-            result = await bash("echo test")
-
-            assert "Error executing bash command:" in result
-            assert "Exec failed" in result
+            with pytest.raises(OSError, match="Exec failed"):
+                await bash("echo test")
 
     @pytest.mark.asyncio
     async def test_bash_timeout(self):
@@ -382,10 +373,8 @@ class TestSubtask:
 
             token = anthropic_client_ctx.set(mock_client)
             try:
-                result = await subtask("prompt", "my_task", model="haiku")
-
-                assert "Error executing subtask 'my_task':" in result
-                assert "LLM failed" in result
+                with pytest.raises(Exception, match="LLM failed"):
+                    await subtask("prompt", "my_task", model="haiku")
             finally:
                 anthropic_client_ctx.reset(token)
 
