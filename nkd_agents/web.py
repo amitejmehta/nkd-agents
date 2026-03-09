@@ -72,15 +72,10 @@ async def fetch_url(url: str, save_path: str) -> str:
         Success message with character count and path, or error message.
     """
     logger.info(f"Fetching: {GREEN}{url}{RESET}")
-    try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            html = response.text
-    except httpx.HTTPStatusError as e:
-        return f"Error fetching '{url}': HTTP {e.response.status_code}"
-    except httpx.HTTPError as e:
-        return f"Error fetching '{url}': {e}"
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        html = response.text
 
     markdown = trafilatura.extract(
         html,

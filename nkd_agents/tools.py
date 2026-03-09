@@ -20,10 +20,7 @@ async def read_file(path: str) -> str | list[Content]:
     p = Path(path)
     file_path = p if p.is_absolute() else cwd_ctx.get() / p
     logger.info(f"\nReading: {GREEN}{file_path}{RESET}\n")
-    try:
-        bytes, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
-    except (FileNotFoundError, IsADirectoryError, OSError) as e:
-        return f"Error reading file '{path}': {e}"
+    bytes, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
     return [bytes_to_content(bytes, ext)]
 
 
@@ -58,10 +55,7 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
     elif not file_path.exists():
         return f"Error: File '{path}' not found"
     else:
-        try:
-            content = file_path.read_text(encoding="utf-8")
-        except Exception as e:
-            return f"Error editing file '{path}': {e}"
+        content = file_path.read_text(encoding="utf-8")
         if old_str not in content:
             return "Error: old_str not found in file content"
         edited_content = content.replace(old_str, new_str, count)
@@ -98,8 +92,6 @@ async def bash(command: str, timeout: int = 30) -> str:
         return f"Error: Command timed out after {timeout} seconds"
     except asyncio.CancelledError:
         raise
-    except Exception as e:
-        return f"Error executing bash command: {e}"
     finally:
         if process is not None and process.returncode is None:
             process.kill()
@@ -137,9 +129,6 @@ async def subtask(
         fns = [read_file, edit_file, bash]
     models = {"haiku": "claude-haiku-4-6", "sonnet": "claude-sonnet-4-6"}
     kwargs = {"model": models[model], "max_tokens": 8192}
-    try:
-        response = await llm(client, [user(prompt)], fns=fns, **kwargs)
-    except Exception as e:
-        return f"Error executing subtask '{task_label}': {e}"
+    response = await llm(client, [user(prompt)], fns=fns, **kwargs)
     logger.info(f"✓ subtask '{task_label}' complete: {response}\n")
     return f"subtask '{task_label}' complete: {response}"
