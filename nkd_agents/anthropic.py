@@ -18,6 +18,7 @@ from anthropic.types import (
 from anthropic.types.tool_result_block_param import Content
 from pydantic import BaseModel
 
+from .tracing import agent_span, request_span, set_usage, tool_span
 from .utils import extract_function_params
 
 logger = logging.getLogger(__name__)
@@ -137,27 +138,55 @@ async def llm(
     """
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
+    model_name = kwargs.get("model", "unknown")
+    tool_names = [fn.__name__ for fn in fns]
 
-    while True:
-        try:
-            if fns:
-                input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
+    with agent_span(system="anthropic", model=model_name, tools=tool_names) as a_span:
+        while True:
+            with request_span(
+                system="anthropic", model=model_name, parent=a_span
+            ) as r_span:
+                try:
+                    if fns:
+                        input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
 
-            resp: Message = await client.messages.create(messages=input, **kwargs)
-            logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-        finally:
-            if fns:
-                del input[-1]["content"][-1]["cache_control"]  # type: ignore # TODO: fix this
+                    resp: Message = await client.messages.create(
+                        messages=input, **kwargs
+                    )
+                    logger.info(
+                        f"stop_reason={resp.stop_reason}\nusage={resp.usage}"
+                    )
+                    set_usage(r_span, resp.usage)
+                finally:
+                    if fns:
+                        del input[-1]["content"][-1]["cache_control"]  # type: ignore # TODO: fix this
 
-        text, tool_calls = extract_text_and_tool_calls(resp)
-        input.append({"role": "assistant", "content": resp.content})
+            text, tool_calls = extract_text_and_tool_calls(resp)
+            input.append({"role": "assistant", "content": resp.content})
 
-        if not tool_calls:
-            return text
+            if not tool_calls:
+                return text
 
-        try:
-            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
-            input += format_tool_results(tool_calls, results)
-        except asyncio.CancelledError:
-            input += format_tool_results(tool_calls, ["Interrupted"] * len(tool_calls))
-            raise
+            try:
+                results = await asyncio.gather(
+                    *[
+                        _traced_tool(tool_dict, c, parent=a_span)
+                        for c in tool_calls
+                    ]
+                )
+                input += format_tool_results(tool_calls, results)
+            except asyncio.CancelledError:
+                input += format_tool_results(
+                    tool_calls, ["Interrupted"] * len(tool_calls)
+                )
+                raise
+
+
+async def _traced_tool(
+    tool_dict: dict[str, Callable[..., Awaitable[str | Iterable[Content]]]],
+    tool_call: ToolUseBlock,
+    parent: Any = None,
+) -> str | Iterable[Content]:
+    """Execute a tool call with optional tracing."""
+    with tool_span(name=tool_call.name, parent=parent):
+        return await tool(tool_dict, tool_call)
