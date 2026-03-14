@@ -1,6 +1,6 @@
 import logging
 
-from nkd_agents.logging import ContextFilter, configure_logging, logging_ctx
+from nkd_agents.log import ContextFilter, configure_logging, logging_ctx
 
 
 def test_context_filter_with_context():

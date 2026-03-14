@@ -6,7 +6,7 @@ import types
 from pathlib import Path
 from typing import Any, Callable, List, Literal, get_args, get_origin
 
-from .logging import GREEN, RED, RESET
+from .log import GREEN, RED, RESET
 
 logger = logging.getLogger(__name__)
 

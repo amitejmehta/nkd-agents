@@ -7,7 +7,7 @@ from anthropic.types.tool_result_block_param import Content
 
 from .anthropic import bytes_to_content, llm, user
 from .ctx import anthropic_client_ctx, cwd_ctx
-from .logging import GREEN, RESET, logging_ctx
+from .log import GREEN, RESET, logging_ctx
 from .utils import display_diff
 
 logger = logging.getLogger(__name__)

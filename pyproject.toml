@@ -25,6 +25,7 @@ cli = [
     "prompt-toolkit>=3.0.52,<4.0.0", # cli user input
     "playwright>=1.58.0,<2.0.0", # web search with browser automation
     "trafilatura>=2.0.0,<3.0.0", # fetch_url tool
+    "httpx>=0.27.0,<1.0.0", # fetch_url HTTP client
 ]
 dev = [
     "freezegun==1.5.1",
