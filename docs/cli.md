@@ -50,7 +50,7 @@ You can type and submit a new message while the LLM is still responding. It queu
 
 ## Sub-Agents, Background Agents, and Scheduled Agents
 
-Because `nkd` is just a process, headless mode (`-p`) unlocks running sub-agents directly via `bash` — blocking, parallel, or scheduled. Each sub-agent is a full `nkd` instance with the same tools as you.
+Because `nkd` is just a process, headless mode (`-p`) lets you run sub-agents via `bash` — one or many, blocking or parallel, in the background or on a schedule. Each is a full `nkd` instance with the same tools as you.
 
 See the **[sub-agents skill](../skills/sub-agents/SKILL.md)** for patterns and best practices.
 
