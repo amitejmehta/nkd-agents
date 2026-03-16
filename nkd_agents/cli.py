@@ -34,7 +34,7 @@ BANNER = (
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
     f"'skills':    {SKILLS_DIR} (click · paste to LLM)\n"
-    f"'sub-agents': {SKILLS_DIR}/agents/SKILL.md{RESET}\n"
+    f"'sub-agents': {SKILLS_DIR}/sub-agents/SKILL.md{RESET}\n"
 )
 
 # runtime config (override via env / ~/.nkd-agents/.env)
