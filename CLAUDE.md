@@ -33,18 +33,11 @@ tests/
 ## Docs Files
 
 ```
-docs/
-├── decisions/
-│   ├── framework.md    # Why: mutable input, no wrappers, nested schema ban, cancellation, Responses API
-│   ├── cli.md          # Why: start phrases, fetch_url disk pattern, sessions, three-coroutine design
-│   └── dropped.md      # Everything deliberately not built or removed — check before proposing something new
-└── state/
-    ├── bugs.md         # Known bugs with fix hints
-    └── todo.md         # Prioritized work
+README.md       # What it is, how to use it (external)
+VISION.md       # Intent, philosophy, north star — update when design direction changes
+DROPPED.md      # Everything cut and why — check before proposing anything new
+TODO.md         # Bugs + prioritized work — update after every task
 ```
-
-`decisions/` = timeless rationale. Update only when design changes.
-`state/` = current status. Update after every task that changes the codebase.
 
 ## Verify
 
