@@ -192,7 +192,7 @@ async def test_tool_error_handling():
     )
 
     result = await tool(tool_dict, tool_call)
-    assert "Error calling tool failing_tool" in result
+    assert "Error calling tool 'failing_tool'" in result
     assert "Something went wrong" in result
 
 

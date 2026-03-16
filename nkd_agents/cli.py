@@ -75,10 +75,11 @@ class CLI:
             self.kwargs["system"] = Path("CLAUDE.md").read_text(encoding="utf-8")
 
     def build_message(self, text: str) -> str:
-        mode_suffix = (
-            f" ({MODE_PREFIXES[self.mode]})" if MODE_PREFIXES[self.mode] else ""
+        mode_suffix = MODE_PREFIXES[self.mode]
+        formatted_mode_suffix = f" ({mode_suffix})" if mode_suffix else ""
+        return (
+            f"{START_PHRASE} Mode: {self.mode.title()}{formatted_mode_suffix}. {text}"
         )
-        return f"{START_PHRASE} Mode: {self.mode.title()}{mode_suffix}. {text}"
 
     def switch_model(self) -> None:
         self.model_idx = (self.model_idx + 1) % len(MODELS)

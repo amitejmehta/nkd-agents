@@ -31,19 +31,3 @@ docker build -t nkd-agents https://github.com/amitejmehta/nkd-agents.git
 echo "alias nkd='docker run -it --env-file ~/.nkd-agents/.env -v \$(pwd):/workspace nkd-agents'" >> ~/.zshrc
 ```
 
-## Contributing
-
-```bash
-git clone https://github.com/amitejmehta/nkd-agents.git
-cd nkd-agents && uv pip install -e '.[dev,cli]'
-```
-
-```bash
-ruff check --fix nkd_agents/ examples/ tests/
-ruff format nkd_agents/ examples/ tests/
-pyright
-xenon --max-average A --max-modules A --max-absolute B nkd_agents/
-pytest tests/ -v
-```
-
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/). MIT License.

@@ -98,7 +98,7 @@ async def tool(
     try:
         return await tool_dict[tool_call.name](**tool_call.input)
     except Exception as e:
-        msg = f"Error calling tool {tool_call.name}: {e}"
+        msg = f"Error calling tool '{tool_call.name}': {e}"
         logger.warning(msg)
         return msg
 
