@@ -33,7 +33,7 @@ BANNER = (
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
-    f"'skills':    ~/{SKILLS_DIR.relative_to(Path.home())} (click · paste to LLM){RESET}\n"
+    f"'skills':    {SKILLS_DIR} (click · paste to LLM){RESET}\n"
 )
 
 # runtime config (override via env / ~/.nkd-agents/.env)
