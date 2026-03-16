@@ -10,68 +10,73 @@ from pathlib import Path
 from anthropic import AsyncAnthropic, omit
 from anthropic.types import MessageParam
 from prompt_toolkit import PromptSession, key_binding, styles
-from prompt_toolkit.document import Document
 from prompt_toolkit.patch_stdout import patch_stdout
-from pydantic import BaseModel
 
-from .anthropic import llm, tool_schema, user
-from .ctx import anthropic_client_ctx
+from .anthropic import llm, user
+from .ctx import messages_ctx
 from .logging import DIM, GREEN, RED, RESET, configure_logging
-from .tools import bash, edit_file, read_file, subtask
-from .utils import load_env
+from .tools import bash, edit_file, manage_context, read_file
+from .utils import load_env, serialize
 from .web import fetch_url, web_search
 
 logger = logging.getLogger(__name__)
 
-MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
-STARTING_PHRASE = os.environ.get("NKD_AGENTS_START_PHRASE", "Be brief and exacting.")
-PLAN_MODE_PREFIX = "PLAN MODE - READ ONLY."
-TOOLS = [read_file, edit_file, bash, subtask, fetch_url, web_search]
-THINKING = {"type": "adaptive"}
-CACHE_WARM_MSG = 'Sending msg to warm cache. Just respond: "okay"'
-COMPACT_NOTICE = "FYI: tool call/result messages were removed to reduce context size."
+# constants
+MODELS = ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")
+TOOLS = (read_file, edit_file, bash, manage_context, fetch_url, web_search)
+SKILLS_DIR = (Path(__file__).parent / "skills").resolve()
+SKILLS_PATHS = "\n".join(
+    f"{' ' * 12}{p}" for p in sorted(SKILLS_DIR.glob("**/SKILL.md"))
+)
 BANNER = (
-    f"\n\n{DIM}nkd-agents\n\n"
+    f"\n\n{DIM}nkd-agents ({Path(__file__).resolve()})\n\n"
     "'tab':       toggle thinking\n"
-    "'shift+tab': toggle plan mode\n"
+    "'shift+tab': cycle mode (None → Plan → Socratic)\n"
     "'esc esc':   interrupt\n"
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
-    "'ctrl+p':    cycle prompts (local and nkd-agents)\n"
-    f"'ctrl+c':    exit{RESET}\n"
+    f"'skills':\n{SKILLS_PATHS}{RESET}\n"
+)
+
+# runtime config (override via env / ~/.nkd-agents/.env)
+LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
+THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
+MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
+MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
+START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
+MODE_PREFIXES: dict[str, str] = {
+    "none": "",
+    "plan": os.environ.get("NKD_PLAN_MODE", "READ ONLY!"),
+    "socratic": os.environ.get("NKD_SOCRATIC_MODE", "ASK, DON'T TELL!"),
+}
+CACHE_WARM_MSG = os.environ.get(
+    "NKD_CACHE_WARM_MSG", 'Sending msg to warm cache. Just respond: "okay"'
+)
+COMPACT_MSG = os.environ.get(
+    "NKD_COMPACT", "FYI: removed tool calls/results to reduce context size."
 )
 
 
 class CLI:
     def __init__(self) -> None:
         self.client = AsyncAnthropic(max_retries=4)
-        anthropic_client_ctx.set(self.client)
-
         self.messages: list[MessageParam] = []
+        messages_ctx.set(self.messages)
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
         self.last_message_at: float = 0.0
         self.warm_count: int = 0
-
-        self.plan_mode = ""
+        self.mode = list(MODE_PREFIXES)[0]
         self.model_idx = 0
-        self.prompt_idx = -1
-        self.settings = {
-            "model": MODELS[self.model_idx],
-            "max_tokens": 20000,
-            "thinking": omit,
-            "tools": [tool_schema(fn) for fn in TOOLS],
-        }
-        system = f"# Environment\nWorking directory: {Path.cwd()} (home: {Path.home()})"
+        self.kwargs = {"model": MODELS[0], "max_tokens": MAX_TOKENS, "thinking": omit}
         if Path("CLAUDE.md").exists():
-            system = Path("CLAUDE.md").read_text(encoding="utf-8") + "\n\n" + system
-        self.settings["system"] = system
+            self.kwargs["system"] = Path("CLAUDE.md").read_text(encoding="utf-8")
 
     def switch_model(self) -> None:
         self.model_idx = (self.model_idx + 1) % len(MODELS)
-        self.settings["model"] = MODELS[self.model_idx]
-        logger.info(f"{DIM}Switched to {GREEN}{self.settings['model']}{RESET}")
+        self.kwargs["model"] = MODELS[self.model_idx]
+        logger.info(f"{DIM}Switched to {GREEN}{self.kwargs['model']}{RESET}")
 
     def interrupt(self) -> None:
         if self.llm_task and not self.llm_task.done():
@@ -79,38 +84,14 @@ class CLI:
             self.llm_task.cancel()
 
     def toggle_thinking(self) -> None:
-        current = self.settings["thinking"] != omit
-        self.settings["thinking"] = omit if current else THINKING
+        current = self.kwargs["thinking"] != omit
+        self.kwargs["thinking"] = omit if current else THINKING
         logger.info(f"{DIM}Thinking: {'✓' if not current else '✗'}{RESET}")
 
-    def toggle_plan_mode(self) -> None:
-        self.plan_mode = "" if self.plan_mode else PLAN_MODE_PREFIX
-        logger.info(f"{DIM}Plan mode: {'✓' if self.plan_mode else '✗'}{RESET}")
-
-    def cycle_prompt(self) -> Document:
-        def load_skills(directory: Path) -> list[tuple[str, Path]]:
-            """Return (stem, path) pairs: flat *.md and nested */skill.md."""
-            if not directory.exists():
-                return []
-            flat = [(p.stem, p) for p in directory.glob("*.md")]
-            nested = [
-                (p.parent.name, p)
-                for p in directory.glob("**/skill.md")
-                if p.parent != directory
-            ]
-            return flat + nested
-
-        skills = sorted(
-            load_skills(Path(__file__).parent / "skills")
-            + load_skills(Path.cwd() / "skills"),
-            key=lambda t: t[0],
-        )
-        if not skills:
-            return Document("", 0)
-        self.prompt_idx += 1
-        stem, path = skills[self.prompt_idx % len(skills)]
-        text = f"<skill {stem}>\n{path.read_text(encoding='utf-8')}\n</skill {stem}>\n"
-        return Document(text, len(text))
+    def cycle_mode(self) -> None:
+        modes = list(MODE_PREFIXES)
+        self.mode = modes[(modes.index(self.mode) + 1) % len(modes)]
+        logger.info(f"{DIM}Mode: {self.mode.title()}{RESET}")
 
     def compact_history(self) -> None:
         kept = []
@@ -125,28 +106,28 @@ class CLI:
         removed = len(self.messages) - len(kept)
         self.messages[:] = kept
         if removed:
-            self.messages.append(user(COMPACT_NOTICE))
+            self.messages.append(user(COMPACT_MSG))
         logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
 
     async def cache_warmer(self) -> None:
         while True:
-            await asyncio.sleep(30)  # check every 30 seconds
+            await asyncio.sleep(30)
             idle = time.monotonic() - self.last_message_at
             if (
                 self.messages
                 and idle >= 270
-                and self.warm_count < 4
+                and self.warm_count < MAX_CACHE_WARMS
                 and (not self.llm_task or self.llm_task.done())
             ):
                 try:
                     messages = self.messages + [user(CACHE_WARM_MSG)]
                     messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
-                    await self.client.messages.create(
-                        messages=messages, **self.settings
-                    )
+                    await self.client.messages.create(messages=messages, **self.kwargs)
                     self.last_message_at = time.monotonic()
                     self.warm_count += 1
-                    logger.info(f"{DIM}Warmed cache ({self.warm_count}/4){RESET}")
+                    logger.info(
+                        f"{DIM}Warmed cache ({self.warm_count}/{MAX_CACHE_WARMS}){RESET}"
+                    )
                 except Exception as e:
                     logger.warning(f"{DIM}Cache warm failed (will retry): {e}{RESET}")
 
@@ -155,12 +136,12 @@ class CLI:
             self.messages.append(await self.queue.get())
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
-                llm(self.client, self.messages, TOOLS, **self.settings)
+                llm(self.client, self.messages, TOOLS, **self.kwargs)
             )
             try:
                 await self.llm_task
             except asyncio.CancelledError:
-                pass  # catch so we can go back to queue.get()
+                pass
             except Exception as e:
                 logger.exception(f"{RED}Error in llm loop: {e}{RESET}")
             finally:
@@ -171,10 +152,8 @@ class CLI:
         kb.add("c-l")(lambda e: self.switch_model())
         kb.add("escape", "escape")(lambda e: self.interrupt())
         kb.add("tab")(lambda e: self.toggle_thinking())
-        kb.add("s-tab")(lambda e: self.toggle_plan_mode())
-        kb.add("c-u")(lambda e: e.app.current_buffer.reset())
+        kb.add("s-tab")(lambda e: self.cycle_mode())
         kb.add("c-k")(lambda e: self.compact_history())
-        kb.add("c-p")(lambda e: e.app.current_buffer.set_document(self.cycle_prompt()))
 
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
@@ -182,8 +161,11 @@ class CLI:
         while True:
             text: str = await session.prompt_async("> ")
             if text and text.strip():
-                prefix = self.plan_mode + STARTING_PHRASE
-                await self.queue.put(user(f"{prefix} {text.strip()}"))
+                mode_suffix = (
+                    f" ({MODE_PREFIXES[self.mode]})" if MODE_PREFIXES[self.mode] else ""
+                )
+                mode_text = f" Mode: {self.mode.title()}{mode_suffix}."
+                await self.queue.put(user(f"{START_PHRASE}{mode_text} {text.strip()}"))
 
     async def run(self) -> None:
         await asyncio.gather(self.llm_loop(), self.prompt_loop(), self.cache_warmer())
@@ -193,16 +175,7 @@ def save_session(messages: list[MessageParam], path: Path | None = None) -> None
     if path is None:
         sessions_dir = Path.home() / ".nkd-agents" / "sessions"
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        path = sessions_dir / f"{datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.json"
-
-    def serialize(obj: object) -> object:
-        if isinstance(obj, BaseModel):
-            return obj.model_dump()
-        if isinstance(obj, list):
-            return [serialize(i) for i in obj]
-        if isinstance(obj, dict):
-            return {k: serialize(v) for k, v in obj.items()}
-        return obj
+        path = sessions_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
 
     path.write_text(json.dumps(serialize(messages), indent=2))
     print(f"{DIM}Session saved: {path}{RESET}")
@@ -219,10 +192,10 @@ def main() -> None:
     with patch_stdout(raw=True):
         cli = CLI()
         if args.session:
-            cli.messages = json.loads(args.session.read_text())
+            cli.messages[:] = json.loads(args.session.read_text())
             print(f"{DIM}Loaded session: {args.session}{RESET}")
         try:
-            configure_logging(int(os.environ.get("LOG_LEVEL", logging.INFO)))
+            configure_logging(LOG_LEVEL)
             print(BANNER)
             asyncio.run(cli.run())
         except (KeyboardInterrupt, EOFError):

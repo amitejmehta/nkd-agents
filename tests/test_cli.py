@@ -1,21 +1,19 @@
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from anthropic import omit
 from anthropic.types import TextBlock, ToolUseBlock
-from prompt_toolkit.document import Document
 
 from nkd_agents.anthropic import user
-from nkd_agents.cli import CLI, COMPACT_NOTICE, MODELS, PLAN_MODE_PREFIX, TOOLS
+from nkd_agents.cli import CLI, COMPACT_MSG, MODELS, THINKING, TOOLS
 
 
 @pytest.fixture
 def cli(tmp_path, monkeypatch):
     """Create a CLI instance with a mock API key, in a clean directory."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("NKD_AGENTS_ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     return CLI()
 
 
@@ -24,61 +22,64 @@ class TestInit:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("NKD_AGENTS_ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        # CLI no longer validates key at init; AsyncAnthropic accepts missing key
         CLI()  # should not raise
 
     def test_defaults(self, cli: CLI):
         assert cli.model_idx == 0
-        assert cli.settings["model"] == MODELS[0]
-        assert cli.settings["max_tokens"] == 20000
-        assert cli.settings["thinking"] is omit
-        assert cli.plan_mode == ""
+        assert cli.kwargs["model"] == MODELS[0]
+        assert cli.kwargs["max_tokens"] > 0
+        assert cli.kwargs["thinking"] is omit
         assert cli.messages == []
         assert cli.llm_task is None
 
     def test_loads_claude_md(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("NKD_AGENTS_ANTHROPIC_API_KEY", "test-key")
         (tmp_path / "CLAUDE.md").write_text("system prompt")
-        assert "system prompt" in CLI().settings["system"]
+        assert "system prompt" in CLI().kwargs["system"]
 
     def test_no_claude_md(self, cli: CLI):
-        assert cli.settings["system"].startswith("# Environment")
+        assert "system" not in cli.kwargs
 
 
 class TestSwitchModel:
     def test_cycles_through_models(self, cli: CLI):
-        assert cli.settings["model"] == MODELS[0]
+        assert cli.kwargs["model"] == MODELS[0]
         cli.switch_model()
         assert cli.model_idx == 1
-        assert cli.settings["model"] == MODELS[1]
+        assert cli.kwargs["model"] == MODELS[1]
 
     def test_wraps_around(self, cli: CLI):
         for _ in range(len(MODELS)):
             cli.switch_model()
         assert cli.model_idx == 0
-        assert cli.settings["model"] == MODELS[0]
+        assert cli.kwargs["model"] == MODELS[0]
 
 
 class TestToggleThinking:
     def test_enable(self, cli: CLI):
-        assert cli.settings["thinking"] is omit
+        assert cli.kwargs["thinking"] is omit
         cli.toggle_thinking()
-        assert cli.settings["thinking"] == {"type": "adaptive"}
+        assert cli.kwargs["thinking"] == THINKING
 
-    def test_disable(self, cli):
+    def test_disable(self, cli: CLI):
         cli.toggle_thinking()
         cli.toggle_thinking()
-        assert cli.settings["thinking"] is omit
+        assert cli.kwargs["thinking"] is omit
 
 
-class TestTogglePlanMode:
-    def test_toggle_on_off(self, cli: CLI):
-        assert cli.plan_mode == ""
-        cli.toggle_plan_mode()
-        assert cli.plan_mode == PLAN_MODE_PREFIX
-        cli.toggle_plan_mode()
-        assert cli.plan_mode == ""
+class TestCycleMode:
+    def test_cycles_modes(self, cli: CLI):
+        initial = cli.mode
+        cli.cycle_mode()
+        assert cli.mode != initial
+
+    def test_wraps_around(self, cli: CLI):
+        from nkd_agents.cli import MODE_PREFIXES
+
+        n = len(MODE_PREFIXES)
+        for _ in range(n):
+            cli.cycle_mode()
+        assert cli.mode == list(MODE_PREFIXES)[0]
 
 
 class TestInterrupt:
@@ -91,7 +92,7 @@ class TestInterrupt:
         cli.interrupt()
         cli.llm_task.cancel.assert_not_called()
 
-    def test_running_task(self, cli):
+    def test_running_task(self, cli: CLI):
         cli.llm_task = MagicMock()
         cli.llm_task.done.return_value = False
         cli.interrupt()
@@ -120,13 +121,13 @@ class TestCompactHistory:
         assert len(cli.messages) == 3
         assert cli.messages[0]["content"][0]["type"] == "text"
         assert cli.messages[1]["content"][0].type == "text"
-        assert cli.messages[2] == user(COMPACT_NOTICE)
+        assert cli.messages[2] == user(COMPACT_MSG)
 
     def test_empty(self, cli: CLI):
         cli.compact_history()
         assert cli.messages == []
 
-    def test_multiple_tool_rounds(self, cli):
+    def test_multiple_tool_rounds(self, cli: CLI):
         cli.messages[:] = [
             {"role": "user", "content": [{"type": "text", "text": "hi"}]},
             {
@@ -159,7 +160,7 @@ class TestCompactHistory:
         assert len(cli.messages) == 3
         assert cli.messages[0]["role"] == "user"
         assert cli.messages[1]["role"] == "assistant"
-        assert cli.messages[2] == user(COMPACT_NOTICE)
+        assert cli.messages[2] == user(COMPACT_MSG)
 
     def test_all_tool_messages(self, cli: CLI):
         cli.messages[:] = [
@@ -177,7 +178,7 @@ class TestCompactHistory:
             },
         ]
         cli.compact_history()
-        assert cli.messages == [user(COMPACT_NOTICE)]
+        assert cli.messages == [user(COMPACT_MSG)]
 
     def test_no_tool_messages(self, cli: CLI):
         cli.messages[:] = [
@@ -186,66 +187,6 @@ class TestCompactHistory:
         ]
         cli.compact_history()
         assert len(cli.messages) == 2
-
-
-class TestCycleSkillPrompt:
-    @pytest.fixture
-    def skills_dir(self, tmp_path, monkeypatch):
-        """Isolated skills dir with no builtins."""
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr("nkd_agents.cli.__file__", str(tmp_path / "fake_cli.py"))
-        d = tmp_path / "skills"
-        d.mkdir()
-        return d
-
-    def test_empty_returns_blank(self, cli: CLI, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)  # no skills/ dir at all
-        monkeypatch.setattr("nkd_agents.cli.__file__", str(tmp_path / "fake_cli.py"))
-        assert cli.cycle_prompt() == Document("", 0)
-
-    def test_flat_skill_xml_and_cursor(self, cli: CLI, skills_dir):
-        """Flat *.md: correct XML tags, stem, content, cursor at end."""
-        (skills_dir / "debug.md").write_text("debug content")
-        cli.prompt_idx = -1
-        doc = cli.cycle_prompt()
-        assert doc.text == "<skill debug>\ndebug content\n</skill debug>\n"
-        assert doc.cursor_position == len(doc.text)
-
-    def test_nested_anthropic_style(self, cli: CLI, skills_dir):
-        """Nested skills/debug/skill.md uses parent dir name as stem."""
-        (skills_dir / "debug").mkdir()
-        (skills_dir / "debug" / "skill.md").write_text("nested content")
-        cli.prompt_idx = -1
-        doc = cli.cycle_prompt()
-        assert doc.text == "<skill debug>\nnested content\n</skill debug>\n"
-
-    def test_flat_and_nested_together(self, cli: CLI, skills_dir):
-        """Both formats coexist; collect all docs and verify both stems appear."""
-        (skills_dir / "aaa.md").write_text("flat")
-        (skills_dir / "zzz").mkdir()
-        (skills_dir / "zzz" / "skill.md").write_text("nested")
-        cli.prompt_idx = -1
-        # number of builtins + 2 local skills
-        from nkd_agents import cli as m
-
-        n_builtins = len(list((Path(m.__file__).parent / "skills").glob("*.md")))
-        docs = [cli.cycle_prompt() for _ in range(n_builtins + 2)]
-        texts = [d.text for d in docs]
-        assert any("<skill aaa>" in t for t in texts)
-        assert any("<skill zzz>" in t for t in texts)
-
-    def test_wraps_around(self, cli: CLI, skills_dir):
-        (skills_dir / "a.md").write_text("a")
-        (skills_dir / "b.md").write_text("b")
-        from nkd_agents import cli as m
-
-        n_builtins = len(list((Path(m.__file__).parent / "skills").glob("*.md")))
-        n = n_builtins + 2
-        cli.prompt_idx = -1
-        first = cli.cycle_prompt().text
-        for _ in range(n - 1):
-            cli.cycle_prompt()
-        assert cli.cycle_prompt().text == first
 
 
 class TestLLMLoop:
@@ -261,7 +202,7 @@ class TestLLMLoop:
             assert len(cli.messages) == 1
             assert cli.messages[0] is msg
             mock_llm.assert_called_once_with(
-                cli.client, cli.messages, TOOLS, **cli.settings
+                cli.client, cli.messages, TOOLS, **cli.kwargs
             )
 
     async def test_survives_cancelled_llm_task(self, cli: CLI):
