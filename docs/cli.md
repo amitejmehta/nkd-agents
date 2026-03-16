@@ -153,13 +153,3 @@ The `logging_ctx` context var (a dict) can inject additional key-value context i
 ## `nkd` Entry Point
 
 `nkd` maps to `nkd_agents.cli:main`. Installed via `[project.scripts]` in `pyproject.toml`.
-
-Install:
-```bash
-uv tool install nkd-agents[cli]
-```
-
-Or from source:
-```bash
-uv pip install -e '.[cli]'
-```
