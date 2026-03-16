@@ -183,7 +183,7 @@ def save_session(messages: list[MessageParam], path: Path | None = None) -> None
         path = sessions_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
 
     path.write_text(json.dumps(serialize(messages), indent=2))
-    print(f"{DIM}Session saved: {path}{RESET}")
+    logger.info(f"Session saved: {path}")
 
 
 def main() -> None:
@@ -200,23 +200,21 @@ def main() -> None:
     cli = CLI()
 
     try:
-        if args.prompt:
-            configure_logging(LOG_LEVEL)
-            result = asyncio.run(
-                llm(cli.client, [user(args.prompt)], TOOLS, **cli.kwargs)
-            )
-            print(result)
-            return
         if args.session:
             cli.messages[:] = json.loads(args.session.read_text())
-            print(f"{DIM}Loaded session: {args.session}{RESET}")
-        with patch_stdout(raw=True):
+            logger.info(f"Loaded session: {args.session}")
+        if args.prompt:
             configure_logging(LOG_LEVEL)
-            print(BANNER)
-            asyncio.run(cli.run())
+            cli.messages.append(user(args.prompt))
+            result = asyncio.run(llm(cli.client, cli.messages, TOOLS, **cli.kwargs))
+            print(result)
+        else:
+            with patch_stdout(raw=True):
+                configure_logging(LOG_LEVEL)
+                print(BANNER)
+                asyncio.run(cli.run())
     except (KeyboardInterrupt, EOFError):
-        if not args.prompt:
-            print(f"\n{DIM}Exiting...{RESET}")
+        print(f"\n{DIM}Exiting...{RESET}")
     finally:
-        if not args.prompt and len(cli.messages) > 10:
-            save_session(cli.messages, path=args.session)
+        if len(cli.messages) > 10:
+            save_session(cli.messages, path=args.session if not args.prompt else None)
