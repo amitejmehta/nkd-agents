@@ -25,18 +25,15 @@ logger = logging.getLogger(__name__)
 MODELS = ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")
 TOOLS = (read_file, edit_file, bash, manage_context, fetch_url, web_search)
 SKILLS_DIR = (Path(__file__).parent / "skills").resolve()
-SKILLS_PATHS = "\n".join(
-    f"{' ' * 12}{p}" for p in sorted(SKILLS_DIR.glob("**/SKILL.md"))
-)
 BANNER = (
-    f"\n\n{DIM}nkd-agents ({Path(__file__).resolve()})\n\n"
+    f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
     "'shift+tab': cycle mode (None → Plan → Socratic)\n"
     "'esc esc':   interrupt\n"
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
-    f"'skills':\n{SKILLS_PATHS}{RESET}\n"
+    f"'skills':   {SKILLS_DIR} (paste path to LLM){RESET}\n"
 )
 
 # runtime config (override via env / ~/.nkd-agents/.env)
