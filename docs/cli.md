@@ -7,6 +7,14 @@ The `nkd` command is a terminal coding assistant. Claude in a loop with file/she
 ```bash
 nkd                          # start fresh session
 nkd -s path/to/session.json  # resume saved session
+nkd -p "your prompt"         # headless: run a single prompt, print result to stdout, exit
+```
+
+> **Note:** headless mode is the foundation for [sub-agents and background agents](#sub-agents-and-background-agents).
+
+For long-running or overnight sessions, use `caffeinate` to prevent your Mac from sleeping:
+```bash
+caffeinate -u -t 3600 &  # keep awake for 1 hour
 ```
 
 ## Keybindings
@@ -35,6 +43,16 @@ See [tools.md](tools.md) for full details.
 | `web_search` | Returns titles, URLs, snippets via DuckDuckGo. Relies on DDG ranking for source quality |
 
 `manage_context` is the foundation for multi-phase work: iterate through a todo list, conduct deep research across many subtopics, or any task too large for a single context window. State lives externally (files, git) and context resets between phases. This pattern replaced an earlier `subtask` tool — subagents consistently lacked sufficient context and were invoked at the wrong times, and the tradeoff wasn't worth it: you give up parallelization but gain reliability and quality.
+
+## Message Queuing
+
+You can type and submit a new message while the LLM is still responding. It queues immediately and runs as soon as the current turn completes. No need to wait.
+
+## Sub-Agents, Background Agents, and Scheduled Agents
+
+Because `nkd` is just a process, headless mode (`-p`) lets you run sub-agents via `bash` — one or many, blocking or parallel, in the background or on a schedule. Each is a full `nkd` instance with the same tools as you.
+
+See the **[sub-agents skill](../skills/sub-agents/SKILL.md)** for patterns and best practices.
 
 ## "Be brief and exacting."
 

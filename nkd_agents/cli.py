@@ -33,7 +33,8 @@ BANNER = (
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
-    f"'skills':    {SKILLS_DIR} (click · paste to LLM){RESET}\n"
+    f"'skills':    {SKILLS_DIR} (click · paste to LLM)\n"
+    f"'sub-agents': {SKILLS_DIR}/sub-agents/SKILL.md{RESET}\n"
 )
 
 # runtime config (override via env / ~/.nkd-agents/.env)
@@ -182,7 +183,7 @@ def save_session(messages: list[MessageParam], path: Path | None = None) -> None
         path = sessions_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
 
     path.write_text(json.dumps(serialize(messages), indent=2))
-    print(f"{DIM}Session saved: {path}{RESET}")
+    logger.info(f"Session saved: {path}")
 
 
 def main() -> None:
@@ -191,19 +192,29 @@ def main() -> None:
     parser.add_argument(
         "-s", "--session", type=Path, help="Path to a saved session JSON file"
     )
+    parser.add_argument(
+        "-p", "--prompt", type=str, help="Run headless with this prompt"
+    )
     args = parser.parse_args()
 
-    with patch_stdout(raw=True):
-        cli = CLI()
+    cli = CLI()
+
+    try:
         if args.session:
             cli.messages[:] = json.loads(args.session.read_text())
-            print(f"{DIM}Loaded session: {args.session}{RESET}")
-        try:
+            logger.info(f"Loaded session: {args.session}")
+        if args.prompt:
             configure_logging(LOG_LEVEL)
-            print(BANNER)
-            asyncio.run(cli.run())
-        except (KeyboardInterrupt, EOFError):
-            print(f"\n{DIM}Exiting...{RESET}")
-        finally:
-            if len(cli.messages) > 10:
-                save_session(cli.messages, path=args.session)
+            cli.messages.append(user(args.prompt))
+            result = asyncio.run(llm(cli.client, cli.messages, TOOLS, **cli.kwargs))
+            print(result)
+        else:
+            with patch_stdout(raw=True):
+                configure_logging(LOG_LEVEL)
+                print(BANNER)
+                asyncio.run(cli.run())
+    except (KeyboardInterrupt, EOFError):
+        print(f"\n{DIM}Exiting...{RESET}")
+    finally:
+        if len(cli.messages) > 10:
+            save_session(cli.messages, path=args.session)
