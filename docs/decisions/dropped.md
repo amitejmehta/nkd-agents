@@ -2,39 +2,6 @@
 
 Things deliberately not built or removed. Check this before proposing something new.
 
-## compact_history (ctrl+k)
-
-Stripped all tool call/result messages from history in-place, injecting a note so the model knew context had been trimmed. Zero-friction, zero-LLM-turn noise removal mid-session.
-
-```python
-def compact_history(self) -> None:
-    kept = []
-    for x in self.messages:
-        assert isinstance(x["content"], list)
-        if not any(
-            (b.get("type") if isinstance(b, dict) else b.type)
-            in ("tool_use", "tool_result")
-            for b in x["content"]
-        ):
-            kept.append(x)
-    removed = len(self.messages) - len(kept)
-    self.messages[:] = kept
-    if removed:
-        self.messages.append(user(self.cfg.compact_msg))
-    logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
-```
-
-Config:
-```toml
-compact_msg = "FYI: tool call/result messages were removed to reduce context size."
-```
-
-Removed — it worked against the forcing function of short, goal-scoped sessions. It let you stay in a bloated session indefinitely by trimming noise instead of making the harder decision: distill via the compact skill, or reset via `manage_context`. Both exits enforce better discipline. The compact skill externalizes state properly; `manage_context` enforces the Ralph loop reset pattern.
-
-## Session loading
-
-`nkd -s <path>` removed. Sessions still auto-save on exit as a recovery artifact. The loop paradigm makes resuming unnecessary — docs carry state, not conversation history. If a task might run long, use `caffeinate` on macOS to prevent sleep.
-
 ## Session summary prompt
 
 Built and working. Removed — it's a workaround for poor repo docs. Maintained docs make it unnecessary.

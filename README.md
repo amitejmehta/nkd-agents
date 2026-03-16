@@ -39,45 +39,27 @@ The CLI is a terminal-based Claude coding assistant with the following tools:
 - `fetch_url` - Convert webpage to clean markdown, save to disk, return only path and character count
 - `manage_context` - Clear context window, keeping only the first message (frees up token budget mid-session)
 
-It supports queueing messages while Claude is working, and the following controls via keyboard shortcuts:
+It supports queueing messages while Claude is working, and the following controls:
 
 | Key | Action |
 |---|---|
 | `tab` | Toggle extended thinking |
-| `shift+tab` | Cycle mode (None → Plan → Socratic) |
+| `shift+tab` | Cycle mode: None → Plan (`READ ONLY!`) → Socratic (`ASK, DON'T TELL!`) |
 | `esc esc` | Interrupt current LLM call or tool execution |
 | `ctrl+l` | Cycle model (sonnet → opus → haiku → sonnet) |
 | `ctrl+u` | Clear input line |
-| `ctrl+k` | Compact history (clears tool calls/results) |
+| `ctrl+k` | Compact history (strips tool call/result messages) |
 | `ctrl+c` | Exit |
 
-**Context-Efficient Web Search**
+**Start phrases**
 
-The CLI includes a free `web_search` tool (DuckDuckGo via headless Chrome) and `fetch_url` tool designed for maximum context efficiency. Rather than injecting webpage content directly into the conversation, `fetch_url` converts pages to clean markdown, saves to disk, and returns only the file path and character count. Full content never enters the context window—the model explores long responses via `grep` (head, tail), reading only what it needs. Since the model filters false positives at read time, scraping can favor recall over precision—capturing more potentially relevant information (ie. from complex JavaScript-heavy pages).
+Every message is prefixed: `"Be brief and exacting. Mode: None. <your text>"`. This is a user-turn prefix, not a system prompt — system prompt instructions for brevity degrade over long conversations as they become a shrinking fraction of context. A per-turn prefix doesn't have that problem.
 
-This makes the CLI exceptionally well-suited for deep research. Give it a well-written research prompt and it will search, fetch, and persist a local library of markdown files on disk—source material it can then cross-reference, explore, and synthesize across multiple documents, all without exhausting its context window.
+Mode changes the suffix: Plan mode sends `"...Mode: Plan (READ ONLY!)..."`, Socratic sends `"...Mode: Socratic (ASK, DON'T TELL!)..."`. All strings are env-configurable — see [`docs/decisions/cli.md`](docs/decisions/cli.md).
 
-**Use of Start Phrases**
+**Context-efficient web search**
 
-Perhaps the most unique feature, every message is prefixed with the phrase **"Be brief and exacting."** Why? The distinction: tokens spent on *reasoning* (arriving at the answer) vs. *output* (presenting it). Reasoning models separate these—thinking traces are independent from responses. More reasoning improves quality; more output after reaching the answer is just waste. The start phrase contrains output, not reasoning, creating a faster, cheaper coding assistant equally capable of complex reasoning. Toggle thinking on (`tab`) for extended reasoning with terse responses.
-
-Why not system prompting? System prompts for brevity degrade in long contexts—after multiple tool calls and file reads, they become a vanishing fraction of total context. Start phrases appear at the beginning of each turn, maintaining consistent influence regardless of conversation length.
-
-The same logic applies to modes. `shift+tab` cycles through **None → Plan → Socratic**, prepending the mode's instruction to each message (e.g. `READ ONLY!` or `ASK, DON'T TELL!`). Modes are env-configurable:
-
-```bash
-NKD_PLAN_MODE="PLAN ONLY. No edits." nkd
-NKD_SOCRATIC_MODE="Ask clarifying questions first." nkd
-```
-
-We've found start phrases to be extremely powerful. Experiment with your own via `NKD_START_PHRASE`:
-```bash
-# Single session
-NKD_START_PHRASE="Your custom phrase." nkd
-
-# Persist (add to ~/.nkd-agents/.env)
-echo 'NKD_START_PHRASE="Your custom phrase."' >> ~/.nkd-agents/.env
-```
+`fetch_url` converts pages to markdown, saves to disk, returns only the path and character count — content never enters the context window directly. The model explores via `bash` grep/head/tail, reading only what it needs. This makes the CLI well-suited for deep research: search, fetch many pages, accumulate a local markdown library, cross-reference and synthesize without burning context.
 
 ## Installation
 
