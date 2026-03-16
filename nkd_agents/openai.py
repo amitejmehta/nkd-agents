@@ -79,7 +79,9 @@ async def tool(
     try:
         return await tool_dict[tool_call.name](**json.loads(tool_call.arguments))
     except Exception as e:
-        return f"Error calling tool {tool_call.name}: {str(e)}"
+        msg = f"Error calling tool {tool_call.name}: {e}"
+        logger.warning(msg)
+        return msg
 
 
 def format_tool_results(
