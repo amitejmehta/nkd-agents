@@ -41,6 +41,7 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
     - "Error: old_str not found in file content"
     - "Error: old_str and new_str must be different"
     - "Error: File '{path}' not found"
+    - "Error: File '{path}' already exists. Use old_str/new_str to edit it."
     - "Error editing file '{path}': {error description}" (for other failures)
     """
     if old_str == new_str:
@@ -50,6 +51,10 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
     file_path = p if p.is_absolute() else cwd_ctx.get() / p
 
     if old_str == "create_file":
+        if file_path.exists():
+            return (
+                f"Error: File '{path}' already exists. Use old_str/new_str to edit it."
+            )
         content, edited_content = "", new_str
     elif not file_path.exists():
         return f"Error: File '{path}' not found"
