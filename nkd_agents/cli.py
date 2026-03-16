@@ -33,7 +33,8 @@ BANNER = (
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
-    f"'skills':    {SKILLS_DIR} (click · paste to LLM){RESET}\n"
+    f"'skills':    {SKILLS_DIR} (click · paste to LLM)\n"
+    f"'sub-agents': {SKILLS_DIR}/agents/SKILL.md{RESET}\n"
 )
 
 # runtime config (override via env / ~/.nkd-agents/.env)
@@ -191,19 +192,29 @@ def main() -> None:
     parser.add_argument(
         "-s", "--session", type=Path, help="Path to a saved session JSON file"
     )
+    parser.add_argument(
+        "-p", "--prompt", type=str, help="Run headless with this prompt"
+    )
     args = parser.parse_args()
 
-    with patch_stdout(raw=True):
-        cli = CLI()
+    configure_logging(LOG_LEVEL)
+    cli = CLI()
+
+    try:
+        if args.prompt:
+            print(
+                asyncio.run(llm(cli.client, [user(args.prompt)], TOOLS, **cli.kwargs))
+            )
+            return
         if args.session:
             cli.messages[:] = json.loads(args.session.read_text())
             print(f"{DIM}Loaded session: {args.session}{RESET}")
-        try:
-            configure_logging(LOG_LEVEL)
+        with patch_stdout(raw=True):
             print(BANNER)
             asyncio.run(cli.run())
-        except (KeyboardInterrupt, EOFError):
+    except (KeyboardInterrupt, EOFError):
+        if not args.prompt:
             print(f"\n{DIM}Exiting...{RESET}")
-        finally:
-            if len(cli.messages) > 10:
-                save_session(cli.messages, path=args.session)
+    finally:
+        if not args.prompt and len(cli.messages) > 10:
+            save_session(cli.messages, path=args.session)

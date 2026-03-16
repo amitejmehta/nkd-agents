@@ -7,6 +7,14 @@ The `nkd` command is a terminal coding assistant. Claude in a loop with file/she
 ```bash
 nkd                          # start fresh session
 nkd -s path/to/session.json  # resume saved session
+nkd -p "your prompt"         # headless: run a single prompt, print result to stdout, exit
+```
+
+> **Note:** headless mode is the foundation for [sub-agents and background agents](#sub-agents-and-background-agents).
+
+For long-running or overnight sessions, use `caffeinate` to prevent your Mac from sleeping:
+```bash
+caffeinate -u -t 3600 &  # keep awake for 1 hour
 ```
 
 ## Keybindings
@@ -35,6 +43,37 @@ See [tools.md](tools.md) for full details.
 | `web_search` | Returns titles, URLs, snippets via DuckDuckGo. Relies on DDG ranking for source quality |
 
 `manage_context` is the foundation for multi-phase work: iterate through a todo list, conduct deep research across many subtopics, or any task too large for a single context window. State lives externally (files, git) and context resets between phases. This pattern replaced an earlier `subtask` tool — subagents consistently lacked sufficient context and were invoked at the wrong times, and the tradeoff wasn't worth it: you give up parallelization but gain reliability and quality.
+
+## Message Queuing
+
+You can type and submit a new message while the LLM is still responding. It queues immediately and runs as soon as the current turn completes. No need to wait.
+
+## Sub-Agents, Background Agents, and Scheduled Agents
+
+Headless mode (`-p`) is all you need. Because `nkd` is just a process, you can spawn sub-agents via `bash` — the same tool the CLI already has access to.
+
+**Sub-agent** (blocking, result captured):
+```bash
+result=$(nkd -p "your prompt" 2>/dev/null)
+```
+
+**Background agents** (parallel, non-blocking):
+```bash
+nkd -p "prompt 1" 2>/dev/null > /tmp/agent1.txt &
+nkd -p "prompt 2" 2>/dev/null > /tmp/agent2.txt &
+wait
+```
+
+**Scheduled agents** (via `at`):
+```bash
+at now + 10 minutes <<< 'nkd -p "your prompt" 2>/dev/null > /tmp/result.txt'
+```
+
+Best practice: silence stderr (`2>/dev/null`) and redirect stdout to a file per agent. Collect results after `wait`.
+
+Each sub-agent is a full `nkd` instance — it has the complete tool suite (`read_file`, `edit_file`, `bash`, `web_search`, etc.) and its own context. Agents can be given different prompts, different files, different tasks — and run in true parallel.
+
+This replaces the previous `subtask` tool, which was a dedicated tool for spawning sub-agents. That approach required a custom tool implementation, had its own context-passing limitations, and was harder to reason about. This approach has none of those constraints: it's just processes. The only primitive needed was headless mode — one flag, a `print()`, and the entire pattern falls out naturally.
 
 ## "Be brief and exacting."
 
