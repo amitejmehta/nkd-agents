@@ -43,7 +43,7 @@ packages = ["nkd_agents"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-nkd_agents = ["skills/*.md"]
+nkd_agents = ["skills/**/SKILL.md"]
 
 # Default ruff configuration from: https://github.com/astral-sh/ruff?tab=readme-ov-file#configuration
 
