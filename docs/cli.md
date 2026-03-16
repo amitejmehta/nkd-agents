@@ -50,30 +50,9 @@ You can type and submit a new message while the LLM is still responding. It queu
 
 ## Sub-Agents, Background Agents, and Scheduled Agents
 
-Headless mode (`-p`) is all you need. Because `nkd` is just a process, you can spawn sub-agents via `bash` — the same tool the CLI already has access to.
+Because `nkd` is just a process, headless mode (`-p`) unlocks running sub-agents directly via `bash` — blocking, parallel, or scheduled. Each sub-agent is a full `nkd` instance with the same tools as you.
 
-**Sub-agent** (blocking, result captured):
-```bash
-result=$(nkd -p "your prompt" 2>/dev/null)
-```
-
-**Background agents** (parallel, non-blocking):
-```bash
-nkd -p "prompt 1" 2>/dev/null > /tmp/agent1.txt &
-nkd -p "prompt 2" 2>/dev/null > /tmp/agent2.txt &
-wait
-```
-
-**Scheduled agents** (via `at`):
-```bash
-at now + 10 minutes <<< 'nkd -p "your prompt" 2>/dev/null > /tmp/result.txt'
-```
-
-Best practice: silence stderr (`2>/dev/null`) and redirect stdout to a file per agent. Collect results after `wait`.
-
-Each sub-agent is a full `nkd` instance — it has the complete tool suite (`read_file`, `edit_file`, `bash`, `web_search`, etc.) and its own context. Agents can be given different prompts, different files, different tasks — and run in true parallel.
-
-This replaces the previous `subtask` tool, which was a dedicated tool for spawning sub-agents. That approach required a custom tool implementation, had its own context-passing limitations, and was harder to reason about. This approach has none of those constraints: it's just processes. The only primitive needed was headless mode — one flag, a `print()`, and the entire pattern falls out naturally.
+See the **[sub-agents skill](../skills/sub-agents/SKILL.md)** for patterns and best practices.
 
 ## "Be brief and exacting."
 
