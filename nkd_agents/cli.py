@@ -74,6 +74,12 @@ class CLI:
             )
             self.kwargs["system"] = Path("CLAUDE.md").read_text(encoding="utf-8")
 
+    def build_message(self, text: str) -> str:
+        mode_suffix = (
+            f" ({MODE_PREFIXES[self.mode]})" if MODE_PREFIXES[self.mode] else ""
+        )
+        return f"{START_PHRASE} Mode: {self.mode.title()}{mode_suffix}. {text}"
+
     def switch_model(self) -> None:
         self.model_idx = (self.model_idx + 1) % len(MODELS)
         self.kwargs["model"] = MODELS[self.model_idx]
@@ -162,11 +168,7 @@ class CLI:
         while True:
             text: str = await session.prompt_async("> ")
             if text and text.strip():
-                mode_suffix = (
-                    f" ({MODE_PREFIXES[self.mode]})" if MODE_PREFIXES[self.mode] else ""
-                )
-                mode_text = f" Mode: {self.mode.title()}{mode_suffix}."
-                await self.queue.put(user(f"{START_PHRASE}{mode_text} {text.strip()}"))
+                await self.queue.put(user(self.build_message(text.strip())))
 
     async def run(self) -> None:
         await asyncio.gather(self.llm_loop(), self.prompt_loop(), self.cache_warmer())
