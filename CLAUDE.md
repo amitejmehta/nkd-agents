@@ -29,16 +29,6 @@ examples/
 tests/
 └── test_utils.py       # Unit tests for extract_function_params, load_env, display_diff
 ```
-
-## Docs Files
-
-```
-README.md       # What it is, how to use it (external)
-VISION.md       # Intent, philosophy, north star — update when design direction changes
-DROPPED.md      # Everything cut and why — check before proposing anything new
-TODO.md         # Bugs + prioritized work — update after every task
-```
-
 ## Verify
 
 Run all checks before pushing:

@@ -71,6 +71,10 @@ class CLI:
         self.model_idx = 0
         self.kwargs = {"model": MODELS[0], "max_tokens": MAX_TOKENS, "thinking": omit}
         if Path("CLAUDE.md").exists():
+            claude_md = Path("CLAUDE.md").read_text(encoding="utf-8")
+            claude_md = claude_md.replace("{cwd}", Path.cwd().as_posix()).replace(
+                "{home}", Path.home().as_posix()
+            )
             self.kwargs["system"] = Path("CLAUDE.md").read_text(encoding="utf-8")
 
     def switch_model(self) -> None:
