@@ -163,24 +163,31 @@ class TestEditFile:
         file_path = tmp_path / "test.txt"
         file_path.write_text("existing content")
 
-        result = await edit_file(str(file_path), "nonexistent", "new")
-
-        assert result == "Error: old_str not found in file content"
+        with pytest.raises(ValueError, match="not found in file content"):
+            await edit_file(str(file_path), "nonexistent", "new")
         assert file_path.read_text() == "existing content"  # Unchanged
 
     @pytest.mark.asyncio
     async def test_edit_file_same_strings(self):
         """Test error when old_str equals new_str."""
-        result = await edit_file("/any/path", "same", "same")
-
-        assert result == "Error: old_str and new_str must be different"
+        with pytest.raises(ValueError, match="must be different"):
+            await edit_file("/any/path", "same", "same")
 
     @pytest.mark.asyncio
     async def test_edit_file_not_found(self):
         """Test error when file doesn't exist and old_str is not empty."""
-        result = await edit_file("/nonexistent/file.txt", "old", "new")
+        with pytest.raises(ValueError, match="not found"):
+            await edit_file("/nonexistent/file.txt", "old", "new")
 
-        assert result == "Error: File '/nonexistent/file.txt' not found"
+    @pytest.mark.asyncio
+    async def test_edit_file_create_already_exists(self, tmp_path):
+        """Test error when create_file is used on an existing file."""
+        file_path = tmp_path / "existing.txt"
+        file_path.write_text("original")
+
+        with pytest.raises(ValueError, match="already exists"):
+            await edit_file(str(file_path), "create_file", "new content")
+        assert file_path.read_text() == "original"  # Unchanged
 
     @pytest.mark.asyncio
     async def test_edit_file_multiple_sequential_edits(self, tmp_path):

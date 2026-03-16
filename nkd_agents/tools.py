@@ -36,32 +36,26 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
         new_str: String to replace with
         count: Maximum number of occurrences to replace (default: 1, use -1 for all)
 
-    Returns one of the following strings:
-    - "Success: Updated {path}"
-    - "Error: old_str not found in file content"
-    - "Error: old_str and new_str must be different"
-    - "Error: File '{path}' not found"
-    - "Error: File '{path}' already exists. Use old_str/new_str to edit it."
-    - "Error editing file '{path}': {error description}" (for other failures)
+    Returns "Success: Updated {path}" or raises ValueError.
     """
     if old_str == new_str:
-        return "Error: old_str and new_str must be different"
+        raise ValueError("old_str and new_str must be different")
 
     p = Path(path)
     file_path = p if p.is_absolute() else cwd_ctx.get() / p
 
     if old_str == "create_file":
         if file_path.exists():
-            return (
-                f"Error: File '{path}' already exists. Use old_str/new_str to edit it."
+            raise ValueError(
+                f"File '{path}' already exists. Use old_str/new_str to edit it."
             )
         content, edited_content = "", new_str
     elif not file_path.exists():
-        return f"Error: File '{path}' not found"
+        raise ValueError(f"File '{path}' not found")
     else:
         content = file_path.read_text(encoding="utf-8")
         if old_str not in content:
-            return "Error: old_str not found in file content"
+            raise ValueError("old_str not found in file content")
         edited_content = content.replace(old_str, new_str, count)
 
     display_diff(content, edited_content, str(file_path))
