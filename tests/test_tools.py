@@ -2,11 +2,11 @@
 
 import asyncio
 import base64
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from nkd_agents.tools import anthropic_client_ctx, bash, edit_file, read_file, subtask
+from nkd_agents.tools import bash, edit_file, read_file
 
 
 class TestReadFile:
@@ -302,81 +302,6 @@ class TestBash:
 
         assert "Error: Command timed out" in result
         assert "0.1 seconds" in result
-
-
-class TestSubtask:
-    @pytest.mark.asyncio
-    async def test_subtask_no_client(self):
-        """Test subtask fails when client not set."""
-        # Context vars have function scope by default, we need to test the actual subtask call
-        # When client_ctx.get() is called without being set, it raises LookupError
-        # We need to ensure no client is set in the context
-        with patch("nkd_agents.tools.anthropic_client_ctx") as mock_ctx:
-            mock_ctx.get.side_effect = LookupError("No client set")
-
-            with pytest.raises(LookupError):
-                await subtask("test", "task", model="haiku")
-
-    @pytest.mark.asyncio
-    async def test_subtask_with_client(self):
-        """Test subtask executes when client is set."""
-        mock_client = MagicMock()
-
-        # Mock the llm function to return a simple response
-        with patch("nkd_agents.tools.llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = "Task completed successfully"
-
-            token = anthropic_client_ctx.set(mock_client)
-            try:
-                result = await subtask(
-                    prompt="Test prompt", task_label="test task", model="haiku"
-                )
-
-                assert "subtask 'test task' complete" in result
-                assert "Task completed successfully" in result
-
-                # Verify llm was called with correct parameters
-                mock_llm.assert_called_once()
-                call_args = mock_llm.call_args
-                assert call_args.kwargs["model"] == "claude-haiku-4-6"
-                assert call_args.kwargs["max_tokens"] == 8192
-            finally:
-                anthropic_client_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_subtask_model_parameter(self):
-        """Test subtask uses correct model based on parameter."""
-        mock_client = MagicMock()
-
-        with patch("nkd_agents.tools.llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = "Done"
-
-            token = anthropic_client_ctx.set(mock_client)
-            try:
-                # Test sonnet
-                await subtask("prompt", "task", model="sonnet")
-                assert mock_llm.call_args.kwargs["model"] == "claude-sonnet-4-6"
-
-                # Test haiku
-                await subtask("prompt", "task", model="haiku")
-                assert mock_llm.call_args.kwargs["model"] == "claude-haiku-4-6"
-            finally:
-                anthropic_client_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_subtask_exception_handling(self):
-        """Test subtask handles exceptions from llm and returns error message."""
-        mock_client = MagicMock()
-
-        with patch("nkd_agents.tools.llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.side_effect = Exception("LLM failed")
-
-            token = anthropic_client_ctx.set(mock_client)
-            try:
-                with pytest.raises(Exception, match="LLM failed"):
-                    await subtask("prompt", "my_task", model="haiku")
-            finally:
-                anthropic_client_ctx.reset(token)
 
 
 class TestCwdContext:

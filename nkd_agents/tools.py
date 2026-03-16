@@ -1,13 +1,12 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Literal
 
 from anthropic.types.tool_result_block_param import Content
 
-from .anthropic import bytes_to_content, llm, user
-from .ctx import anthropic_client_ctx, cwd_ctx
-from .logging import GREEN, RESET, logging_ctx
+from .anthropic import bytes_to_content
+from .ctx import cwd_ctx, messages_ctx
+from .logging import GREEN, RESET
 from .utils import display_diff
 
 logger = logging.getLogger(__name__)
@@ -96,37 +95,16 @@ async def bash(command: str, timeout: int = 30) -> str:
             await process.wait()
 
 
-# Anthropic-specific: uses anthropic.llm function for sub-agent loop
-async def subtask(
-    prompt: str, task_label: str, model: Literal["haiku", "sonnet"]
-) -> str:
-    """Spawn a sub-agent to work on a specific task autonomously.
-
-    The sub-agent has access to the all same tools as you (except `subtask` itself of course).
-    Use this for complex, multi-step tasks that benefit from focused attention.
-
-    Args:
-        prompt: Detailed description of what the sub-agent should accomplish. Be specific about:
-            - What the task is and why it's needed
-            - What files or resources might be relevant
-            - What the expected output or outcome should be
-            - Any constraints or requirements
-        task_label: Short 3-5 word summary of the task for progress tracking
-        model: model to use for the subtask. use haiku for all simple tasks, otherwise sonnet.
-    Returns:
-        Response from the sub-agent
-    """
-    client = anthropic_client_ctx.get()  # Fail fast if not set
-    logging_ctx.set({"subtask": task_label})
-
-    try:
-        from .web import fetch_url, web_search
-
-        fns = [read_file, edit_file, bash, fetch_url, web_search]
-    except ImportError:
-        fns = [read_file, edit_file, bash]
-    models = {"haiku": "claude-haiku-4-6", "sonnet": "claude-sonnet-4-6"}
-    kwargs = {"model": models[model], "max_tokens": 8192}
-    response = await llm(client, [user(prompt)], fns=fns, **kwargs)
-    logger.info(f"✓ subtask '{task_label}' complete: {response}\n")
-    return f"subtask '{task_label}' complete: {response}"
+async def manage_context() -> str:
+    """Clear your entire context window, preserving the first message. Use this to free up context before starting a new phase of work."""
+    messages = messages_ctx.get()
+    if len(messages) <= 1:
+        return "Nothing to clear."
+    count = len(messages)
+    # Keep the first message AND the last assistant message (which holds the
+    # tool_use block for this very call). The tool_result will be appended
+    # after we return, so that assistant message must stay in place or the
+    # API will reject the next request with an orphaned tool_result error.
+    messages[:] = messages[:1] + messages[-1:]
+    logger.info(f"Managing context: cleared {count - 2} messages, kept first and last.")
+    return f"Cleared {count - 2} messages, kept first."
