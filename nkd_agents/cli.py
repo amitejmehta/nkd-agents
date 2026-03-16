@@ -197,19 +197,21 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    configure_logging(LOG_LEVEL)
     cli = CLI()
 
     try:
         if args.prompt:
-            print(
-                asyncio.run(llm(cli.client, [user(args.prompt)], TOOLS, **cli.kwargs))
+            configure_logging(LOG_LEVEL)
+            result = asyncio.run(
+                llm(cli.client, [user(args.prompt)], TOOLS, **cli.kwargs)
             )
+            print(result)
             return
         if args.session:
             cli.messages[:] = json.loads(args.session.read_text())
             print(f"{DIM}Loaded session: {args.session}{RESET}")
         with patch_stdout(raw=True):
+            configure_logging(LOG_LEVEL)
             print(BANNER)
             asyncio.run(cli.run())
     except (KeyboardInterrupt, EOFError):
