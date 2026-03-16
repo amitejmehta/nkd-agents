@@ -30,7 +30,9 @@ def tool_schema(
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
 
-    parameters, required_parameters = extract_function_params(func)
+    parameters, required_parameters = extract_function_params(
+        func, allow_defaults=False
+    )
 
     return FunctionToolParam(
         type="function",

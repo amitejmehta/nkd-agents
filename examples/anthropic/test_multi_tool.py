@@ -11,10 +11,9 @@ from .config import KWARGS
 logger = logging.getLogger(__name__)
 
 
-async def search_flights(origin: str, destinations: list[str]) -> str:
-    """Search for available flights from origin to multiple destinations."""
-    results = [f"{dest}: $450, $520, $680" for dest in destinations]
-    return "Found flights - " + " | ".join(results)
+async def search_flights(origin: str, destination: str) -> str:
+    """Search for available flights from origin to destination."""
+    return f"{destination}: $450, $520, $680"
 
 
 async def search_hotels(city: str, budget: Literal["low", "medium", "high"]) -> str:

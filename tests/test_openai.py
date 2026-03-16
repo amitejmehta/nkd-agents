@@ -64,7 +64,7 @@ def test_tool_schema():
     assert schema["parameters"]["type"] == "object"
     assert "query" in schema["parameters"]["properties"]
     assert "limit" in schema["parameters"]["properties"]
-    assert schema["parameters"]["required"] == ["query"]
+    assert schema["parameters"]["required"] == ["query", "limit"]
     assert schema["strict"] is True
 
 

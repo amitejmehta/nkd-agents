@@ -1,12 +1,22 @@
 """Test utils module functionality."""
 
+import inspect
 import logging
 import os
-from typing import List, Literal
+from typing import Literal
 
 import pytest
+from pydantic import BaseModel
 
-from nkd_agents.utils import display_diff, extract_function_params, load_env
+from nkd_agents.utils import (
+    _handle_literal_annotation,
+    _handle_primitive,
+    _handle_union,
+    display_diff,
+    extract_function_params,
+    load_env,
+    serialize,
+)
 
 
 class TestExtractFunctionParams:
@@ -59,62 +69,6 @@ class TestExtractFunctionParams:
         assert "optional" not in required_list
 
     @pytest.mark.asyncio
-    async def test_lists(self):
-        """Lists of all types create array schemas."""
-
-        async def func(
-            items: list[str],
-            numbers: list[int],
-            values: list[float],
-            flags: list[bool],
-            optional: list[str] = None,
-        ):
-            pass
-
-        params, required_list = extract_function_params(func)
-        assert params["items"]["items"]["type"] == "string"
-        assert params["numbers"]["items"]["type"] == "integer"
-        assert params["values"]["items"]["type"] == "number"
-        assert params["flags"]["items"]["type"] == "boolean"
-        assert "optional" not in required_list
-
-    @pytest.mark.asyncio
-    async def test_bare_list_error(self):
-        """Bare list without type parameter raises error."""
-
-        async def func(items: list):
-            pass
-
-        with pytest.raises(ValueError) as exc:
-            extract_function_params(func)
-        assert "must have type parameter" in str(exc.value)
-
-    @pytest.mark.asyncio
-    async def test_bare_List_error(self):
-        """Bare List (uppercase) raises error."""
-
-        async def func(items: List):
-            pass
-
-        with pytest.raises(ValueError) as exc:
-            extract_function_params(func)
-        assert "list" in str(exc.value).lower()
-
-    @pytest.mark.asyncio
-    async def test_invalid_list_item_type(self):
-        """list[UnsupportedType] raises error."""
-
-        class Custom:
-            pass
-
-        async def func(items: list[Custom]):
-            pass
-
-        with pytest.raises(ValueError) as exc:
-            extract_function_params(func)
-        assert "Unsupported list item type" in str(exc.value)
-
-    @pytest.mark.asyncio
     async def test_unsupported_types(self):
         """Dict and custom classes raise errors."""
 
@@ -154,7 +108,7 @@ class TestExtractFunctionParams:
         from nkd_agents.utils import _handle_literal_annotation
 
         with pytest.raises(ValueError) as exc:
-            _handle_literal_annotation((), "func.param", {})
+            _handle_literal_annotation((), "func.param")
         assert "Empty Literal" in str(exc.value)
 
     @pytest.mark.asyncio
@@ -235,6 +189,146 @@ class TestLoadEnv:
         assert os.environ.get("ANOTHER") == "val"
         del os.environ["VALID"]
         del os.environ["ANOTHER"]
+
+
+class TestHandleLiteralAnnotation:
+    def test_valid_str_literal(self):
+        assert _handle_literal_annotation(("a", "b"), "f.p") == {
+            "type": "string",
+            "enum": ["a", "b"],
+        }
+
+    def test_valid_int_literal(self):
+        assert _handle_literal_annotation((1, 2), "f.p") == {
+            "type": "integer",
+            "enum": [1, 2],
+        }
+
+    def test_empty_raises(self):
+        with pytest.raises(ValueError, match="Empty Literal"):
+            _handle_literal_annotation((), "f.p")
+
+    def test_unsupported_type_raises(self):
+        with pytest.raises(ValueError, match="Unsupported Literal type"):
+            _handle_literal_annotation((b"x",), "f.p")
+
+    def test_mixed_types_raises(self):
+        with pytest.raises(ValueError, match="mixed"):
+            _handle_literal_annotation(("a", 1), "f.p")
+
+
+class TestHandleUnion:
+    def test_optional_int(self):
+        assert _handle_union((int, type(None)), "f.p") == {"type": "integer"}
+
+    def test_non_optional_raises(self):
+        with pytest.raises(ValueError, match="Only T | None"):
+            _handle_union((int, str), "f.p")
+
+    def test_triple_union_raises(self):
+        with pytest.raises(ValueError, match="Only T | None"):
+            _handle_union((int, str, type(None)), "f.p")
+
+
+class TestHandlePrimitive:
+    def test_str(self):
+        assert _handle_primitive(str, "f.p") == {"type": "string"}
+
+    def test_unannotated_defaults_to_string(self):
+        assert _handle_primitive(inspect.Parameter.empty, "f.p") == {"type": "string"}
+
+    def test_unsupported_type_raises(self):
+        with pytest.raises(ValueError, match="Unsupported type"):
+            _handle_primitive(dict, "f.p")
+
+
+class TestSerialize:
+    def test_primitive_passthrough(self):
+        assert serialize("x") == "x"
+        assert serialize(1) == 1
+        assert serialize(None) is None
+        assert serialize(True) is True
+
+    def test_pydantic_model(self):
+        class M(BaseModel):
+            x: int
+
+        assert serialize(M(x=1)) == {"x": 1}
+
+    def test_list_of_primitives(self):
+        assert serialize([1, "a", None]) == [1, "a", None]
+
+    def test_dict_of_primitives(self):
+        assert serialize({"a": 1, "b": "x"}) == {"a": 1, "b": "x"}
+
+    def test_list_containing_model(self):
+        class M(BaseModel):
+            v: str
+
+        assert serialize([M(v="hi")]) == [{"v": "hi"}]
+
+    def test_dict_containing_model(self):
+        class M(BaseModel):
+            v: int
+
+        assert serialize({"k": M(v=2)}) == {"k": {"v": 2}}
+
+    def test_nested_model(self):
+        class Inner(BaseModel):
+            n: int
+
+        class Outer(BaseModel):
+            inner: Inner
+
+        assert serialize(Outer(inner=Inner(n=3))) == {"inner": {"n": 3}}
+
+
+class TestManageContext:
+    """Test manage_context tool."""
+
+    def _set_messages(self, msgs):
+        from nkd_agents.ctx import messages_ctx
+
+        messages_ctx.set(msgs)
+
+    @pytest.mark.asyncio
+    async def test_no_op_when_single_message(self):
+        from nkd_agents.tools import manage_context
+
+        msgs = [{"role": "user", "content": "first"}]
+        self._set_messages(msgs)
+        result = await manage_context()
+        assert result == "Nothing to clear."
+        assert len(msgs) == 1
+
+    @pytest.mark.asyncio
+    async def test_clears_all_but_first(self):
+        from nkd_agents.tools import manage_context
+
+        first = {"role": "user", "content": "first"}
+        msgs = [
+            first,
+            {"role": "assistant", "content": "a"},
+            {"role": "user", "content": "b"},
+        ]
+        self._set_messages(msgs)
+        last = {"role": "user", "content": "b"}
+        result = await manage_context()
+        assert msgs == [first, last]
+        assert result == "Cleared 1 messages, kept first."
+
+    @pytest.mark.asyncio
+    async def test_mutates_in_place(self):
+        from nkd_agents.tools import manage_context
+
+        msgs = [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "second"},
+        ]
+        original_ref = msgs
+        self._set_messages(msgs)
+        await manage_context()
+        assert msgs is original_ref
 
 
 class TestDisplayDiff:
