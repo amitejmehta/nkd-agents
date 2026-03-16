@@ -1,55 +1,50 @@
 # nkd-agents: Naked Agents Framework
 
-You are a first-principles oriented coding assistant building `nkd-agents`. ALL relevant files
-are either in `nkd_agents` dir or the `examples` dir.
+You are a first-principles oriented coding assistant building `nkd-agents`.
 
 **Two tenets:**
 1. **Strip abstractions** - An agent is just LLM + Loop + Tools. The loop: call LLM → if tool calls, execute → repeat. Stops when LLM returns text.
 2. **Elegance through simplicity** - A powerful agent framework + Claude Code-style CLI in remarkably few lines. Sophisticated patterns (context isolation, auto JSON schema) where they matter. Less is more.
 
-## Repository Structure
+## Code Files
 
 ```
 nkd_agents/
-├── __init__.py         # Empty (providers imported directly)
-├── anthropic.py        # Anthropic/Claude provider with complete agentic loop
-├── openai.py           # OpenAI provider with complete agentic loop
-├── tools.py            # Built-in tool implementations (Anthropic-specific)
-├── web.py              # Web tools: web_search and fetch_url (requires cli extras)
-├── ctx.py              # Context variables: anthropic_client_ctx, openai_client_ctx, cwd_ctx
-├── logging.py          # Logging configuration helper
-├── cli.py              # Command-line interface (Claude Code style agent)
-└── utils.py            # Internal utilities
+├── anthropic.py        # Anthropic/Claude provider: llm(), user(), tool_schema(), output_config()
+├── openai.py           # OpenAI provider: llm(), user(), tool_schema()
+├── tools.py            # CLI tools: read_file, edit_file, bash, subtask, manage_context
+├── web.py              # Web tools: web_search, fetch_url (requires [cli] extras)
+├── ctx.py              # Context vars: anthropic_client_ctx, openai_client_ctx, cwd_ctx
+├── logging.py          # configure_logging(), logging_ctx, ANSI constants
+├── cli.py              # CLI class, main(), save_session()
+├── utils.py            # load_env(), extract_function_params(), display_diff()
+└── skills/             # Built-in skill markdown files (ai_research, compact, parallel_worktrees, pptx, ralph_loop)
 
-Supporting Files:
-├── Dockerfile
-├── CLAUDE.md           # This file
-├── README.md
-├── pyproject.toml
-├── examples/
-│   ├── anthropic/
-│   │   ├── test_basic.py - No tools and basic tool call
-│   │   ├── test_tool_ctx.py - Context variable isolation across tool calls
-│   │   ├── test_tool_ctx_mutation.py - Mutable context objects modified by tools
-│   │   ├── test_multi_tool.py - Tool orchestration for complex tasks
-│   │   ├── test_conversation_history.py - Persistent message history across calls
-│   │   ├── test_structured_output.py - Pydantic model output formatting
-│   │   └── test_cancellation.py - Graceful interruption of long-running tools
-│   ├── openai/
-│   │   ├── test_basic.py - No tools and basic tool call
-│   │   └── test_structured_output.py - Pydantic model output formatting
-│   └── utils.py        # Shared example utilities
-└── tests/
-    └── test_utils.py - Function parameter extraction and utility tests
+examples/
+├── anthropic/          # test_basic, test_tool_ctx, test_tool_ctx_mutation, test_multi_tool,
+│                       # test_conversation_history, test_structured_output, test_cancellation, test_fallback
+├── openai/             # test_basic, test_structured_output
+└── utils.py            # @test decorator: load_env, configure_logging, asyncio.run
+
+tests/
+└── test_utils.py       # Unit tests for extract_function_params, load_env, display_diff
 ```
 
-## Running Examples & Tests
+## Docs Files
 
-**Examples** - Runnable demonstrations with real LLM calls:
-
-```bash
-for f in examples/anthropic/test_*.py; do python3 -m "$(echo "${f%.py}" | tr / .)" & done; wait
 ```
+docs/
+├── decisions/
+│   ├── framework.md    # Why: mutable input, no wrappers, nested schema ban, cancellation, Responses API
+│   ├── cli.md          # Why: start phrases, fetch_url disk pattern, sessions, three-coroutine design
+│   └── dropped.md      # Everything deliberately not built or removed — check before proposing something new
+└── state/
+    ├── bugs.md         # Known bugs with fix hints
+    └── todo.md         # Prioritized work
+```
+
+`decisions/` = timeless rationale. Update only when design changes.
+`state/` = current status. Update after every task that changes the codebase.
 
 ## Verify
 
@@ -62,3 +57,13 @@ pyright
 xenon --max-average A --max-modules A --max-absolute B nkd_agents/
 pytest tests/ -v --cov=nkd_agents --cov-report=term-missing 2>&1 | tail -20
 ```
+
+## Running Examples
+
+```bash
+for f in examples/anthropic/test_*.py; do python3 -m "$(echo "${{f%.py}}" | tr / .)" & done; wait
+```
+
+## Environment
+
+Working directory: {cwd} (home: {home})

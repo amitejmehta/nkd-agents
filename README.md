@@ -25,13 +25,7 @@ response = await llm(
 
 In a fully async framework, tool context is trivial: Python's `contextvars.ContextVar` just works. No framework-specific parameters or wrapper objects. See [`examples/anthropic/test_tool_ctx.py`](examples/anthropic/test_tool_ctx.py).
 
-**Tool Schemas:** An optional convenience, JSON schemas are auto-generated from function signatures. Supported types:
-- Primitives: `str`, `int`, `float`, `bool`  
-- Optional: `T | None` for any primitive
-- Enums: `Literal[...]`
-- Lists: `list[T]` for primitives
-
-Nested parameter structures aren't supported (they're a bit of a tool design anti-pattern). However, for cases requiring complex schemas, you may pass your own via the provider's native parameter (`tools=` for Anthropic/OpenAI).
+**Tool Schemas:** An optional convenience, JSON schemas are auto-generated from function signatures. Supported types: `str`, `int`, `float`, `bool`, `Literal[...]`, `T | None`. Nested structures (lists, dicts, dataclasses) aren't supported — a tool needing them is usually doing too much. For cases requiring complex schemas, pass your own via `tools=` in kwargs.
 
 
 ## The CLI
@@ -56,7 +50,7 @@ It supports queueing messages while Claude is working, and the following control
 | `ctrl+u` | Clear input line |
 
 | `ctrl+k` | Compact history (clears tool calls/results) |
-| `ctrl+p` | Cycle prompts (local `prompts/` and built-in) |
+| `ctrl+p` | Cycle prompts (local `skills/` and built-in) |
 | `ctrl+c` | Exit |
 
 **Context-Efficient Web Search**
@@ -99,7 +93,7 @@ uv tool install nkd-agents[cli]  # or: pipx install nkd-agents[cli]
 # Launch (uses ANTHROPIC_API_KEY from env, or configure once)
 nkd
 
-# Optional: override API key or set other env vars
+# Optional: configure API key or other env vars
 mkdir -p ~/.nkd-agents
 echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > ~/.nkd-agents/.env
 ```

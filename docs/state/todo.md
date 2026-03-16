@@ -2,11 +2,12 @@
 
 ## Bugs (priority order)
 
-1. Unify `subtask` model dict with CLI `MODELS` list
-2. Fix type-ignore hacks on cache_control mutation (anthropic.py + cli.py)
+1. Fix type-ignore hacks on cache_control mutation (anthropic.py + cli.py)
 3. Fix type-ignore on `resp.output` append in openai.py
 
 ## Features / improvements
+
+- `install.sh` curl script: point GitHub raw URL once repo is public (placeholder URL in script)
 
 - OpenAI subtask equivalent
 - Cancellation test for OpenAI provider (Anthropic has one, OpenAI doesn't)
