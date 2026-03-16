@@ -37,27 +37,25 @@ The CLI is a terminal-based Claude coding assistant with the following tools:
 - `edit_file` - Create new files or replace occurrences of strings in existing files (line-by-line diffs shown)
 - `web_search` - Search DuckDuckGo via headless Chrome and return titles, URLs, and snippets
 - `fetch_url` - Convert webpage to clean markdown, save to disk, return only path and character count
-- `subtask` - Spawn an autonomous sub-agent with full tool access (excluding nested subtasks)
+- `manage_context` - Clear context window, keeping only the first message (frees up token budget mid-session)
 
 It supports queueing messages while Claude is working, and the following controls via keyboard shortcuts:
 
 | Key | Action |
 |---|---|
 | `tab` | Toggle extended thinking |
-| `shift+tab` | Toggle plan mode |
+| `shift+tab` | Cycle mode (None → Plan → Socratic) |
 | `esc esc` | Interrupt current LLM call or tool execution |
 | `ctrl+l` | Cycle model (sonnet → opus → haiku → sonnet) |
 | `ctrl+u` | Clear input line |
-
 | `ctrl+k` | Compact history (clears tool calls/results) |
-| `ctrl+p` | Cycle prompts (local `skills/` and built-in) |
 | `ctrl+c` | Exit |
 
 **Context-Efficient Web Search**
 
 The CLI includes a free `web_search` tool (DuckDuckGo via headless Chrome) and `fetch_url` tool designed for maximum context efficiency. Rather than injecting webpage content directly into the conversation, `fetch_url` converts pages to clean markdown, saves to disk, and returns only the file path and character count. Full content never enters the context window—the model explores long responses via `grep` (head, tail), reading only what it needs. Since the model filters false positives at read time, scraping can favor recall over precision—capturing more potentially relevant information (ie. from complex JavaScript-heavy pages).
 
-Coupled with the ability to spawn sub-agents (`subtask`), this makes the CLI exceptionally well-suited for deep research. Give it a well-written research prompt and it will search, fetch, and persist a local library of markdown files on disk—source material it can then cross-reference, explore, and synthesize across multiple documents, all without exhausting its context window.
+This makes the CLI exceptionally well-suited for deep research. Give it a well-written research prompt and it will search, fetch, and persist a local library of markdown files on disk—source material it can then cross-reference, explore, and synthesize across multiple documents, all without exhausting its context window.
 
 **Use of Start Phrases**
 
@@ -65,15 +63,20 @@ Perhaps the most unique feature, every message is prefixed with the phrase **"Be
 
 Why not system prompting? System prompts for brevity degrade in long contexts—after multiple tool calls and file reads, they become a vanishing fraction of total context. Start phrases appear at the beginning of each turn, maintaining consistent influence regardless of conversation length.
 
-The same pattern is used for read-only mode by prefixing **"PLAN MODE - READ ONLY."** to each message.
+The same logic applies to modes. `shift+tab` cycles through **None → Plan → Socratic**, prepending the mode's instruction to each message (e.g. `READ ONLY!` or `ASK, DON'T TELL!`). Modes are env-configurable:
 
-We've found start phrases to be extremely powerful. Experiment with your own via `NKD_AGENTS_START_PHRASE`:
+```bash
+NKD_PLAN_MODE="PLAN ONLY. No edits." nkd
+NKD_SOCRATIC_MODE="Ask clarifying questions first." nkd
+```
+
+We've found start phrases to be extremely powerful. Experiment with your own via `NKD_START_PHRASE`:
 ```bash
 # Single session
-NKD_AGENTS_START_PHRASE="Your custom phrase." nkd
+NKD_START_PHRASE="Your custom phrase." nkd
 
 # Persist (add to ~/.nkd-agents/.env)
-echo 'NKD_AGENTS_START_PHRASE="Your custom phrase."' >> ~/.nkd-agents/.env
+echo 'NKD_START_PHRASE="Your custom phrase."' >> ~/.nkd-agents/.env
 ```
 
 ## Installation
