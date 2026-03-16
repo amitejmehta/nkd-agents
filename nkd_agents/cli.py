@@ -216,4 +216,5 @@ def main() -> None:
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
     finally:
-        save_session(cli.messages, path=args.session)
+        if len(cli.messages) > 10:
+            save_session(cli.messages, path=args.session)
