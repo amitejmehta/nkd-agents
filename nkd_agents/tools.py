@@ -75,7 +75,7 @@ async def bash(command: str, timeout: int = 30, background: bool = False) -> str
     Rules: always use `rg` (ripgrep) over `grep`. Never use `find` — use glob patterns instead.
     """
     logger.info(f"Executing Bash: {GREEN}{command}{RESET}")
-    process = await asyncio.create_subprocess_exec(
+    process: asyncio.subprocess.Process = await asyncio.create_subprocess_exec(
         "bash",
         "-c",
         command,
