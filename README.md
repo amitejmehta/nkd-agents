@@ -13,16 +13,16 @@ I built the CLI to understand what I was actually using every day. What started 
 ## Install
 
 ```bash
-# Framework
+curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd_agents/main/install.sh | bash
+```
+
+Installs uv, ripgrep, the `nkd` CLI, prompts for your Anthropic API key, and adds an `nkd-update` alias for one-command updates.
+
+To update later: `nkd-update`
+
+**Framework only:**
+```bash
 pip install nkd-agents
-
-# CLI (note: web search requires Chromium-based broswer)
-uv tool install --force 'git+https://github.com/amitejmehta/nkd_agents.git[cli]'
-
-# API key
-mkdir -p ~/.nkd-agents && echo "ANTHROPIC_API_KEY=..." > ~/.nkd-agents/.env
-
-nkd
 ```
 
 **Docker** (Chromium included):
