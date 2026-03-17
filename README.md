@@ -21,7 +21,7 @@ I built the CLI to understand what I was actually using every day. What started 
 curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
 ```
 
-Installs [uv](https://docs.astral.sh/uv/), [ripgrep](https://github.com/BurntSushi/ripgrep), the `nkd` CLI, prompts for your Anthropic API key, and adds an `nkd-update` alias for one-command updates.
+Installs [uv](https://docs.astral.sh/uv/), [ripgrep](https://github.com/BurntSushi/ripgrep), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-update` alias for one-command updates.
 
 To update later: `nkd-update`
 
