@@ -10,7 +10,7 @@ nkd -s path/to/session.json  # resume saved session
 nkd -p "your prompt"         # headless: run a single prompt, print result to stdout, exit
 ```
 
-> **Note:** headless mode is the foundation for [subagents and background agents](#subagents-background-agents-and-scheduled-agents).
+> **Note:** headless mode is the foundation for [subagents and background agents](#skills--subagents).
 
 For long-running or overnight sessions, use `caffeinate` to prevent your Mac from sleeping:
 ```bash
