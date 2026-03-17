@@ -18,11 +18,15 @@ Both providers implement this identically. The only difference is wire format.
 from anthropic import AsyncAnthropic
 from nkd_agents.anthropic import llm, user
 
+async def get_weather(city: str) -> str:
+    """Get the current weather for a city."""
+    return f"Sunny, 24°C"
+
 response: str = await llm(
-    client,   # AsyncAnthropic | AsyncAnthropicVertex
-    input,    # list[MessageParam]  — mutated in-place
-    fns=[],   # Sequence[async fn] — optional tools
-    **kwargs  # model, max_tokens, system, temperature, thinking, tools, ...
+    AsyncAnthropic(),       # AsyncAnthropic | AsyncAnthropicVertex
+    [user("What's the weather in Paris?")],  # list[MessageParam]  — mutated in-place
+    fns=[get_weather],      # Sequence[async fn] — optional tools
+    **kwargs                # model, max_tokens, system, temperature, thinking, tools, ...
 )
 ```
 
@@ -37,11 +41,15 @@ response: str = await llm(
 from openai import AsyncOpenAI
 from nkd_agents.openai import llm, user
 
+async def get_weather(city: str) -> str:
+    """Get the current weather for a city."""
+    return f"Sunny, 24°C"
+
 response: str = await llm(
-    client,   # AsyncOpenAI
-    input,    # list[ResponseInputItemParam]  — mutated in-place
-    fns=[],   # Sequence[async fn]
-    **kwargs  # model, temperature, reasoning, tools, ...
+    AsyncOpenAI(),          # AsyncOpenAI
+    [user("What's the weather in Paris?")],  # list[ResponseInputItemParam]  — mutated in-place
+    fns=[get_weather],      # Sequence[async fn]
+    **kwargs                # model, temperature, reasoning, tools, ...
 )
 ```
 
@@ -111,7 +119,7 @@ Tools are called with `asyncio.gather()` — all tool calls in a single LLM turn
 - Tools in the same turn must not depend on each other's results.
 - Tools in separate turns execute sequentially (the LLM chooses).
 
-Tool errors are caught and returned as a string `"Error calling tool {name}: {msg}"`. Tools should handle their own errors and return descriptive strings rather than raising.
+Tool errors are caught by the provider's `llm()` and returned to the model as an error string.
 
 ## Context Variables
 
@@ -129,7 +137,7 @@ await llm(client, [user("Greet Alice")], fns=[greet], **kwargs)
 # greet() sees "spanish" — no wrapper objects needed
 ```
 
-Two built-in context vars in `nkd_agents.ctx`:
+One built-in context var in `nkd_agents.ctx`:
 
 | Var | Type | Purpose |
 |-----|------|---------|
@@ -140,16 +148,24 @@ Two built-in context vars in `nkd_agents.ctx`:
 When the task running `llm()` is cancelled (e.g., `task.cancel()`):
 
 1. The currently-running `asyncio.gather()` for tool calls raises `CancelledError`.
-2. The loop catches it, fills all pending tool results with `"Interrupted"`.
+2. The loop catches it, fills all tool results with `"Interrupted"`.
 3. Re-raises `CancelledError` so the cancellation propagates properly.
 
 This keeps the API in a valid state — no orphaned `tool_use` blocks without `tool_result`.
 
-## Prompt Caching (Anthropic)
+## Prompt Caching
 
-When tools are present, `llm()` temporarily sets `cache_control: {type: ephemeral}` on the last content block of the last user message before each API call, then removes it immediately after. This gives Anthropic a 5-minute cache breakpoint on the conversation history, reducing costs and latency on long agentic loops. The mutation is cleaned up in a `finally` block so the list is never left in a dirty state.
+**Anthropic** ([docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching))
 
-## Structured Output (Anthropic)
+Anthropic prompt caching has a default TTL of 5 minutes and supports a maximum of four cache breakpoints. This framework uses a single breakpoint, always updated to be the most recent user message: when tools are present, `llm()` temporarily sets `cache_control: {type: ephemeral}` on the last content block of the last user message before each API call, then removes it immediately after in a `finally` block so the list is never left in a dirty state. This reduces costs and latency on long agentic loops.
+
+**OpenAI** ([docs](https://platform.openai.com/docs/guides/prompt-caching))
+
+OpenAI caches prompts automatically on all API requests with no code changes required.
+
+## Structured Output
+
+**Anthropic**
 
 ```python
 from pydantic import BaseModel
@@ -165,19 +181,23 @@ weather = Weather.model_validate_json(json_str)
 
 `output_config(model)` calls `anthropic.transform_schema()` on the Pydantic model's JSON schema and returns an `OutputConfigParam` suitable for passing to `llm()`.
 
-## Multi-provider / Auto-routing
+**OpenAI**
 
-`nkd_agents.auto` (used by the headless runner) detects provider from model name:
+Pass the Pydantic model as the `response_format` kwarg:
 
 ```python
-provider = anthropic if "claude" in model_name else openai
-client = AsyncAnthropic() if "claude" in model_name else AsyncOpenAI()
+response = await llm(client, messages, response_format=Weather, **kwargs)
+weather = Weather.model_validate_json(response)
 ```
 
-Both providers share the same tool functions — the tools are provider-agnostic.
+## Thinking
 
-## Thinking (Anthropic)
+**Anthropic** ([docs](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking))
 
 Pass `thinking={"type": "adaptive"}` (or `{"type": "enabled", "budget_tokens": N}`) in kwargs. The CLI toggles this with `tab`. Thinking blocks are logged at INFO level but not included in the returned text.
 
 Pass `thinking=anthropic.omit` (the default in the CLI) to disable.
+
+**OpenAI** ([docs](https://platform.openai.com/docs/guides/reasoning))
+
+Pass `reasoning={"effort": "low"}` (or `"medium"` / `"high"`) in kwargs. `low` favors speed and fewer tokens; `high` favors more thorough reasoning. Reasoning items are consumed from the response but not included in the returned text.
