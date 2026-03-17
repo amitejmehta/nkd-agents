@@ -182,7 +182,7 @@ def save_session(messages: list[MessageParam], path: Path | None = None) -> None
         path = sessions_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
 
     path.write_text(json.dumps(serialize(messages), indent=2))
-    logger.info(f"Session saved: {path}")
+    print(f"{DIM}Session saved: {path}{RESET}")
 
 
 def main() -> None:
