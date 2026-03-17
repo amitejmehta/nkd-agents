@@ -10,7 +10,7 @@ nkd -s path/to/session.json  # resume saved session
 nkd -p "your prompt"         # headless: run a single prompt, print result to stdout, exit
 ```
 
-> **Note:** headless mode is the foundation for [sub-agents and background agents](#sub-agents-background-agents-and-scheduled-agents).
+> **Note:** headless mode is the foundation for [subagents and background agents](#subagents-background-agents-and-scheduled-agents).
 
 For long-running or overnight sessions, use `caffeinate` to prevent your Mac from sleeping:
 ```bash
@@ -70,13 +70,13 @@ Socratic mode is the Socratic method applied: arriving at understanding through 
 
 The prefixes are configurable via `NKD_PLAN_MODE` and `NKD_SOCRATIC_MODE` in `~/.nkd-agents/.env`.
 
-## Skills & Sub-Agents
+## Skills & Subagents
 
 This repo ships concise, powerful skills — `read <path> and follow it` to use one. Paths printed at startup.
 
-Skills: [`ai_research`](../skills/ai_research), [`compact`](../skills/compact), [`parallel_worktrees`](../skills/parallel_worktrees), [`pptx`](../skills/pptx), [`sub-agents`](../skills/sub-agents).
+Skills: [`ai_research`](../skills/ai_research), [`compact`](../skills/compact), [`parallel_worktrees`](../skills/parallel_worktrees), [`pptx`](../skills/pptx), [`subagents`](../skills/subagents).
 
-Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of sub-agent patterns:
+Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of subagent patterns:
 
 - **Sequential** — run one after another
 - **Parallel** — fan out across tasks concurrently
@@ -85,7 +85,7 @@ Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of 
 - **Recurring** — via `cron`
 - **Ralph Wiggum loops** — self-healing context; each iteration is a fresh context, state lives in files or git
 
-See the [`sub-agents`](../skills/sub-agents) skill.
+See the [`subagents`](../skills/subagents) skill.
 
 ## Cache Warming
 

@@ -33,7 +33,7 @@ BANNER = (
     "'ctrl+l':    next model\n"
     "'ctrl+k':    compact history (clears tool calls/results)\n"
     f"'skills':    {SKILLS_DIR} (click · paste to LLM)\n"
-    f"'sub-agents': {SKILLS_DIR}/sub-agents/SKILL.md\n"
+    f"'subagents': {SKILLS_DIR}/subagents/SKILL.md\n"
     f"'cli docs':  https://github.com/amitejmehta/nkd-agents/blob/main/docs/cli.md{RESET}\n"
 )
 

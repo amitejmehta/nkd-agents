@@ -2,7 +2,7 @@
 
 Spawn agents via `bash`. Each is a full `nkd` instance with the same tools as you.
 
-## Sub-agents (parallel)
+## Subagents (parallel)
 Fan out across tasks — `&` handles parallelisation inside the command:
 ```bash
 nkd -p "analyze auth.py" 2>/dev/null > /tmp/auth.txt &
