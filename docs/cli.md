@@ -70,32 +70,22 @@ Socratic mode is the Socratic method applied: arriving at understanding through 
 
 The prefixes are configurable via `NKD_PLAN_MODE` and `NKD_SOCRATIC_MODE` in `~/.nkd-agents/.env`.
 
-## Skills, Sub-Agents, Background & Scheduled Agents
+## Skills & Sub-Agents
 
 This repo ships concise, powerful skills — `read <path> and follow it` to use one. Paths printed at startup.
 
 Skills: [`ai_research`](../nkd_agents/skills/ai_research), [`compact`](../nkd_agents/skills/compact), [`parallel_worktrees`](../nkd_agents/skills/parallel_worktrees), [`pptx`](../nkd_agents/skills/pptx), [`sub-agents`](../nkd_agents/skills/sub-agents).
 
-Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of agent patterns:
+Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of sub-agent patterns:
 
-**Sub-agents** — the main CLI agent can spawn sub-agents via `bash`, passing context through arguments. Run them sequentially, in parallel, or fan out across tasks:
-```bash
-nkd -p "analyze auth.py" & nkd -p "analyze db.py" & wait
-```
+- **Sequential** — run one after another
+- **Parallel** — fan out across tasks concurrently
+- **Background** — fire and forget
+- **Scheduled** — via `at`
+- **Recurring** — via `cron`
+- **Ralph loops** — self-healing context; each iteration is a fresh context, state lives in files or git
 
-**Long-running tasks with context reset** — wrap headless mode in a `while` loop. Each iteration is a fresh context; state lives in files or git:
-```bash
-while true; do
-  nkd -p "read docs/todo.md, implement the next task, commit, update todo.md"
-  [[ $(grep -c "^- \[ \]" docs/todo.md) -eq 0 ]] && break
-done
-```
-
-**Background & scheduled agents** — because it's just a process, run it anywhere:
-```bash
-nkd -p "run nightly audit" &                        # background
-echo "0 2 * * * nkd -p 'run nightly audit'" | crontab -  # scheduled
-```
+See the [`sub-agents`](../nkd_agents/skills/sub-agents) skill.
 
 ## Compact History (`ctrl+k`)
 

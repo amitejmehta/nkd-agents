@@ -64,24 +64,28 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
     return f"Success: Updated {file_path}"
 
 
-async def bash(command: str, timeout: int = 30) -> str:
+async def bash(command: str, timeout: int = 30, background: bool = False) -> str:
     """Execute a bash command and return the results.
 
     Returns one of the following strings:
     - "STDOUT:\n{stdout}\nSTDERR:\n{stderr}\nEXIT CODE: {returncode}"
     - "Error executing command: {str(e)}"
+    - "Background PID: {pid}" (when background=True)
+
+    Rules: always use `rg` (ripgrep) over `grep`. Never use `find` — use glob patterns instead.
     """
     logger.info(f"Executing Bash: {GREEN}{command}{RESET}")
-    process = None
+    process = await asyncio.create_subprocess_exec(
+        "bash",
+        "-c",
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=cwd_ctx.get(),
+    )
+    if background:
+        return f"Background PID: {process.pid}"
     try:
-        process = await asyncio.create_subprocess_exec(
-            "bash",
-            "-c",
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd_ctx.get(),
-        )
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
         result_str = f"STDOUT:\n{stdout.decode()}\nSTDERR:\n{stderr.decode()}\nEXIT CODE: {process.returncode}"
         logger.info(result_str)
@@ -89,6 +93,6 @@ async def bash(command: str, timeout: int = 30) -> str:
     except asyncio.TimeoutError:
         return f"Error: Command timed out after {timeout} seconds"
     finally:
-        if process is not None and process.returncode is None:
+        if process.returncode is None:
             process.kill()
             await process.wait()

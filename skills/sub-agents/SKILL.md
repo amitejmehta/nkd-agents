@@ -2,32 +2,31 @@
 
 Spawn agents via `bash`. Each is a full `nkd` instance with the same tools as you.
 
-## Sub-agent (blocking)
+## Sub-agents (parallel)
+Fan out across tasks — `&` handles parallelisation inside the command:
 ```bash
-result=$(nkd -p "prompt" 2>/dev/null)
+nkd -p "analyze auth.py" 2>/dev/null > /tmp/auth.txt &
+nkd -p "analyze db.py" 2>/dev/null > /tmp/db.txt &
+wait && cat /tmp/auth.txt /tmp/db.txt
 ```
 
-## Background agents (parallel)
+## Long-running tasks (ralph loop)
+Wrap in a `while` loop. Each iteration is a fresh context; state lives in files or git:
 ```bash
-nkd -p "prompt 1" 2>/dev/null > /tmp/agent1.txt &
-nkd -p "prompt 2" 2>/dev/null > /tmp/agent2.txt &
-wait
-cat /tmp/agent1.txt /tmp/agent2.txt
+while true; do
+  nkd -p "read docs/todo.md, implement the next task, commit, update todo.md"
+  [[ $(grep -c "^- \[ \]" docs/todo.md) -eq 0 ]] && break
+done
 ```
 
-## Scheduled agent
-Via `at` (one-off, returns immediately):
+## Background & scheduled agents
+Because it's just a process, run it anywhere. Use `background=True` on the `bash` tool to run it in the background explicitly:
 ```bash
-at now + 10 minutes <<< '/full/path/to/nkd -p "prompt" 2>/dev/null > /tmp/result.txt'
-at 6:20pm <<< '/full/path/to/nkd -p "prompt" 2>/dev/null > /tmp/result.txt'
+nkd -p "run nightly audit" &                              # background
+echo "0 2 * * * nkd -p 'run nightly audit'" | crontab -  # scheduled
 ```
 
-Recurring via `cron`:
-```
-* * * * * /full/path/to/nkd -p "prompt" 2>/dev/null >> /tmp/result.txt
-```
-
-> **Note:** `at` and `cron` run with a stripped `PATH` — always use the full path to `nkd` (`which nkd`). The `ANTHROPIC_API_KEY` is inherited from the user environment on macOS.
+> **Note:** `cron` runs with a stripped `PATH` — always use the full path to `nkd` (`which nkd`). The `ANTHROPIC_API_KEY` is inherited from the user environment on macOS.
 
 ## Best practices
 - Always silence stderr: `2>/dev/null`

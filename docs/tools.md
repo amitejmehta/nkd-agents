@@ -68,7 +68,7 @@ For multiple changes to the same file, call `edit_file` multiple times with smal
 ## `bash`
 
 ```python
-async def bash(command: str, timeout: int = 30) -> str
+async def bash(command: str, timeout: int = 30, background: bool = False) -> str
 ```
 
 Execute a shell command via `bash -c`. Returns:
@@ -81,12 +81,12 @@ STDERR:
 EXIT CODE: {returncode}
 ```
 
-Or `"Error: Command timed out after {timeout} seconds"` / `"Error executing command: {e}"`.
+Or `"Background PID: {pid}"` (when `background=True`), `"Error: Command timed out after {timeout} seconds"`.
 
 - Runs in `cwd_ctx` directory.
 - Default timeout: 30 seconds. Override per-call.
+- `background=True`: runs the process in the background, returning its PID immediately.
 - The process is killed on timeout (`process.kill()` + `await process.wait()`).
-- Logs the command at INFO level before execution, and the full result after.
 
 ---
 

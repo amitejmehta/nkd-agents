@@ -27,6 +27,7 @@ examples/
 └── utils.py            # @test decorator: load_env, configure_logging, asyncio.run
 
 tests/
+├── test_tools.py       # Unit tests for read_file, edit_file, bash (incl. background), subtask, manage_context
 └── test_utils.py       # Unit tests for extract_function_params, load_env, display_diff
 ```
 ## Verify

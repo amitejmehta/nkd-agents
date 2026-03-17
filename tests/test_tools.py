@@ -310,6 +310,14 @@ class TestBash:
         assert "Error: Command timed out" in result
         assert "0.1 seconds" in result
 
+    @pytest.mark.asyncio
+    async def test_bash_background_returns_pid(self):
+        """background=True returns PID immediately without waiting."""
+        result = await bash("sleep 5", background=True)
+        assert result.startswith("Background PID: ")
+        pid = int(result.split(": ")[1])
+        assert pid > 0
+
 
 class TestCwdContext:
     """Test cwd_ctx with relative paths in tools."""
