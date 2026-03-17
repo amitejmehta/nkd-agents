@@ -17,7 +17,7 @@ For long-running or overnight sessions, use `caffeinate` to prevent your Mac fro
 caffeinate -u -t 3600 &  # keep awake for 1 hour
 ```
 
-## Keybindings
+## Keybindings / Controls
 
 | Key | Action |
 |-----|--------|
@@ -26,10 +26,10 @@ caffeinate -u -t 3600 &  # keep awake for 1 hour
 | `esc esc` | **Interrupt** — cancel the running LLM call or tool execution |
 | `ctrl+l` | **Cycle model**: sonnet → opus → haiku → sonnet (logged on switch, applies to next message) |
 | `ctrl+u` | Clear input line |
-| `ctrl+k` | **Compact history** — strip all tool call/result messages from context |
+| `ctrl+k` | **Compact history** — strip all tool call/result messages from context; appends a notification message (see `NKD_COMPACT` in [Configuration](#configuration)) |
 | `ctrl+c` / `ctrl+d` | Exit — session auto-saved to `~/.nkd-agents/sessions/{YYYYMMDDHHMMSS}.json` |
 
-You can type and submit a new message while the LLM is still responding — it queues and runs as soon as the current turn completes.
+**Message queuing:** you can type and submit a new message while the LLM is still responding — it queues and runs as soon as the current turn completes.
 
 If `CLAUDE.md` exists in the working directory, it's used as the system prompt (`{cwd}` and `{home}` are substituted).
 
@@ -42,7 +42,7 @@ See [tools.md](tools.md) for full details.
 | `read_file` | Supports text, images (jpg/png/gif/webp), and PDFs — binary content passed natively, not transcribed |
 | `edit_file` | Create or string-replace. Shows a diff before writing |
 | `bash` | Full shell access. Configurable timeout |
-| `fetch_url` | Saves to disk, returns path. Content only enters context when the LLM explicitly reads it |
+| `fetch_url` | Scrapes page as markdown and saves to file. Content only enters context when the LLM explicitly reads it |
 | `web_search` | Returns titles, URLs, snippets via DuckDuckGo. Relies on DDG ranking for source quality |
 
 
@@ -74,7 +74,7 @@ The prefixes are configurable via `NKD_PLAN_MODE` and `NKD_SOCRATIC_MODE` in `~/
 
 This repo ships concise, powerful skills — `read <path> and follow it` to use one. Paths printed at startup.
 
-Skills: [`ai_research`](../nkd_agents/skills/ai_research), [`compact`](../nkd_agents/skills/compact), [`parallel_worktrees`](../nkd_agents/skills/parallel_worktrees), [`pptx`](../nkd_agents/skills/pptx), [`sub-agents`](../nkd_agents/skills/sub-agents).
+Skills: [`ai_research`](../skills/ai_research), [`compact`](../skills/compact), [`parallel_worktrees`](../skills/parallel_worktrees), [`pptx`](../skills/pptx), [`sub-agents`](../skills/sub-agents).
 
 Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of sub-agent patterns:
 
@@ -83,16 +83,9 @@ Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of 
 - **Background** — fire and forget
 - **Scheduled** — via `at`
 - **Recurring** — via `cron`
-- **Ralph loops** — self-healing context; each iteration is a fresh context, state lives in files or git
+- **Ralph Wiggum loops** — self-healing context; each iteration is a fresh context, state lives in files or git
 
-See the [`sub-agents`](../nkd_agents/skills/sub-agents) skill.
-
-## Compact History (`ctrl+k`)
-
-Removes all messages that contain `tool_use` or `tool_result` content blocks. Keeps pure text turns (user messages, assistant text responses). Appends a notification message: `"FYI: removed tool calls/results to reduce context size."`.
-
-Use this when context is getting long but you want to keep the conversational thread without all the tool noise.
-
+See the [`sub-agents`](../skills/sub-agents) skill.
 
 ## Cache Warming
 

@@ -10,7 +10,7 @@ nkd -p "analyze db.py" 2>/dev/null > /tmp/db.txt &
 wait && cat /tmp/auth.txt /tmp/db.txt
 ```
 
-## Long-running tasks (ralph loop)
+## Long-running tasks (Ralph Wiggum loop)
 Wrap in a `while` loop. Each iteration is a fresh context; state lives in files or git:
 ```bash
 while true; do
