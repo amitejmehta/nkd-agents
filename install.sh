@@ -33,7 +33,7 @@ fi
 
 # Install nkd-agents
 echo -e "${YELLOW}Installing nkd CLI...${NC}"
-uv tool install --force 'git+https://github.com/amitejmehta/nkd_agents.git[cli]'
+uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'
 
 # Set up .env
 mkdir -p ~/.nkd-agents
@@ -53,7 +53,7 @@ SHELL_RC="$HOME/.zshrc"
 if ! grep -q "nkd-update" "$SHELL_RC" 2>/dev/null; then
   echo "" >> "$SHELL_RC"
   echo "# nkd-agents" >> "$SHELL_RC"
-  echo "alias nkd-update=\"uv tool install --force 'git+https://github.com/amitejmehta/nkd_agents.git[cli]'\"" >> "$SHELL_RC"
+  echo "alias nkd-update=\"uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'\"" >> "$SHELL_RC"
   echo -e "${GREEN}✓ nkd-update alias added to $SHELL_RC${NC}"
 else
   echo -e "${GREEN}✓ nkd-update alias already set${NC}"

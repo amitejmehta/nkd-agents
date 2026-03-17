@@ -13,7 +13,7 @@ I built the CLI to understand what I was actually using every day. What started 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd_agents/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
 ```
 
 Installs uv, ripgrep, the `nkd` CLI, prompts for your Anthropic API key, and adds an `nkd-update` alias for one-command updates.
