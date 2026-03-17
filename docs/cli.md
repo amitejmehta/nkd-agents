@@ -124,18 +124,3 @@ All config via environment variables. Set in `~/.nkd-agents/.env` (loaded at sta
 | `NKD_SOCRATIC_MODE` | `"ASK, DON'T TELL!"` | Prefix appended in Socratic mode |
 | `NKD_CACHE_WARM_MSG` | `"Sending msg to warm cache. Just respond: \"okay\""` | Message sent during cache warm |
 | `NKD_COMPACT` | `"FYI: removed tool calls/results to reduce context size."` | Message appended after compact |
-
-## Logging
-
-Logs go to stderr. Colorized when stderr is a TTY (ANSI codes, 256-color), plain text otherwise (suitable for piping/Docker).
-
-Format (TTY):
-```
-{timestamp} | {level} | {module}:{function}:{line} - {message} | {context}
-```
-
-The `logging_ctx` context var (a dict) can inject additional key-value context into every log line. Used in examples to tag log lines with test names.
-
-## `nkd` Entry Point
-
-`nkd` maps to `nkd_agents.cli:main`. Installed via `[project.scripts]` in `pyproject.toml`.

@@ -6,9 +6,9 @@ When you strip it down, an agent is just an LLM in a loop with tools.
 
 I built the CLI to understand what I was actually using every day. What started as an experiment, quickly became something I prefer over Claude Code (a tool I never thought I'd stop using) because it's fully customized to how I think and work (e.g. [start phrase and modes](docs/cli.md#be-brief-and-exacting)). Owning the tool also means I can deprecate features that encode outdated AI coding habits (like pausing to approve every edit) and force myself to work better. But the real value was the cognitive shift: when you build the tool you use all day, every interaction becomes a first-principles reminder of how LLMs work. You stop accepting black boxes and start thinking clearly about how to build with AI. I hope this project inspires you to do the same!
 
+→ **[CLI docs](docs/cli.md)** — everything you need to use `nkd`: keybindings, modes, skills, sub-agents, cache warming, full config reference. Start here.  
 → **[Framework docs](docs/framework.md)** — `llm()`, tool schema auto-generation, conversation history, context vars, cancellation, caching  
-→ **[CLI docs](docs/cli.md)** — keybindings, modes, models, cache warming, full config reference  
-→ **[Tools docs](docs/tools.md)** — `read_file`, `edit_file`, `bash`, `manage_context`, `fetch_url`, `web_search`  
+→ **[Tools docs](docs/tools.md)** — `read_file`, `edit_file`, `bash`, `fetch_url`, `web_search`  
 
 ## Install
 
