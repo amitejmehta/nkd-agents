@@ -90,26 +90,6 @@ Or `"Error: Command timed out after {timeout} seconds"` / `"Error executing comm
 
 ---
 
-## `manage_context`
-
-```python
-async def manage_context() -> str
-```
-
-Clear the conversation history to free context window space.
-
-**What it does:** Truncates the message list in `messages_ctx` to keep only:
-1. The **first message** (the original user prompt / system context)
-2. The **last assistant message** (the one containing the current `tool_use` block — must remain to avoid orphaned tool_result API errors)
-
-The tool result appended after this call will then follow the last assistant message, keeping the API happy.
-
-Returns `"Cleared {n} messages, kept first."` or `"Nothing to clear."`.
-
-**When to use:** Call proactively before starting a new phase of work that doesn't need prior conversation context. The agent calls this itself when the context is getting full.
-
----
-
 ## `web_search`
 
 ```python

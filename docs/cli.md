@@ -10,7 +10,7 @@ nkd -s path/to/session.json  # resume saved session
 nkd -p "your prompt"         # headless: run a single prompt, print result to stdout, exit
 ```
 
-> **Note:** headless mode is the foundation for [sub-agents and background agents](#sub-agents-and-background-agents).
+> **Note:** headless mode is the foundation for [sub-agents and background agents](#sub-agents-background-agents-and-scheduled-agents).
 
 For long-running or overnight sessions, use `caffeinate` to prevent your Mac from sleeping:
 ```bash
@@ -21,13 +21,17 @@ caffeinate -u -t 3600 &  # keep awake for 1 hour
 
 | Key | Action |
 |-----|--------|
-| `tab` | Toggle **extended thinking** on/off |
+| `tab` | Toggle **extended thinking** on/off (default: adaptive — Claude decides how much to think; override via `NKD_THINKING`) |
 | `shift+tab` | Cycle **mode**: None → Plan → Socratic → None |
 | `esc esc` | **Interrupt** — cancel the running LLM call or tool execution |
-| `ctrl+l` | **Cycle model**: sonnet → opus → haiku → sonnet |
+| `ctrl+l` | **Cycle model**: sonnet → opus → haiku → sonnet (logged on switch, applies to next message) |
 | `ctrl+u` | Clear input line |
 | `ctrl+k` | **Compact history** — strip all tool call/result messages from context |
-| `ctrl+c` / `ctrl+d` | Exit (session auto-saved) |
+| `ctrl+c` / `ctrl+d` | Exit — session auto-saved to `~/.nkd-agents/sessions/{YYYYMMDDHHMMSS}.json` |
+
+You can type and submit a new message while the LLM is still responding — it queues and runs as soon as the current turn completes.
+
+If `CLAUDE.md` exists in the working directory, it's used as the system prompt (`{cwd}` and `{home}` are substituted).
 
 ## Tools
 
@@ -38,21 +42,9 @@ See [tools.md](tools.md) for full details.
 | `read_file` | Supports text, images (jpg/png/gif/webp), and PDFs — binary content passed natively, not transcribed |
 | `edit_file` | Create or string-replace. Shows a diff before writing |
 | `bash` | Full shell access. Configurable timeout |
-| `manage_context` | Clears history, keeps first message. Enables long-running tasks across many phases |
 | `fetch_url` | Saves to disk, returns path. Content only enters context when the LLM explicitly reads it |
 | `web_search` | Returns titles, URLs, snippets via DuckDuckGo. Relies on DDG ranking for source quality |
 
-`manage_context` is the foundation for multi-phase work: iterate through a todo list, conduct deep research across many subtopics, or any task too large for a single context window. State lives externally (files, git) and context resets between phases. This pattern replaced an earlier `subtask` tool — subagents consistently lacked sufficient context and were invoked at the wrong times, and the tradeoff wasn't worth it: you give up parallelization but gain reliability and quality.
-
-## Message Queuing
-
-You can type and submit a new message while the LLM is still responding. It queues immediately and runs as soon as the current turn completes. No need to wait.
-
-## Sub-Agents, Background Agents, and Scheduled Agents
-
-Because `nkd` is just a process, headless mode (`-p`) lets you run sub-agents via `bash` — one or many, blocking or parallel, in the background or on a schedule. Each is a full `nkd` instance with the same tools as you.
-
-See the **[sub-agents skill](../skills/sub-agents/SKILL.md)** for patterns and best practices.
 
 ## "Be brief and exacting."
 
@@ -78,11 +70,32 @@ Socratic mode is the Socratic method applied: arriving at understanding through 
 
 The prefixes are configurable via `NKD_PLAN_MODE` and `NKD_SOCRATIC_MODE` in `~/.nkd-agents/.env`.
 
-## Skills
+## Skills, Sub-Agents, Background & Scheduled Agents
 
-Skills are a form of procedural memory for LLMs — structured markdown instructions for multi-step workflows. With a single skill file, the CLI can do things like generate a full PowerPoint presentation with visual verification, map a research landscape across dozens of papers, or autonomously work through an entire project todo list. Remarkably little prompting for complex tasks.
+This repo ships concise, powerful skills — `read <path> and follow it` to use one. Paths printed at startup.
 
-This repo ships a few: AI research mapping, session compaction, Ralph Loop (iterative task execution), parallel git worktrees, and PPTX generation. Because they live in the package directory rather than your working directory, the LLM won't find them on its own — the CLI banner prints the full path to each at startup. To use one: `read <path> and follow it`. Tip: Raycast's file search makes grabbing the path instant. Give them a try.
+Skills: [`ai_research`](../nkd_agents/skills/ai_research), [`compact`](../nkd_agents/skills/compact), [`parallel_worktrees`](../nkd_agents/skills/parallel_worktrees), [`pptx`](../nkd_agents/skills/pptx), [`sub-agents`](../nkd_agents/skills/sub-agents).
+
+Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of agent patterns:
+
+**Sub-agents** — the main CLI agent can spawn sub-agents via `bash`, passing context through arguments. Run them sequentially, in parallel, or fan out across tasks:
+```bash
+nkd -p "analyze auth.py" & nkd -p "analyze db.py" & wait
+```
+
+**Long-running tasks with context reset** — wrap headless mode in a `while` loop. Each iteration is a fresh context; state lives in files or git:
+```bash
+while true; do
+  nkd -p "read docs/todo.md, implement the next task, commit, update todo.md"
+  [[ $(grep -c "^- \[ \]" docs/todo.md) -eq 0 ]] && break
+done
+```
+
+**Background & scheduled agents** — because it's just a process, run it anywhere:
+```bash
+nkd -p "run nightly audit" &                        # background
+echo "0 2 * * * nkd -p 'run nightly audit'" | crontab -  # scheduled
+```
 
 ## Compact History (`ctrl+k`)
 
@@ -90,7 +103,6 @@ Removes all messages that contain `tool_use` or `tool_result` content blocks. Ke
 
 Use this when context is getting long but you want to keep the conversational thread without all the tool noise.
 
-Different from `manage_context` tool: `ctrl+k` keeps all text turns; `manage_context` keeps only the first message.
 
 ## Cache Warming
 
@@ -105,40 +117,6 @@ Anthropic cache pricing (5-min TTL default, 1-hr available):
 The background `cache_warmer` task checks every 30s and, if the session has been idle for ≥ 270s (just before the 5-min TTL), sends the full message history with the prompt `"Sending msg to warm cache. Just respond: 'okay'"`. This refreshes the cache for another 5 minutes. It does this at most `NKD_MAX_CACHE_WARMS` times per turn (default: 2), resetting on each new user message.
 
 Each warm costs 0.1× (a cache read). Break-even vs a fresh write is 12 warms (12 × 0.1× = 1.2× < 1.25×). The default of 2 gives ~15 minutes of coverage for **0.2×** — enough to step away, respond to a ping, or take a quick call and come back without paying for a re-write or 1-hour caching at 2×. Personally, I found 2 to be the right number: beyond ~15 minutes of inactivity I was either done with the session or away long enough that the cache wouldn't have helped. Set `NKD_MAX_CACHE_WARMS` in `~/.nkd-agents/.env` to tune it permanently to your own pattern.
-
-## Models
-
-Three models cycle with `ctrl+l`:
-
-1. `claude-sonnet-4-6` (default — fast, capable)
-2. `claude-opus-4-6` (most capable)
-3. `claude-haiku-4-5` (fastest, cheapest)
-
-The active model is logged when you switch. It applies to the next message sent.
-
-## Thinking
-
-`tab` toggles extended thinking. Default config: `{"type": "adaptive"}` (Claude decides how much to think). Override via `NKD_THINKING` env var.
-
-When thinking is on, Claude's reasoning process is logged at INFO level before the response.
-
-## System Prompt
-
-If `CLAUDE.md` exists in the current directory, it is read and used as the system prompt. Two template variables are substituted:
-
-- `{cwd}` → absolute path of current working directory
-- `{home}` → absolute path of user's home directory
-
-This is how the nkd-agents repo itself works — `CLAUDE.md` in the project root defines the assistant's persona and project context.
-
-## Session Management
-
-Sessions are stored as JSON at `~/.nkd-agents/sessions/{YYYYMMDDHHMMSS}.json`.
-
-- Auto-saved on exit (`ctrl+c`, `ctrl+d`, EOF).
-- Resume with `nkd -s ~/.nkd-agents/sessions/<file>.json`.
-- When resuming, new messages append to the loaded history. Session file is updated on exit.
-- Format: serialized `list[MessageParam]` — the raw Anthropic message history including all tool calls and results.
 
 ## Configuration
 

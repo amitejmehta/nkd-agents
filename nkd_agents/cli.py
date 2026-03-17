@@ -13,9 +13,8 @@ from prompt_toolkit import PromptSession, key_binding, styles
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from .anthropic import llm, user
-from .ctx import messages_ctx
 from .logging import DIM, GREEN, RED, RESET, configure_logging
-from .tools import bash, edit_file, manage_context, read_file
+from .tools import bash, edit_file, read_file
 from .utils import load_env, serialize
 from .web import fetch_url, web_search
 
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # constants
 MODELS = ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")
-TOOLS = (read_file, edit_file, bash, manage_context, fetch_url, web_search)
+TOOLS = (read_file, edit_file, bash, fetch_url, web_search)
 SKILLS_DIR = (Path(__file__).parent / "skills").resolve()
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
@@ -60,7 +59,6 @@ class CLI:
     def __init__(self) -> None:
         self.client = AsyncAnthropic(max_retries=4)
         self.messages: list[MessageParam] = []
-        messages_ctx.set(self.messages)
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
         self.last_message_at: float = 0.0

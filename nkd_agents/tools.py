@@ -5,7 +5,7 @@ from pathlib import Path
 from anthropic.types.tool_result_block_param import Content
 
 from .anthropic import bytes_to_content
-from .ctx import cwd_ctx, messages_ctx
+from .ctx import cwd_ctx
 from .logging import GREEN, RESET
 from .utils import display_diff
 
@@ -92,18 +92,3 @@ async def bash(command: str, timeout: int = 30) -> str:
         if process is not None and process.returncode is None:
             process.kill()
             await process.wait()
-
-
-async def manage_context() -> str:
-    """Clear your entire context window, preserving the first message. Use this to free up context before starting a new phase of work."""
-    messages = messages_ctx.get()
-    if len(messages) <= 1:
-        return "Nothing to clear."
-    count = len(messages)
-    # Keep the first message AND the last assistant message (which holds the
-    # tool_use block for this very call). The tool_result will be appended
-    # after we return, so that assistant message must stay in place or the
-    # API will reject the next request with an orphaned tool_result error.
-    messages[:] = messages[:1] + messages[-1:]
-    logger.info(f"Managing context: cleared {count - 2} messages, kept first and last.")
-    return f"Cleared {count - 2} messages, kept first."

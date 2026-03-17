@@ -134,7 +134,6 @@ Two built-in context vars in `nkd_agents.ctx`:
 | Var | Type | Purpose |
 |-----|------|---------|
 | `cwd_ctx` | `ContextVar[Path]` | Working directory for tools. Relative paths resolve against this. Default: `Path.cwd()`. |
-| `messages_ctx` | `ContextVar[list[MessageParam]]` | Message history reference for `manage_context` tool. Set automatically by the CLI. |
 
 ## Cancellation
 

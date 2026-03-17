@@ -283,54 +283,6 @@ class TestSerialize:
         assert serialize(Outer(inner=Inner(n=3))) == {"inner": {"n": 3}}
 
 
-class TestManageContext:
-    """Test manage_context tool."""
-
-    def _set_messages(self, msgs):
-        from nkd_agents.ctx import messages_ctx
-
-        messages_ctx.set(msgs)
-
-    @pytest.mark.asyncio
-    async def test_no_op_when_single_message(self):
-        from nkd_agents.tools import manage_context
-
-        msgs = [{"role": "user", "content": "first"}]
-        self._set_messages(msgs)
-        result = await manage_context()
-        assert result == "Nothing to clear."
-        assert len(msgs) == 1
-
-    @pytest.mark.asyncio
-    async def test_clears_all_but_first(self):
-        from nkd_agents.tools import manage_context
-
-        first = {"role": "user", "content": "first"}
-        msgs = [
-            first,
-            {"role": "assistant", "content": "a"},
-            {"role": "user", "content": "b"},
-        ]
-        self._set_messages(msgs)
-        last = {"role": "user", "content": "b"}
-        result = await manage_context()
-        assert msgs == [first, last]
-        assert result == "Cleared 1 messages, kept first."
-
-    @pytest.mark.asyncio
-    async def test_mutates_in_place(self):
-        from nkd_agents.tools import manage_context
-
-        msgs = [
-            {"role": "user", "content": "first"},
-            {"role": "assistant", "content": "second"},
-        ]
-        original_ref = msgs
-        self._set_messages(msgs)
-        await manage_context()
-        assert msgs is original_ref
-
-
 class TestDisplayDiff:
     """Test display_diff functionality."""
 
