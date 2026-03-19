@@ -4,8 +4,8 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 
 `nkd-agents` is two things:
 
-1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI. Each provider is a single file, ~150 lines.
-2. **A Python terminal coding assistant** built on top of it (Claude only for now). ~200 lines — and most of those are keybinding controls and UX optimizations like cache warming, not MVP requirements.
+1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI.
+2. **A Python terminal coding assistant** built on top of it (Claude only for now).
 
 Both are intentionally minimal — not just for minimalism's sake 😁, but because that's all you really need.
 
