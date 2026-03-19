@@ -21,18 +21,12 @@ I built the framework for control of low-level primitives with little overhead. 
 curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
 ```
 
-Installs [uv](https://docs.astral.sh/uv/), [ripgrep](https://github.com/BurntSushi/ripgrep), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-update` alias for one-command updates.
+Installs [uv](https://docs.astral.sh/uv/), [ripgrep](https://github.com/BurntSushi/ripgrep), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds `nkd-update` and `nkd-sandbox` (requires Docker) aliases.
 
 To update later: `nkd-update`
 
 **Framework only:**
 ```bash
 pip install git+https://github.com/amitejmehta/nkd-agents.git
-```
-
-**Docker** (Chromium included):
-```bash
-docker build -t nkd-agents https://github.com/amitejmehta/nkd-agents.git
-echo "alias nkd='docker run -it --env-file ~/.nkd-agents/.env -v \$(pwd):/workspace nkd-agents'" >> ~/.zshrc
 ```
 

@@ -3,8 +3,10 @@ FROM mcr.microsoft.com/playwright/python:v1.58.0-noble
 # Add uv to PATH early
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install uv and ripgrep
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && apt-get update && apt-get install -y --no-install-recommends ripgrep \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy only the package files needed for installation
 COPY pyproject.toml /tmp/

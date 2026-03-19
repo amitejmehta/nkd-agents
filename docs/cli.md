@@ -8,7 +8,10 @@ The `nkd` command is a terminal coding assistant. Claude in a loop with file/she
 nkd                          # start fresh session
 nkd -s path/to/session.json  # resume saved session
 nkd -p "your prompt"         # headless: run a single prompt, print result to stdout, exit
+nkd-sandbox                  # run nkd inside a Docker container (cwd + .env mounted)
 ```
+
+Running `nkd` is the equivalent of `claude --dangerously-skip-permissions` or "yolo" mode in Cursor — full autonomy, no approval prompts. Both Claude and Cursor support this paradigm for good reason: approvals don't make AI coding safer, they just make it slower. If you have security concerns, just use a sandbox — run `nkd-sandbox` instead (see [Docker install](../README.md#docker-chromium-included)).
 
 > **Note:** headless mode is the foundation for [subagents and background agents](#skills--subagents).
 

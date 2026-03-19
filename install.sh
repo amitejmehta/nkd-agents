@@ -6,23 +6,37 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+OS="$(uname -s)"
+
 echo -e "${GREEN}Installing nkd-agents...${NC}"
 
-# Install Homebrew if missing (macOS)
-if ! command -v brew &>/dev/null; then
-  echo -e "${YELLOW}Installing Homebrew...${NC}"
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
-
-# Install ripgrep
+# ── ripgrep ────────────────────────────────────────────────────────────────────
 if ! command -v rg &>/dev/null; then
   echo -e "${YELLOW}Installing ripgrep...${NC}"
-  brew install ripgrep
+  if [[ "$OS" == "Darwin" ]]; then
+    if ! command -v brew &>/dev/null; then
+      echo -e "${YELLOW}Installing Homebrew...${NC}"
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+    brew install ripgrep
+  elif [[ "$OS" == "Linux" ]]; then
+    if command -v apt-get &>/dev/null; then
+      sudo apt-get update -qq && sudo apt-get install -y ripgrep
+    elif command -v dnf &>/dev/null; then
+      sudo dnf install -y ripgrep
+    elif command -v pacman &>/dev/null; then
+      sudo pacman -S --noconfirm ripgrep
+    else
+      echo -e "${RED}Could not install ripgrep — install it manually: https://github.com/BurntSushi/ripgrep${NC}"
+    fi
+  else
+    echo -e "${RED}Unsupported OS: $OS — install ripgrep manually: https://github.com/BurntSushi/ripgrep${NC}"
+  fi
 else
   echo -e "${GREEN}✓ ripgrep already installed${NC}"
 fi
 
-# Install uv
+# ── uv ────────────────────────────────────────────────────────────────────────
 if ! command -v uv &>/dev/null; then
   echo -e "${YELLOW}Installing uv...${NC}"
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -31,11 +45,11 @@ else
   echo -e "${GREEN}✓ uv already installed${NC}"
 fi
 
-# Install nkd-agents
+# ── nkd CLI ───────────────────────────────────────────────────────────────────
 echo -e "${YELLOW}Installing nkd CLI...${NC}"
 uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'
 
-# Set up .env
+# ── .env / API key ────────────────────────────────────────────────────────────
 mkdir -p ~/.nkd-agents
 if [ ! -f ~/.nkd-agents/.env ]; then
   echo -e "${YELLOW}Enter your Anthropic API key:${NC}"
@@ -46,17 +60,50 @@ else
   echo -e "${GREEN}✓ ~/.nkd-agents/.env already exists${NC}"
 fi
 
-# Add nkd-update alias
+# ── shell rc ──────────────────────────────────────────────────────────────────
 SHELL_RC="$HOME/.zshrc"
 [[ "$SHELL" == *"bash"* ]] && SHELL_RC="$HOME/.bashrc"
 
-if ! grep -q "nkd-update" "$SHELL_RC" 2>/dev/null; then
-  echo "" >> "$SHELL_RC"
-  echo "# nkd-agents" >> "$SHELL_RC"
-  echo "alias nkd-update=\"uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'\"" >> "$SHELL_RC"
-  echo -e "${GREEN}✓ nkd-update alias added to $SHELL_RC${NC}"
+add_alias() {
+  local name="$1" body="$2"
+  if ! grep -q "$name" "$SHELL_RC" 2>/dev/null; then
+    echo "alias ${name}=\"${body}\"" >> "$SHELL_RC"
+    echo -e "${GREEN}✓ ${name} alias added to $SHELL_RC${NC}"
+  else
+    echo -e "${GREEN}✓ ${name} alias already set${NC}"
+  fi
+}
+
+echo "" >> "$SHELL_RC"
+echo "# nkd-agents" >> "$SHELL_RC"
+
+add_alias "nkd-update" "uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'"
+
+# ── Docker sandbox (nkd-sandbox) ──────────────────────────────────────────────
+if command -v docker &>/dev/null; then
+  # Open Docker Desktop if not already running (macOS)
+  if ! docker info &>/dev/null 2>&1; then
+    echo -e "${YELLOW}Starting Docker...${NC}"
+    open -a Docker 2>/dev/null || true
+    for i in $(seq 1 15); do
+      docker info &>/dev/null 2>&1 && break
+      sleep 2
+    done
+  fi
+fi
+if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+  echo -e "${YELLOW}Docker detected — pulling nkd-agents image...${NC}"
+  docker pull ghcr.io/amitejmehta/nkd-agents:latest 2>/dev/null \
+    || docker build -t nkd-agents 'https://github.com/amitejmehta/nkd-agents.git' \
+    && docker tag nkd-agents ghcr.io/amitejmehta/nkd-agents:latest 2>/dev/null || true
+
+  add_alias "nkd-sandbox" \
+    "docker run -it --rm --env-file ~/.nkd-agents/.env -v \$(pwd):/workspace ghcr.io/amitejmehta/nkd-agents:latest"
+
+  echo -e "${GREEN}✓ nkd-sandbox available — runs nkd inside a Docker container with cwd mounted${NC}"
 else
-  echo -e "${GREEN}✓ nkd-update alias already set${NC}"
+  echo -e "${YELLOW}Docker not found or not running — skipping nkd-sandbox setup${NC}"
+  echo -e "${YELLOW}  Install Docker and re-run this script to get nkd-sandbox${NC}"
 fi
 
 echo ""
