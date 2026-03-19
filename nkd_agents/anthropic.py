@@ -9,12 +9,12 @@ from anthropic.types import (
     Base64PDFSourceParam,
     Message,
     MessageParam,
-    OutputConfigParam,
     TextBlockParam,
     ToolParam,
     ToolResultBlockParam,
     ToolUseBlock,
 )
+from anthropic.types.json_output_format_param import JSONOutputFormatParam
 from anthropic.types.tool_result_block_param import Content
 from pydantic import BaseModel
 
@@ -28,9 +28,10 @@ def user(content: str) -> MessageParam:
     return {"role": "user", "content": [{"type": "text", "text": content}]}
 
 
-def output_config(model: type[BaseModel]) -> OutputConfigParam:
+def output_format(model: type[BaseModel]) -> JSONOutputFormatParam:
+    """Build the JSON schema format block for use in output_config."""
     schema = transform_schema(model.model_json_schema())
-    return {"format": {"type": "json_schema", "schema": schema}}
+    return {"type": "json_schema", "schema": schema}
 
 
 def bytes_to_content(data: bytes, ext: str) -> Content:
