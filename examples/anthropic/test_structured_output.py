@@ -3,7 +3,7 @@ import logging
 from anthropic import AsyncAnthropic
 from pydantic import BaseModel
 
-from nkd_agents.anthropic import llm, output_config, user
+from nkd_agents.anthropic import llm, output_format, user
 
 from ..utils import test
 from .config import KWARGS
@@ -43,7 +43,7 @@ async def main():
     """
     client = AsyncAnthropic()
     prompt = "What's the weather in Paris?"
-    kwargs = {**KWARGS, "output_config": output_config(Weather)}
+    kwargs = {**KWARGS, "output_config": {"format": output_format(Weather)}}
 
     # 1. Structured output
     logger.info("1. Structured output")

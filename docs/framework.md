@@ -169,17 +169,21 @@ OpenAI caches prompts automatically on all API requests with no code changes req
 
 ```python
 from pydantic import BaseModel
-from nkd_agents.anthropic import output_config
+from nkd_agents.anthropic import output_format
 
 class Weather(BaseModel):
     temperature: int
     description: str
 
-json_str = await llm(client, messages, output_config=output_config(Weather), **kwargs)
+json_str = await llm(client, messages, output_config={"format": output_format(Weather)}, **kwargs)
 weather = Weather.model_validate_json(json_str)
 ```
 
-`output_config(model)` calls `anthropic.transform_schema()` on the Pydantic model's JSON schema and returns an `OutputConfigParam` suitable for passing to `llm()`.
+`output_format(model)` calls `anthropic.transform_schema()` on the Pydantic model's JSON schema and returns the `format` block for use inside `output_config`. Build `output_config` as a plain dict — you can combine `format` with `effort`:
+
+```python
+output_config={"format": output_format(Weather), "effort": "low"}
+```
 
 **OpenAI**
 
@@ -197,6 +201,14 @@ weather = Weather.model_validate_json(response)
 Pass `thinking={"type": "adaptive"}` (or `{"type": "enabled", "budget_tokens": N}`) in kwargs. The CLI toggles this with `tab`. Thinking blocks are logged at INFO level but not included in the returned text.
 
 Pass `thinking=anthropic.omit` (the default in the CLI) to disable.
+
+Control thinking depth via `effort` in `output_config` (separate from the `thinking` param):
+
+```python
+await llm(client, messages, thinking={"type": "adaptive"}, output_config={"effort": "medium"}, **kwargs)
+```
+
+`effort` accepts `"low"`, `"medium"`, `"high"` (default), or `"max"` (Opus 4.6 only). On Opus 4.6 and Sonnet 4.6, `effort` replaces `budget_tokens` as the recommended way to control thinking depth.
 
 **OpenAI** ([docs](https://platform.openai.com/docs/guides/reasoning))
 

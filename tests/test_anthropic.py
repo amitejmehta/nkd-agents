@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from nkd_agents.anthropic import (
     extract_text_and_tool_calls,
     format_tool_results,
-    output_config,
+    output_format,
     tool,
     tool_schema,
     user,
@@ -27,17 +27,17 @@ def test_user():
     }
 
 
-def test_output_config():
-    """Test output_config generates proper JSON schema config"""
+def test_output_format():
+    """Test output_format generates proper JSON schema format block"""
 
     class TestModel(BaseModel):
         name: str
         age: int
 
-    config = output_config(TestModel)
-    assert config["format"]["type"] == "json_schema"
-    assert "schema" in config["format"]
-    schema = config["format"]["schema"]
+    fmt = output_format(TestModel)
+    assert fmt["type"] == "json_schema"
+    assert "schema" in fmt
+    schema = fmt["schema"]
     assert schema["type"] == "object"
     assert "name" in schema["properties"]
     assert "age" in schema["properties"]
