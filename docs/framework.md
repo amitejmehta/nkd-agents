@@ -179,7 +179,7 @@ json_str = await llm(client, messages, output_config={"format": output_format(We
 weather = Weather.model_validate_json(json_str)
 ```
 
-`output_format(model)` calls `anthropic.transform_schema()` on the Pydantic model's JSON schema and returns the `format` block for use inside `output_config`. Build `output_config` as a plain dict — you can combine `format` with `effort`:
+`output_format(model)` is just a convenience helper that calls `anthropic.transform_schema()` on the Pydantic model's JSON schema and returns the `format` block for use inside `output_config`.
 
 ```python
 output_config={"format": output_format(Weather), "effort": "low"}
