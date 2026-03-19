@@ -77,7 +77,7 @@ add_alias() {
 echo "" >> "$SHELL_RC"
 echo "# nkd-agents" >> "$SHELL_RC"
 
-add_alias "nkd-update" "uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'"
+add_alias "nkd-update" "curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash"
 
 # ── Docker sandbox (nkd-sandbox) ──────────────────────────────────────────────
 if command -v docker &>/dev/null; then
