@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -182,7 +183,9 @@ def save_session(messages: list[MessageParam], path: Path | None = None) -> None
         path = sessions_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
 
     path.write_text(json.dumps(serialize(messages), indent=2))
-    print(f"{DIM}Session saved: {path}{RESET}")
+    resume_cmd = f"nkd -s {path}"
+    subprocess.run(["pbcopy"], input=resume_cmd.encode(), check=False)
+    print(f"{DIM}Session saved: {path} (resume cmd copied to clipboard){RESET}")
 
 
 def main() -> None:
@@ -215,5 +218,5 @@ def main() -> None:
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
     finally:
-        if len(cli.messages) > 10:
+        if cli.messages:
             save_session(cli.messages, path=args.session)
