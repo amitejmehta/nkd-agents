@@ -304,19 +304,15 @@ class TestBash:
 
     @pytest.mark.asyncio
     async def test_bash_timeout(self):
-        """Test bash timeout error handling."""
-        result = await bash("sleep 10", timeout=0.1)
-
-        assert "Error: Command timed out" in result
-        assert "0.1 seconds" in result
+        """Test bash timeout raises TimeoutError."""
+        with pytest.raises(TimeoutError, match="timed out after 0.1 seconds"):
+            await bash("sleep 10", timeout=0.1)
 
     @pytest.mark.asyncio
-    async def test_bash_background_returns_pid(self):
-        """background=True returns PID immediately without waiting."""
-        result = await bash("sleep 5", background=True)
-        assert result.startswith("Background PID: ")
-        pid = int(result.split(": ")[1])
-        assert pid > 0
+    async def test_bash_background_via_shell(self):
+        """Background processes are run via & in the command string."""
+        result = await bash("echo hello &")
+        assert "EXIT CODE: 0" in result
 
 
 class TestCwdContext:
