@@ -66,16 +66,20 @@ SHELL_RC="$HOME/.zshrc"
 
 add_alias() {
   local name="$1" body="$2"
-  if ! grep -q "$name" "$SHELL_RC" 2>/dev/null; then
+  if grep -q "alias ${name}=" "$SHELL_RC" 2>/dev/null; then
+    # Overwrite existing alias line
+    sed -i '' "s|^alias ${name}=.*|alias ${name}=\"${body}\"|" "$SHELL_RC"
+    echo -e "${GREEN}✓ ${name} alias updated in $SHELL_RC${NC}"
+  else
     echo "alias ${name}=\"${body}\"" >> "$SHELL_RC"
     echo -e "${GREEN}✓ ${name} alias added to $SHELL_RC${NC}"
-  else
-    echo -e "${GREEN}✓ ${name} alias already set${NC}"
   fi
 }
 
-echo "" >> "$SHELL_RC"
-echo "# nkd-agents" >> "$SHELL_RC"
+if ! grep -q "# nkd-agents" "$SHELL_RC" 2>/dev/null; then
+  echo "" >> "$SHELL_RC"
+  echo "# nkd-agents" >> "$SHELL_RC"
+fi
 
 add_alias "nkd-update" "curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash"
 
