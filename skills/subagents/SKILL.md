@@ -20,10 +20,10 @@ done
 ```
 
 ## Background & scheduled agents
-Because it's just a process, run it anywhere. Use `background=True` on the `bash` tool to run it in the background explicitly:
+Because it's just a process, run it anywhere. Use `&` in the command to background it:
 ```bash
-nkd -p "run nightly audit" &                              # background
-echo "0 2 * * * nkd -p 'run nightly audit'" | crontab -  # scheduled
+nkd -p "run nightly audit" > /tmp/audit.txt 2>/dev/null &  # background
+echo "0 2 * * * nkd -p 'run nightly audit'" | crontab -    # scheduled
 ```
 
 > **Note:** `cron` runs with a stripped `PATH` — always use the full path to `nkd` (`which nkd`). The `ANTHROPIC_API_KEY` is inherited from the user environment on macOS.
