@@ -230,6 +230,73 @@ class TestLLMLoop:
             assert len(cli.messages) == 2
 
 
+class TestBuildSystemPrompt:
+    def test_neither_exists(self, cli: CLI):
+        assert cli.build_system_prompt() is None
+
+    def test_global_only(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        global_md = tmp_path / ".nkd-agents" / "CLAUDE.md"
+        global_md.parent.mkdir()
+        global_md.write_text("global content")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        result = CLI().build_system_prompt()
+        assert result == "global content"
+
+    def test_local_only(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        (tmp_path / "CLAUDE.md").write_text("local content")
+        result = CLI().build_system_prompt()
+        assert result == "local content"
+
+    def test_both_global_first(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        global_md = tmp_path / ".nkd-agents" / "CLAUDE.md"
+        global_md.parent.mkdir()
+        global_md.write_text("global content")
+        (tmp_path / "CLAUDE.md").write_text("local content")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        result = CLI().build_system_prompt()
+        assert result is not None
+        assert result.index("global content") < result.index("local content")
+
+    def test_cwd_interpolation(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        (tmp_path / "CLAUDE.md").write_text("cwd={cwd}")
+        result = CLI().build_system_prompt()
+        assert result == f"cwd={tmp_path.as_posix()}"
+
+    def test_home_interpolation(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        (tmp_path / "CLAUDE.md").write_text("home={home}")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        result = CLI().build_system_prompt()
+        assert result == f"home={tmp_path.as_posix()}"
+
+    def test_both_interpolations_in_same_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        (tmp_path / "CLAUDE.md").write_text("cwd={cwd} home={home}")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        result = CLI().build_system_prompt()
+        assert result == f"cwd={tmp_path.as_posix()} home={tmp_path.as_posix()}"
+
+    def test_empty_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        global_md = tmp_path / ".nkd-agents" / "CLAUDE.md"
+        global_md.parent.mkdir()
+        global_md.write_text("")
+        (tmp_path / "CLAUDE.md").write_text("")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        assert CLI().build_system_prompt() is None
+
+
 class TestBuildMessage:
     def test_none_mode(self, cli: CLI):
         from nkd_agents.cli import START_PHRASE

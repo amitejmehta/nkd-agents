@@ -68,12 +68,20 @@ class CLI:
         self.mode = list(MODE_PREFIXES)[0]
         self.model_idx = 0
         self.kwargs = {"model": MODELS[0], "max_tokens": MAX_TOKENS, "thinking": omit}
-        if Path("CLAUDE.md").exists():
-            claude_md = Path("CLAUDE.md").read_text(encoding="utf-8")
-            claude_md = claude_md.replace("{cwd}", Path.cwd().as_posix()).replace(
-                "{home}", Path.home().as_posix()
+        if system := self.build_system_prompt():
+            self.kwargs["system"] = system
+
+    def build_system_prompt(self) -> str | None:
+        def _load_md(path: Path) -> str:
+            return (
+                path.read_text(encoding="utf-8")
+                .replace("{cwd}", Path.cwd().as_posix())
+                .replace("{home}", Path.home().as_posix())
             )
-            self.kwargs["system"] = Path("CLAUDE.md").read_text(encoding="utf-8")
+
+        paths = (Path.home() / ".nkd-agents" / "CLAUDE.md", Path("CLAUDE.md"))
+        parts = [_load_md(p) for p in paths if p.exists() and p.stat().st_size > 0]
+        return "\n\n".join(parts) or None
 
     def build_message(self, text: str) -> str:
         mode_suffix = MODE_PREFIXES[self.mode]
