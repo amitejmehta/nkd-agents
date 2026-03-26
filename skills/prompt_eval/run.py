@@ -260,26 +260,31 @@ async def main(prompt_dir: str, model: str = "claude-haiku-4-5-20251001") -> Non
     custom_checks = load_custom_checks(d)
 
     client = AsyncAnthropic()
-    results = []
 
-    for case in cases:
+    async def run_one(case: dict) -> dict:
         run = await run_case(client, prompt_text, case, model)
         passed, check_results = await run_checks(
             client, case, run["output"], custom_checks, model
         )
-        result = {
+        result: dict = {
             "id": case["id"],
             "passed": passed,
             "output": run["output"],
             "checks": check_results,
         }
         if not passed:
-            reasons = [c["reason"] for c in check_results if not c["passed"]]
-            result["reason"] = "; ".join(reasons)
-        results.append(result)
-        status = "✓" if passed else "✗"
-        print(f"  {status} {case['id']}: {case.get('description', '')}")
-        if not passed:
+            result["reason"] = "; ".join(
+                c["reason"] for c in check_results if not c["passed"]
+            )
+        return result
+
+    results = await asyncio.gather(*[run_one(case) for case in cases])
+
+    for result in results:
+        status = "✓" if result["passed"] else "✗"
+        case = next(c for c in cases if c["id"] == result["id"])
+        print(f"  {status} {result['id']}: {case.get('description', '')}")
+        if not result["passed"]:
             print(f"    {result['reason']}")
 
     # Summary
