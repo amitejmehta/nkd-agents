@@ -186,9 +186,9 @@ def save_session(messages: list[MessageParam], path: Path | None = None) -> None
     resume_cmd = f"nkd -s {path}"
     try:
         subprocess.run(["pbcopy"], input=resume_cmd.encode(), check=False)
-        print(f"{DIM}Session saved: {path} (resume cmd copied to clipboard){RESET}")
     except (FileNotFoundError, PermissionError):
-        print(f"{DIM}Session saved: {path}\nResume: {resume_cmd}{RESET}")
+        pass
+    print(f"{DIM}Resume with: {resume_cmd}{RESET}")
 
 
 def main() -> None:
