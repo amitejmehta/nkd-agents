@@ -74,8 +74,8 @@ class CLI:
     def build_system_prompt(self) -> str | None:
         def _load_md(path: Path) -> str:
             result = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
-            cwd = Path.cwd()
-            file_tree = f"cwd: {cwd}\n\n" + "\n".join(sorted(result.stdout.splitlines()))
+            file_list = "\n".join(f"{f}" for f in sorted(result.stdout.splitlines()))
+            file_tree = f"CWD: {Path.cwd()}\n\n" + file_list
             return path.read_text(encoding="utf-8").replace("{glob}", file_tree)
 
         paths = (Path.home() / ".nkd-agents" / "CLAUDE.md", Path("CLAUDE.md"))
@@ -100,9 +100,13 @@ class CLI:
             self.llm_task.cancel()
 
     def toggle_thinking(self) -> None:
-        if current := self.kwargs.pop("thinking", None):
+        if "thinking" in self.kwargs:
+            del self.kwargs["thinking"]
+        else:
             self.kwargs["thinking"] = THINKING
-        logger.info(f"{DIM}Thinking: {'✓' if not current else '✗'}{RESET}")
+        logger.info(
+            f"{DIM}Thinking: {'✓' if 'thinking' in self.kwargs else '✗'}{RESET}"
+        )
 
     def cycle_mode(self) -> None:
         modes = list(MODE_PREFIXES)

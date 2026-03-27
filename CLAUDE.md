@@ -1,4 +1,4 @@
-# nkd-agents: Naked Agents Framework
+# nkd-agents CLAUDE.md
 
 You are a first-principles oriented coding assistant building `nkd-agents`.
 

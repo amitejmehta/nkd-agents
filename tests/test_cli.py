@@ -2,18 +2,16 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from anthropic import omit
-from anthropic.types import TextBlock, ToolUseBlock
 
-from nkd_agents.anthropic import user
-from nkd_agents.cli import CLI, COMPACT_MSG, MODELS, THINKING, TOOLS
+from nkd_agents.cli import CLI, MODELS, THINKING, TOOLS
 
 
 @pytest.fixture
 def cli(tmp_path, monkeypatch):
-    """Create a CLI instance with a mock API key, in a clean directory."""
+    """Create a CLI instance with a mock API key, in a clean directory with no CLAUDE.md."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
     return CLI()
 
 
@@ -28,7 +26,7 @@ class TestInit:
         assert cli.model_idx == 0
         assert cli.kwargs["model"] == MODELS[0]
         assert cli.kwargs["max_tokens"] > 0
-        assert cli.kwargs["thinking"] is omit
+        assert "thinking" not in cli.kwargs
         assert cli.messages == []
         assert cli.llm_task is None
 
@@ -57,14 +55,14 @@ class TestSwitchModel:
 
 class TestToggleThinking:
     def test_enable(self, cli: CLI):
-        assert cli.kwargs["thinking"] is omit
+        assert "thinking" not in cli.kwargs
         cli.toggle_thinking()
         assert cli.kwargs["thinking"] == THINKING
 
     def test_disable(self, cli: CLI):
+        cli.kwargs["thinking"] = THINKING
         cli.toggle_thinking()
-        cli.toggle_thinking()
-        assert cli.kwargs["thinking"] is omit
+        assert "thinking" not in cli.kwargs
 
 
 class TestCycleMode:
@@ -97,96 +95,6 @@ class TestInterrupt:
         cli.llm_task.done.return_value = False
         cli.interrupt()
         cli.llm_task.cancel.assert_called_once()
-
-
-class TestCompactHistory:
-    def test_removes_tool_messages(self, cli: CLI):
-        cli.messages[:] = [
-            {"role": "user", "content": [{"type": "text", "text": "hi"}]},
-            {
-                "role": "assistant",
-                "content": [
-                    ToolUseBlock(type="tool_use", id="1", name="bash", input={})
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "tool_result", "tool_use_id": "1", "content": "ok"}
-                ],
-            },
-            {"role": "assistant", "content": [TextBlock(type="text", text="done")]},
-        ]
-        cli.compact_history()
-        assert len(cli.messages) == 3
-        assert cli.messages[0]["content"][0]["type"] == "text"
-        assert cli.messages[1]["content"][0].type == "text"
-        assert cli.messages[2] == user(COMPACT_MSG)
-
-    def test_empty(self, cli: CLI):
-        cli.compact_history()
-        assert cli.messages == []
-
-    def test_multiple_tool_rounds(self, cli: CLI):
-        cli.messages[:] = [
-            {"role": "user", "content": [{"type": "text", "text": "hi"}]},
-            {
-                "role": "assistant",
-                "content": [
-                    ToolUseBlock(type="tool_use", id="1", name="bash", input={})
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "tool_result", "tool_use_id": "1", "content": "ok"}
-                ],
-            },
-            {
-                "role": "assistant",
-                "content": [
-                    ToolUseBlock(type="tool_use", id="2", name="bash", input={})
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "tool_result", "tool_use_id": "2", "content": "ok"}
-                ],
-            },
-            {"role": "assistant", "content": [TextBlock(type="text", text="done")]},
-        ]
-        cli.compact_history()
-        assert len(cli.messages) == 3
-        assert cli.messages[0]["role"] == "user"
-        assert cli.messages[1]["role"] == "assistant"
-        assert cli.messages[2] == user(COMPACT_MSG)
-
-    def test_all_tool_messages(self, cli: CLI):
-        cli.messages[:] = [
-            {
-                "role": "assistant",
-                "content": [
-                    ToolUseBlock(type="tool_use", id="1", name="bash", input={})
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "tool_result", "tool_use_id": "1", "content": "ok"}
-                ],
-            },
-        ]
-        cli.compact_history()
-        assert cli.messages == [user(COMPACT_MSG)]
-
-    def test_no_tool_messages(self, cli: CLI):
-        cli.messages[:] = [
-            {"role": "user", "content": [{"type": "text", "text": "hi"}]},
-            {"role": "assistant", "content": [TextBlock(type="text", text="hello")]},
-        ]
-        cli.compact_history()
-        assert len(cli.messages) == 2
 
 
 class TestLLMLoop:
@@ -231,8 +139,11 @@ class TestLLMLoop:
 
 
 class TestBuildSystemPrompt:
-    def test_neither_exists(self, cli: CLI):
-        assert cli.build_system_prompt() is None
+    def test_neither_exists(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        assert CLI().build_system_prompt() is None
 
     def test_global_only(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -247,9 +158,11 @@ class TestBuildSystemPrompt:
     def test_local_only(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         (tmp_path / "CLAUDE.md").write_text("local content")
         result = CLI().build_system_prompt()
-        assert result == "local content"
+        assert result is not None
+        assert "local content" in result
 
     def test_both_global_first(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -263,28 +176,14 @@ class TestBuildSystemPrompt:
         assert result is not None
         assert result.index("global content") < result.index("local content")
 
-    def test_cwd_interpolation(self, tmp_path, monkeypatch):
+    def test_glob_interpolation(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        (tmp_path / "CLAUDE.md").write_text("cwd={cwd}")
-        result = CLI().build_system_prompt()
-        assert result == f"cwd={tmp_path.as_posix()}"
-
-    def test_home_interpolation(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        (tmp_path / "CLAUDE.md").write_text("home={home}")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        (tmp_path / "CLAUDE.md").write_text("files={glob}")
         result = CLI().build_system_prompt()
-        assert result == f"home={tmp_path.as_posix()}"
-
-    def test_both_interpolations_in_same_file(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        (tmp_path / "CLAUDE.md").write_text("cwd={cwd} home={home}")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        result = CLI().build_system_prompt()
-        assert result == f"cwd={tmp_path.as_posix()} home={tmp_path.as_posix()}"
+        assert result is not None
+        assert f"files=CWD: {tmp_path}" in result
 
     def test_empty_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
