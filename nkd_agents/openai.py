@@ -6,12 +6,14 @@ from typing import Any, Awaitable, Callable, Sequence
 from openai import AsyncOpenAI
 from openai.types.responses import (
     FunctionToolParam,
-    ParsedResponse,
-    ParsedResponseFunctionToolCall,
+    Response,
+    ResponseFormatTextConfigParam,
     ResponseFunctionCallOutputItemListParam,
+    ResponseFunctionToolCall,
     ResponseInputItemParam,
 )
 from openai.types.responses.response_input_item_param import FunctionCallOutput
+from pydantic import BaseModel
 
 from .utils import extract_function_params
 
@@ -21,6 +23,18 @@ logger = logging.getLogger(__name__)
 def user(content: str) -> ResponseInputItemParam:
     "Take a string and return a full OpenAI user message."
     return {"role": "user", "content": [{"type": "input_text", "text": content}]}
+
+
+def output_format(model: type[BaseModel]) -> ResponseFormatTextConfigParam:
+    """Build the JSON schema format block with strict=True for use in text= kwarg."""
+    schema = model.model_json_schema()
+    schema["additionalProperties"] = False
+    return {
+        "type": "json_schema",
+        "name": model.__name__,
+        "strict": True,
+        "schema": schema,
+    }
 
 
 def tool_schema(
@@ -49,8 +63,8 @@ def tool_schema(
 
 
 def extract_text_and_tool_calls(
-    response: ParsedResponse[Any],
-) -> tuple[str, list[ParsedResponseFunctionToolCall]]:
+    response: Response,
+) -> tuple[str, list[ResponseFunctionToolCall]]:
     """Extract text and tool calls from an OpenAI response."""
     text, tool_calls = "", []
 
@@ -74,7 +88,7 @@ async def tool(
     tool_dict: dict[
         str, Callable[..., Awaitable[str | ResponseFunctionCallOutputItemListParam]]
     ],
-    tool_call: ParsedResponseFunctionToolCall,
+    tool_call: ResponseFunctionToolCall,
 ) -> str | ResponseFunctionCallOutputItemListParam:
     try:
         return await tool_dict[tool_call.name](**json.loads(tool_call.arguments))
@@ -85,7 +99,7 @@ async def tool(
 
 
 def format_tool_results(
-    tool_calls: list[ParsedResponseFunctionToolCall],
+    tool_calls: list[ResponseFunctionToolCall],
     results: list[str | ResponseFunctionCallOutputItemListParam],
 ) -> list[FunctionCallOutput]:
     """Format tool results into messages to append to conversation.
@@ -122,11 +136,11 @@ async def llm(
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
 
     while True:
-        resp = await client.responses.parse(input=input, **kwargs)
+        resp: Response = await client.responses.create(input=input, **kwargs)
         logger.info(f"usage={resp.usage}")
 
         text, tool_calls = extract_text_and_tool_calls(resp)
-        input += resp.output  # type: ignore # TODO: fix this
+        input += resp.output  # type: ignore[arg-type]
 
         if not tool_calls:
             return text

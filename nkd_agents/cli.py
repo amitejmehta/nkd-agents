@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from anthropic import AsyncAnthropic, omit
+from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam
 from prompt_toolkit import PromptSession, key_binding, styles
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # constants
 MODELS = ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")
 TOOLS = (read_file, edit_file, bash, fetch_url, web_search)
-SKILLS_DIR = (Path(__file__).parent / "skills").resolve()
+SKILLS_DIR = Path.home() / ".nkd-agents" / "skills"
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
@@ -67,17 +67,15 @@ class CLI:
         self.warm_count: int = 0
         self.mode = list(MODE_PREFIXES)[0]
         self.model_idx = 0
-        self.kwargs = {"model": MODELS[0], "max_tokens": MAX_TOKENS, "thinking": omit}
+        self.kwargs = {"model": MODELS[0], "max_tokens": MAX_TOKENS}
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
 
     def build_system_prompt(self) -> str | None:
         def _load_md(path: Path) -> str:
-            return (
-                path.read_text(encoding="utf-8")
-                .replace("{cwd}", Path.cwd().as_posix())
-                .replace("{home}", Path.home().as_posix())
-            )
+            result = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
+            glob = "\n".join(f"{f}" for f in sorted(result.stdout.splitlines()))
+            return path.read_text(encoding="utf-8").replace("{glob}", glob)
 
         paths = (Path.home() / ".nkd-agents" / "CLAUDE.md", Path("CLAUDE.md"))
         parts = [_load_md(p) for p in paths if p.exists() and p.stat().st_size > 0]
@@ -101,30 +99,14 @@ class CLI:
             self.llm_task.cancel()
 
     def toggle_thinking(self) -> None:
-        current = self.kwargs["thinking"] != omit
-        self.kwargs["thinking"] = omit if current else THINKING
+        if current := self.kwargs.pop("thinking", None):
+            self.kwargs["thinking"] = THINKING
         logger.info(f"{DIM}Thinking: {'✓' if not current else '✗'}{RESET}")
 
     def cycle_mode(self) -> None:
         modes = list(MODE_PREFIXES)
         self.mode = modes[(modes.index(self.mode) + 1) % len(modes)]
         logger.info(f"{DIM}Mode: {self.mode.title()}{RESET}")
-
-    def compact_history(self) -> None:
-        kept = []
-        for x in self.messages:
-            assert isinstance(x["content"], list)
-            if not any(
-                (b.get("type") if isinstance(b, dict) else b.type)
-                in ("tool_use", "tool_result")
-                for b in x["content"]
-            ):
-                kept.append(x)
-        removed = len(self.messages) - len(kept)
-        self.messages[:] = kept
-        if removed:
-            self.messages.append(user(COMPACT_MSG))
-        logger.info(f"{DIM}Compacted: removed {removed} messages{RESET}")
 
     async def cache_warmer(self) -> None:
         while True:
@@ -170,7 +152,6 @@ class CLI:
         kb.add("escape", "escape")(lambda e: self.interrupt())
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.cycle_mode())
-        kb.add("c-k")(lambda e: self.compact_history())
 
         style = styles.Style.from_dict({"": "ansibrightblack"})
         session = PromptSession(key_bindings=kb, style=style)
@@ -191,12 +172,7 @@ def save_session(messages: list[MessageParam], path: Path | None = None) -> None
         path = sessions_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
 
     path.write_text(json.dumps(serialize(messages), indent=2))
-    resume_cmd = f"nkd -s {path}"
-    try:
-        subprocess.run(["pbcopy"], input=resume_cmd.encode(), check=False)
-    except (FileNotFoundError, PermissionError):
-        pass
-    print(f"{DIM}Resume with: {resume_cmd}{RESET}")
+    print(f"{DIM}Resume with: nkd -s {path.as_posix()}{RESET}")
 
 
 def main() -> None:

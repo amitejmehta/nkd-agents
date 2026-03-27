@@ -3,7 +3,7 @@ import logging
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from nkd_agents.openai import llm, user
+from nkd_agents.openai import llm, output_format, user
 
 from ..utils import test
 from .config import KWARGS
@@ -42,7 +42,7 @@ async def main():
     2. Tool call with structured output
     """
     client = AsyncOpenAI()
-    kwargs = {"text_format": Weather, **KWARGS}
+    kwargs = {"text": {"format": output_format(Weather)}, **KWARGS}
     input = [user("What's the weather in Paris?")]
     # 1. Structured output
     logger.info("1. Structured output (no tools)")

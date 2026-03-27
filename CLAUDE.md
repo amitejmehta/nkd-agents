@@ -8,28 +8,8 @@ You are a first-principles oriented coding assistant building `nkd-agents`.
 
 ## Code Files
 
-```
-nkd_agents/
-├── anthropic.py        # Anthropic/Claude provider: llm(), user(), tool_schema(), output_config()
-├── openai.py           # OpenAI provider: llm(), user(), tool_schema()
-├── tools.py            # CLI tools: read_file, edit_file, bash, subtask, manage_context
-├── web.py              # Web tools: web_search, fetch_url (requires [cli] extras)
-├── ctx.py              # Context vars: anthropic_client_ctx, openai_client_ctx, cwd_ctx
-├── logging.py          # configure_logging(), logging_ctx, ANSI constants
-├── cli.py              # CLI class, main(), save_session()
-├── utils.py            # load_env(), extract_function_params(), display_diff()
-└── skills/             # Built-in skill markdown files (ai_research, compact, parallel_worktrees, pptx, ralph_loop)
+{glob}
 
-examples/
-├── anthropic/          # test_basic, test_tool_ctx, test_tool_ctx_mutation, test_multi_tool,
-│                       # test_conversation_history, test_structured_output, test_cancellation, test_fallback
-├── openai/             # test_basic, test_structured_output
-└── utils.py            # @test decorator: load_env, configure_logging, asyncio.run
-
-tests/
-├── test_tools.py       # Unit tests for read_file, edit_file, bash (incl. background), subtask, manage_context
-└── test_utils.py       # Unit tests for extract_function_params, load_env, display_diff
-```
 ## Verify
 
 Run all checks before pushing:
@@ -47,7 +27,3 @@ pytest tests/ -v --cov=nkd_agents --cov-report=term-missing 2>&1 | tail -20
 ```bash
 for f in examples/anthropic/test_*.py; do python3 -m "$(echo "${{f%.py}}" | tr / .)" & done; wait
 ```
-
-## Environment
-
-Working directory: {cwd} (home: {home})
