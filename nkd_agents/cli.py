@@ -74,8 +74,9 @@ class CLI:
     def build_system_prompt(self) -> str | None:
         def _load_md(path: Path) -> str:
             result = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
-            glob = "\n".join(f"{f}" for f in sorted(result.stdout.splitlines()))
-            return path.read_text(encoding="utf-8").replace("{glob}", glob)
+            cwd = Path.cwd()
+            file_tree = f"cwd: {cwd}\n\n" + "\n".join(sorted(result.stdout.splitlines()))
+            return path.read_text(encoding="utf-8").replace("{glob}", file_tree)
 
         paths = (Path.home() / ".nkd-agents" / "CLAUDE.md", Path("CLAUDE.md"))
         parts = [_load_md(p) for p in paths if p.exists() and p.stat().st_size > 0]
