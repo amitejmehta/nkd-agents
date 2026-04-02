@@ -28,6 +28,9 @@ echo "0 2 * * * nkd -p 'run nightly audit'" | crontab -    # scheduled
 
 > **Note:** `cron` runs with a stripped `PATH` — always use the full path to `nkd` (`which nkd`). The `ANTHROPIC_API_KEY` is inherited from the user environment on macOS.
 
+## Advanced
+- **Multi-agent teams with a shared channel** — see `multi_agent.md`
+
 ## Best practices
 - Always silence stderr: `2>/dev/null`
 - Always redirect stdout to a file per agent

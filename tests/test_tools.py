@@ -113,109 +113,118 @@ class TestReadFile:
 
 class TestEditFile:
     @pytest.mark.asyncio
-    async def test_edit_file_create_new(self, tmp_path):
-        """Test creating a new file with old_str=''."""
+    async def test_create(self, tmp_path):
         file_path = tmp_path / "new_file.txt"
-        content = "New file content"
-
-        result = await edit_file(str(file_path), "create_file", content)
-
+        result = await edit_file(
+            str(file_path), mode="create", new_str="New file content"
+        )
         assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == content
+        assert file_path.read_text() == "New file content"
 
     @pytest.mark.asyncio
-    async def test_edit_file_create_nested_dirs(self, tmp_path):
-        """Test creating a file in nested directories that don't exist."""
+    async def test_create_nested_dirs(self, tmp_path):
         file_path = tmp_path / "a" / "b" / "c" / "file.txt"
-        content = "Nested file"
-
-        result = await edit_file(str(file_path), "create_file", content)
-
+        result = await edit_file(str(file_path), mode="create", new_str="Nested file")
         assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == content
-        assert file_path.parent.exists()
+        assert file_path.read_text() == "Nested file"
 
     @pytest.mark.asyncio
-    async def test_edit_file_single_replacement(self, tmp_path):
-        """Test replacing single occurrence (default count=1)."""
+    async def test_create_already_exists(self, tmp_path):
+        file_path = tmp_path / "existing.txt"
+        file_path.write_text("original")
+        with pytest.raises(ValueError, match="already exists"):
+            await edit_file(str(file_path), mode="create", new_str="new content")
+        assert file_path.read_text() == "original"
+
+    @pytest.mark.asyncio
+    async def test_append(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("hello")
+        result = await edit_file(str(file_path), mode="append", new_str=" world")
+        assert result == f"Success: Updated {file_path}"
+        assert file_path.read_text() == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_append_file_not_found(self):
+        with pytest.raises(ValueError, match="not found"):
+            await edit_file("/nonexistent/file.txt", mode="append", new_str="x")
+
+    @pytest.mark.asyncio
+    async def test_replace_str_single(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("foo bar foo bar")
-
-        result = await edit_file(str(file_path), "foo", "baz", count=1)
-
+        result = await edit_file(
+            str(file_path), mode="replace", new_str="baz", old_str="foo", count=1
+        )
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == "baz bar foo bar"
 
     @pytest.mark.asyncio
-    async def test_edit_file_multiple_replacements(self, tmp_path):
-        """Test replacing all occurrences with count=-1."""
+    async def test_replace_str_all(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("foo bar foo bar foo")
-
-        result = await edit_file(str(file_path), "foo", "baz", count=-1)
-
+        result = await edit_file(
+            str(file_path), mode="replace", new_str="baz", old_str="foo", count=-1
+        )
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == "baz bar baz bar baz"
 
     @pytest.mark.asyncio
-    async def test_edit_file_old_str_not_found(self, tmp_path):
-        """Test error when old_str is not in file content."""
+    async def test_replace_str_not_found(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("existing content")
-
         with pytest.raises(ValueError, match="not found in file content"):
-            await edit_file(str(file_path), "nonexistent", "new")
-        assert file_path.read_text() == "existing content"  # Unchanged
+            await edit_file(
+                str(file_path), mode="replace", new_str="new", old_str="nonexistent"
+            )
+        assert file_path.read_text() == "existing content"
 
     @pytest.mark.asyncio
-    async def test_edit_file_same_strings(self):
-        """Test error when old_str equals new_str."""
+    async def test_replace_str_same_strings(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo")
         with pytest.raises(ValueError, match="must be different"):
-            await edit_file("/any/path", "same", "same")
+            await edit_file(
+                str(file_path), mode="replace", new_str="same", old_str="same"
+            )
 
     @pytest.mark.asyncio
-    async def test_edit_file_not_found(self):
-        """Test error when file doesn't exist and old_str is not empty."""
+    async def test_replace_str_no_old_str(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo")
+        with pytest.raises(ValueError, match="old_str is required"):
+            await edit_file(str(file_path), mode="replace", new_str="bar")
+
+    @pytest.mark.asyncio
+    async def test_replace_str_file_not_found(self):
         with pytest.raises(ValueError, match="not found"):
-            await edit_file("/nonexistent/file.txt", "old", "new")
+            await edit_file(
+                "/nonexistent/file.txt",
+                mode="replace",
+                new_str="new",
+                old_str="old",
+            )
 
     @pytest.mark.asyncio
-    async def test_edit_file_create_already_exists(self, tmp_path):
-        """Test error when create_file is used on an existing file."""
-        file_path = tmp_path / "existing.txt"
-        file_path.write_text("original")
-
-        with pytest.raises(ValueError, match="already exists"):
-            await edit_file(str(file_path), "create_file", "new content")
-        assert file_path.read_text() == "original"  # Unchanged
-
-    @pytest.mark.asyncio
-    async def test_edit_file_multiple_sequential_edits(self, tmp_path):
-        """Test multiple edits to same file work correctly."""
+    async def test_multiple_sequential_edits(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("one two three")
-
-        result1 = await edit_file(str(file_path), "one", "1")
-        result2 = await edit_file(str(file_path), "two", "2")
-        result3 = await edit_file(str(file_path), "three", "3")
-
-        assert "Success" in result1
-        assert "Success" in result2
-        assert "Success" in result3
+        await edit_file(str(file_path), mode="replace", new_str="1", old_str="one")
+        await edit_file(str(file_path), mode="replace", new_str="2", old_str="two")
+        await edit_file(str(file_path), mode="replace", new_str="3", old_str="three")
         assert file_path.read_text() == "1 2 3"
 
     @pytest.mark.asyncio
-    async def test_edit_file_generic_exception(self, tmp_path):
-        """Test that unexpected exceptions are caught and returned as error messages."""
-        # Create a file and then make it unreadable by patching read_text
+    async def test_permission_error(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("original")
-
         with patch(
             "pathlib.Path.read_text", side_effect=PermissionError("Access denied")
         ):
             with pytest.raises(PermissionError, match="Access denied"):
-                await edit_file(str(file_path), "old", "new")
+                await edit_file(
+                    str(file_path), mode="replace", new_str="new", old_str="old"
+                )
 
 
 class TestBash:
@@ -454,7 +463,7 @@ class TestCwdContext:
 
         token = cwd_ctx.set(subdir)
         try:
-            result = await edit_file("new.txt", "create_file", "created")
+            result = await edit_file("new.txt", mode="create", new_str="created")
             assert "Success" in result
             assert (subdir / "new.txt").read_text() == "created"
         finally:
