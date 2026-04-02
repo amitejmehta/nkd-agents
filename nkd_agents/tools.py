@@ -20,6 +20,8 @@ async def read_file(path: str) -> str | list[Content]:
     file_path = p if p.is_absolute() else cwd_ctx.get() / p
     logger.info(f"\nReading: {GREEN}{file_path}{RESET}\n")
     bytes, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
+    if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and len(bytes) > 50000:
+        return f"File too large ({len(bytes):,} bytes) to read directly. Use grep() to search for specific content."
     return [bytes_to_content(bytes, ext)]
 
 
@@ -66,12 +68,11 @@ async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> st
 
 async def bash(command: str, timeout: int = 30) -> str:
     """Execute a bash command and return the results.
+    STDOUT is truncated to 50,000 characters.
 
     Returns one of the following strings:
     - "STDOUT:\n{stdout}\nSTDERR:\n{stderr}\nEXIT CODE: {returncode}"
     - "Error executing command: {str(e)}"
-
-    Rules: always use `rg` (ripgrep) over `grep`. Never use `find` — use glob patterns instead.
     """
     logger.info(f"Executing Bash: {GREEN}{command}{RESET}")
     process: asyncio.subprocess.Process = await asyncio.create_subprocess_exec(
@@ -84,10 +85,76 @@ async def bash(command: str, timeout: int = 30) -> str:
     )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        result_str = f"STDOUT:\n{stdout.decode()}\nSTDERR:\n{stderr.decode()}\nEXIT CODE: {process.returncode}"
+        result_str = f"STDOUT:\n{stdout.decode().strip()[:50000]}\nSTDERR:\n{stderr.decode().strip()}\nEXIT CODE: {process.returncode}"
         logger.info(result_str)
         return result_str
     except asyncio.TimeoutError:
         process.kill()
         await process.communicate()
         raise TimeoutError(f"Command timed out after {timeout} seconds: {command}")
+
+
+def _resolve_base(path: str | None) -> Path:
+    """Resolve an optional path string against cwd_ctx."""
+    if path is None:
+        return cwd_ctx.get()
+    p = Path(path)
+    return p if p.is_absolute() else cwd_ctx.get() / p
+
+
+async def glob(pattern: str, path: str | None = None) -> str:
+    """List files matching a glob pattern, relative to path (or cwd).
+
+    Fast file discovery without shelling out. Recursion via '**' is supported.
+
+    Args:
+        pattern: Glob pattern (e.g. '*.py', 'src/**/*.ts', '**/*.md')
+        path: Optional directory to search in (default: cwd)
+
+    Returns:
+        Newline-separated list of matching paths (relative to search dir), or 'No matches found'.
+    """
+    base = _resolve_base(path)
+    logger.info(f"Glob: {GREEN}{pattern}{RESET} in {base}")
+    matches = sorted(
+        str(m.relative_to(base)) for m in base.glob(pattern) if m.is_file()
+    )
+    return "\n".join(matches) if matches else "No matches found"
+
+
+async def grep(
+    pattern: str, include: str | None = None, path: str | None = None, context: int = 2
+) -> str:
+    """Search file contents using ripgrep (rg), a much faster alternative to basic `grep`.
+
+    Args:
+        pattern: Regex pattern to search for
+        include: Optional glob to filter files (e.g. '*.py', '*.ts')
+        path: Optional directory to search in (default: cwd)
+        context: Lines of context around each match (default: 2)
+
+    Returns:
+        Ripgrep output with file paths, line numbers, and context. Truncated to 200 matches.
+    """
+    base = _resolve_base(path)
+
+    cmd = [
+        "rg",
+        "--line-number",
+        "--heading",
+        f"--context={context}",
+        "--max-count=200",
+    ]
+    if include:
+        cmd.extend(["--glob", include])
+    cmd.extend(["--", pattern, str(base)])
+
+    logger.info(f"Grep: {GREEN}{' '.join(cmd)}{RESET}")
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=cwd_ctx.get(),
+    )
+    stdout, _ = await process.communicate()
+    return stdout.decode().strip() or f"No matches found for pattern: {pattern}"

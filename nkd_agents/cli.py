@@ -3,19 +3,22 @@ import asyncio
 import json
 import logging
 import os
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam
-from prompt_toolkit import PromptSession, key_binding, styles
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.styles import Style
 
 from .anthropic import llm, user
-from .logging import DIM, GREEN, RED, RESET, configure_logging
-from .tools import bash, edit_file, read_file
+from .logging import DIM, RED, RESET, configure_logging
+from .tools import bash, edit_file, glob, grep, read_file
 from .utils import load_env, serialize
 from .web import fetch_url, web_search
 
@@ -23,8 +26,9 @@ logger = logging.getLogger(__name__)
 
 # constants
 MODELS = ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")
-TOOLS = (read_file, edit_file, bash, fetch_url, web_search)
-SKILLS_DIR = Path.home() / ".nkd-agents" / "skills"
+TOOLS = (read_file, edit_file, bash, glob, grep, fetch_url, web_search)
+NKD_DIR = Path.home() / ".nkd-agents"
+SKILLS_DIR = NKD_DIR / "skills"
 BANNER = (
     f"\n\n{DIM}nkd-agents\n\n"
     "'tab':       toggle thinking\n"
@@ -32,7 +36,6 @@ BANNER = (
     "'esc esc':   interrupt\n"
     "'ctrl+u':    clear input\n"
     "'ctrl+l':    next model\n"
-    "'ctrl+k':    compact history (clears tool calls/results)\n"
     f"'skills':    {SKILLS_DIR} (click · paste to LLM)\n"
     f"'subagents': {SKILLS_DIR}/subagents/SKILL.md\n"
     f"'cli docs':  https://github.com/amitejmehta/nkd-agents/blob/main/docs/cli.md{RESET}\n"
@@ -52,13 +55,15 @@ MODE_PREFIXES: dict[str, str] = {
 CACHE_WARM_MSG = os.environ.get(
     "NKD_CACHE_WARM_MSG", 'Sending msg to warm cache. Just respond: "okay"'
 )
-COMPACT_MSG = os.environ.get(
-    "NKD_COMPACT", "FYI: removed tool calls/results to reduce context size."
-)
 
 
 class CLI:
     def __init__(self) -> None:
+        # dirs
+        (NKD_DIR / "sessions").mkdir(parents=True, exist_ok=True)
+        (NKD_DIR / "skills").mkdir(parents=True, exist_ok=True)
+
+        # llm
         self.client = AsyncAnthropic(max_retries=4)
         self.messages: list[MessageParam] = []
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
@@ -67,51 +72,80 @@ class CLI:
         self.warm_count: int = 0
         self.mode = list(MODE_PREFIXES)[0]
         self.model_idx = 0
-        self.kwargs = {"model": MODELS[0], "max_tokens": MAX_TOKENS}
+        self.kwargs = {
+            "model": MODELS[0],
+            "max_tokens": MAX_TOKENS,
+            "cache_control": {"type": "ephemeral"},
+        }
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
 
-    def build_system_prompt(self) -> str | None:
-        def _load_md(path: Path) -> str:
-            result = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
-            file_list = "\n".join(f"{f}" for f in sorted(result.stdout.splitlines()))
-            file_tree = f"CWD: {Path.cwd()}\n\n" + file_list
-            return path.read_text(encoding="utf-8").replace("{glob}", file_tree)
+        # prompt
+        kb = KeyBindings()
+        kb.add("c-l")(lambda e: self.switch_model())
+        kb.add("escape")(lambda e: self.interrupt())
+        kb.add("tab")(lambda e: self.toggle_thinking())
+        kb.add("s-tab")(lambda e: self.cycle_mode())
+        self.session = PromptSession[str](
+            history=FileHistory(str(NKD_DIR / ".history")),
+            key_bindings=kb,
+            style=Style(
+                [
+                    ("bottom-toolbar", "noinherit bg:default #554466"),
+                    ("bottom-toolbar.key", "noinherit bg:default #665577 bold"),
+                    ("", "fg:#888888"),
+                ]
+            ),
+            bottom_toolbar=self.bottom_toolbar,
+        )
 
-        paths = (Path.home() / ".nkd-agents" / "CLAUDE.md", Path("CLAUDE.md"))
-        parts = [_load_md(p) for p in paths if p.exists() and p.stat().st_size > 0]
-        return "\n\n".join(parts) or None
+    def build_system_prompt(self) -> str | None:
+        nkd_dir = Path.home() / ".nkd-agents"
+        paths = (nkd_dir / "CLAUDE.md", Path("CLAUDE.md"))
+        parts = [
+            p.read_text(encoding="utf-8")
+            for p in paths
+            if p.exists() and p.stat().st_size > 0
+        ]
+        if not parts:
+            return None
+        parts.append(f"CWD: {Path.cwd()}\nHOME: {Path.home()}")
+        return "\n\n".join(parts).strip()
 
     def build_message(self, text: str) -> str:
         mode_suffix = MODE_PREFIXES[self.mode]
-        formatted_mode_suffix = f" ({mode_suffix})" if mode_suffix else ""
-        return (
-            f"{START_PHRASE} Mode: {self.mode.title()}{formatted_mode_suffix}. {text}"
-        )
+        mode_suffix = f" ({mode_suffix})" if mode_suffix else ""
+        return f"{START_PHRASE} Mode: {self.mode.title()}{mode_suffix}. {text}"
 
-    def switch_model(self) -> None:
-        self.model_idx = (self.model_idx + 1) % len(MODELS)
-        self.kwargs["model"] = MODELS[self.model_idx]
-        logger.info(f"{DIM}Switched to {GREEN}{self.kwargs['model']}{RESET}")
+    def bottom_toolbar(self) -> StyleAndTextTuples:
+        thinking = "✓" if "thinking" in self.kwargs else "✗"
+        return [
+            ("class:bottom-toolbar", "\n"),
+            ("class:bottom-toolbar.key", " model"),
+            ("class:bottom-toolbar", f":{self.kwargs['model']} "),
+            ("class:bottom-toolbar.key", "mode"),
+            ("class:bottom-toolbar", f":{self.mode.title()} "),
+            ("class:bottom-toolbar.key", "think"),
+            ("class:bottom-toolbar", f":{thinking} "),
+        ]
 
     def interrupt(self) -> None:
         if self.llm_task and not self.llm_task.done():
             logger.info(f"{RED}...Interrupted. What now?{RESET}")
             self.llm_task.cancel()
 
+    def switch_model(self) -> None:
+        self.model_idx = (self.model_idx + 1) % len(MODELS)
+        self.kwargs["model"] = MODELS[self.model_idx]
+
     def toggle_thinking(self) -> None:
-        if "thinking" in self.kwargs:
-            del self.kwargs["thinking"]
-        else:
+        thinking = self.kwargs.pop("thinking", None)
+        if not thinking:
             self.kwargs["thinking"] = THINKING
-        logger.info(
-            f"{DIM}Thinking: {'✓' if 'thinking' in self.kwargs else '✗'}{RESET}"
-        )
 
     def cycle_mode(self) -> None:
-        modes = list(MODE_PREFIXES)
+        modes = list[str](MODE_PREFIXES)
         self.mode = modes[(modes.index(self.mode) + 1) % len(modes)]
-        logger.info(f"{DIM}Mode: {self.mode.title()}{RESET}")
 
     async def cache_warmer(self) -> None:
         while True:
@@ -125,7 +159,6 @@ class CLI:
             ):
                 try:
                     messages = self.messages + [user(CACHE_WARM_MSG)]
-                    messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
                     await self.client.messages.create(messages=messages, **self.kwargs)
                     self.last_message_at = time.monotonic()
                     self.warm_count += 1
@@ -152,36 +185,25 @@ class CLI:
                 self.last_message_at = time.monotonic()
 
     async def prompt_loop(self) -> None:
-        kb = key_binding.KeyBindings()
-        kb.add("c-l")(lambda e: self.switch_model())
-        kb.add("escape", "escape")(lambda e: self.interrupt())
-        kb.add("tab")(lambda e: self.toggle_thinking())
-        kb.add("s-tab")(lambda e: self.cycle_mode())
-
-        style = styles.Style.from_dict({"": "ansibrightblack"})
-        session = PromptSession(key_bindings=kb, style=style)
-
         while True:
-            text: str = await session.prompt_async("> ")
+            text: str = await self.session.prompt_async("> ")
             if text and text.strip():
                 await self.queue.put(user(self.build_message(text.strip())))
 
-    async def run(self) -> None:
+    def save_session(self, path: Path | None = None) -> None:
+        if path is None:
+            path = (
+                NKD_DIR / "sessions" / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
+            )
+        path.write_text(json.dumps(serialize(self.messages), indent=2))
+        print(f"{DIM}Resume with: nkd -s {path.as_posix()}{RESET}")
+
+    async def start(self) -> None:
         await asyncio.gather(self.llm_loop(), self.prompt_loop(), self.cache_warmer())
 
 
-def save_session(messages: list[MessageParam], path: Path | None = None) -> None:
-    if path is None:
-        sessions_dir = Path.home() / ".nkd-agents" / "sessions"
-        sessions_dir.mkdir(parents=True, exist_ok=True)
-        path = sessions_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
-
-    path.write_text(json.dumps(serialize(messages), indent=2))
-    print(f"{DIM}Resume with: nkd -s {path.as_posix()}{RESET}")
-
-
 def main() -> None:
-    load_env((Path.home() / ".nkd-agents" / ".env").as_posix())
+    load_env((NKD_DIR / ".env").as_posix())
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-s", "--session", type=Path, help="Path to a saved session JSON file"
@@ -194,21 +216,20 @@ def main() -> None:
     cli = CLI()
 
     try:
-        if args.session:
-            cli.messages[:] = json.loads(args.session.read_text())
-            logger.info(f"Loaded session: {args.session}")
-        if args.prompt:
+        with patch_stdout(raw=True):
             configure_logging(LOG_LEVEL)
-            cli.messages.append(user(args.prompt))
-            result = asyncio.run(llm(cli.client, cli.messages, TOOLS, **cli.kwargs))
-            print(result)
-        else:
-            with patch_stdout(raw=True):
-                configure_logging(LOG_LEVEL)
+            if args.session:
+                cli.messages[:] = json.loads(args.session.read_text())
+                logger.info(f"Loaded session: {args.session}")
+            if args.prompt:
+                cli.messages.append(user(args.prompt))
+                result = asyncio.run(llm(cli.client, cli.messages, TOOLS, **cli.kwargs))
+                print(result)
+            else:
                 print(BANNER)
-                asyncio.run(cli.run())
+                asyncio.run(cli.start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
     finally:
         if cli.messages:
-            save_session(cli.messages, path=args.session)
+            cli.save_session(path=args.session)

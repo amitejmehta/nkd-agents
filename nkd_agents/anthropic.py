@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import logging
-from typing import Any, Awaitable, Callable, Iterable, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 
 from anthropic import AsyncAnthropic, AsyncAnthropicVertex, transform_schema
 from anthropic.types import (
@@ -93,30 +93,17 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
 
 
 async def tool(
-    tool_dict: dict[str, Callable[..., Awaitable[str | Iterable[Content]]]],
+    tool_dict: Mapping[str, Callable[..., Awaitable[str | Iterable[Content]]]],
     tool_call: ToolUseBlock,
-) -> str | Iterable[Content]:
+) -> ToolResultBlockParam:
     try:
-        return await tool_dict[tool_call.name](**tool_call.input)
+        result = await tool_dict[tool_call.name](**tool_call.input)
     except Exception as e:
-        msg = f"Error calling tool '{tool_call.name}': {e}"
-        logger.warning(msg)
-        return msg
-
-
-def format_tool_results(
-    tool_calls: list[ToolUseBlock], results: list[str | Iterable[Content]]
-) -> list[MessageParam]:
-    """Format tool results into messages to append to conversation.
-
-    For Anthropic, tool results are added as a new user message.
-    """
-    content = []
-    for c, r in zip(tool_calls, results):
-        r = [TextBlockParam(type="text", text=r)] if isinstance(r, str) else r
-        b = ToolResultBlockParam(type="tool_result", tool_use_id=c.id, content=r)
-        content.append(b)
-    return [{"role": "user", "content": content}]
+        result = f"Error calling tool '{tool_call.name}': {e}"
+        logger.warning(result)
+    if isinstance(result, str):
+        result = [TextBlockParam(type="text", text=result)]
+    return {"type": "tool_result", "tool_use_id": tool_call.id, "content": result}
 
 
 async def llm(
@@ -134,33 +121,21 @@ async def llm(
         **kwargs: API parameters (model, max_tokens, system, temperature, etc.)
 
     - Tools must be async functions that return a string OR list of Anthropic content blocks.
-    - Tools should handle their own errors and return descriptive, concise error strings.
-    - When cancelled, the loop will return "Interrupted" as the result for any cancelled tool calls.
-    - Uses anthropic ephemeral (5min) prompt caching by always setting breakpoint at last message.
     """
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
 
     while True:
-        try:
-            if fns:
-                input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore # TODO: fix this
-
-            resp: Message = await client.messages.create(messages=input, **kwargs)
-            logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-        finally:
-            if fns:
-                del input[-1]["content"][-1]["cache_control"]  # type: ignore # TODO: fix this
+        resp = await client.messages.create(messages=input, stream=False, **kwargs)
+        # logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
 
         text, tool_calls = extract_text_and_tool_calls(resp)
+
+        # NOTE: assistant response must be appended after tool execution
+        # This prevents oprhaned tool calls in case of interruption/cancellation
+        results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
         input.append({"role": "assistant", "content": resp.content})
-
-        if not tool_calls:
+        if tool_calls:
+            input.append({"role": "user", "content": results})
+        else:
             return text
-
-        try:
-            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
-            input += format_tool_results(tool_calls, results)
-        except asyncio.CancelledError:
-            input += format_tool_results(tool_calls, ["Interrupted"] * len(tool_calls))
-            raise

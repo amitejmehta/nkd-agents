@@ -15,6 +15,41 @@ def cli(tmp_path, monkeypatch):
     return CLI()
 
 
+class TestBottomToolbar:
+    def test_shows_model(self, cli: CLI):
+        frags = cli.bottom_toolbar()
+        text = "".join(f[1] for f in frags)
+        assert MODELS[0] in text
+
+    def test_shows_mode(self, cli: CLI):
+        frags = cli.bottom_toolbar()
+        text = "".join(f[1] for f in frags)
+        assert "None" in text
+
+    def test_thinking_off(self, cli: CLI):
+        frags = cli.bottom_toolbar()
+        text = "".join(f[1] for f in frags)
+        assert "✗" in text
+
+    def test_thinking_on(self, cli: CLI):
+        cli.kwargs["thinking"] = THINKING
+        frags = cli.bottom_toolbar()
+        text = "".join(f[1] for f in frags)
+        assert "✓" in text
+
+    def test_reflects_model_change(self, cli: CLI):
+        cli.switch_model()
+        frags = cli.bottom_toolbar()
+        text = "".join(f[1] for f in frags)
+        assert MODELS[1] in text
+
+    def test_reflects_mode_change(self, cli: CLI):
+        cli.cycle_mode()
+        frags = cli.bottom_toolbar()
+        text = "".join(f[1] for f in frags)
+        assert "Plan" in text
+
+
 class TestInit:
     def test_missing_api_key(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -153,7 +188,8 @@ class TestBuildSystemPrompt:
         global_md.write_text("global content")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         result = CLI().build_system_prompt()
-        assert result == "global content"
+        assert result is not None
+        assert "global content" in result
 
     def test_local_only(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -176,14 +212,15 @@ class TestBuildSystemPrompt:
         assert result is not None
         assert result.index("global content") < result.index("local content")
 
-    def test_glob_interpolation(self, tmp_path, monkeypatch):
+    def test_appends_cwd_and_home(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        (tmp_path / "CLAUDE.md").write_text("files={glob}")
+        (tmp_path / "CLAUDE.md").write_text("local content")
         result = CLI().build_system_prompt()
         assert result is not None
-        assert f"files=CWD: {tmp_path}" in result
+        assert f"CWD: {tmp_path}" in result
+        assert f"HOME: {tmp_path}" in result
 
     def test_empty_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

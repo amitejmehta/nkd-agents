@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nkd_agents.tools import bash, edit_file, read_file
+from nkd_agents.tools import bash, edit_file, glob, grep, read_file
 
 
 class TestReadFile:
@@ -313,6 +313,115 @@ class TestBash:
         """Background processes are run via & in the command string."""
         result = await bash("echo hello &")
         assert "EXIT CODE: 0" in result
+
+
+class TestGlob:
+    @pytest.mark.asyncio
+    async def test_glob_matches(self, tmp_path):
+        """Test glob finds matching files."""
+        (tmp_path / "a.py").write_text("x")
+        (tmp_path / "b.py").write_text("x")
+        (tmp_path / "c.txt").write_text("x")
+
+        from nkd_agents.tools import cwd_ctx
+
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await glob("*.py")
+            assert "a.py" in result
+            assert "b.py" in result
+            assert "c.txt" not in result
+        finally:
+            cwd_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_glob_recursive(self, tmp_path):
+        """Test ** recursive glob."""
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "deep.py").write_text("x")
+        (tmp_path / "top.py").write_text("x")
+
+        from nkd_agents.tools import cwd_ctx
+
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await glob("**/*.py")
+            assert "top.py" in result
+            assert "sub/deep.py" in result
+        finally:
+            cwd_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_glob_no_matches(self, tmp_path):
+        """Test glob returns message when nothing matches."""
+        result = await glob("*.xyz", path=str(tmp_path))
+        assert result == "No matches found"
+
+    @pytest.mark.asyncio
+    async def test_glob_custom_path(self, tmp_path):
+        """Test glob with explicit path argument."""
+        sub = tmp_path / "dir"
+        sub.mkdir()
+        (sub / "f.md").write_text("x")
+
+        result = await glob("*.md", path=str(sub))
+        assert "f.md" in result
+
+    @pytest.mark.asyncio
+    async def test_glob_excludes_directories(self, tmp_path):
+        """Test glob only returns files, not directories."""
+        (tmp_path / "file.py").write_text("x")
+        (tmp_path / "dir.py").mkdir()  # directory with .py name
+
+        result = await glob("*.py", path=str(tmp_path))
+        assert "file.py" in result
+        lines = [line for line in result.splitlines() if line.strip()]
+        assert len(lines) == 1
+
+
+class TestGrep:
+    @pytest.mark.asyncio
+    async def test_grep_finds_pattern(self, tmp_path):
+        """Test grep finds matching lines."""
+        (tmp_path / "test.py").write_text(
+            "def hello():\n    pass\n\ndef world():\n    pass\n"
+        )
+
+        result = await grep("def hello", path=str(tmp_path))
+        assert "def hello" in result
+
+    @pytest.mark.asyncio
+    async def test_grep_with_include_filter(self, tmp_path):
+        """Test grep --glob filter."""
+        (tmp_path / "a.py").write_text("target_string\n")
+        (tmp_path / "b.txt").write_text("target_string\n")
+
+        result = await grep("target_string", include="*.py", path=str(tmp_path))
+        assert "target_string" in result
+        assert "b.txt" not in result
+
+    @pytest.mark.asyncio
+    async def test_grep_no_matches(self, tmp_path):
+        """Test grep returns message when nothing matches."""
+        (tmp_path / "test.py").write_text("nothing here\n")
+
+        result = await grep("nonexistent_xyz", path=str(tmp_path))
+        assert "No matches found" in result
+
+    @pytest.mark.asyncio
+    async def test_grep_respects_cwd(self, tmp_path):
+        """Test grep uses cwd_ctx when no path given."""
+        from nkd_agents.tools import cwd_ctx
+
+        (tmp_path / "file.py").write_text("unique_marker_abc\n")
+
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await grep("unique_marker_abc")
+            assert "unique_marker_abc" in result
+        finally:
+            cwd_ctx.reset(token)
 
 
 class TestCwdContext:
