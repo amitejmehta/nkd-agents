@@ -98,7 +98,7 @@ if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
     || docker build -q -t nkd-agents 'https://github.com/amitejmehta/nkd-agents.git' &>/dev/null \
     && docker tag nkd-agents ghcr.io/amitejmehta/nkd-agents:latest &>/dev/null || true
   add_alias "nkd-sandbox" \
-    "docker run -it --rm --env-file ~/.nkd-agents/.env -v \$(pwd):/workspace -v \$HOME/.nkd-agents:/root/.nkd-agents ghcr.io/amitejmehta/nkd-agents:latest"
+    "docker run -it --rm --env-file ~/.nkd-agents/.env -v \$(pwd):/workspace -v \$HOME/.nkd-agents:/home/pwuser/.nkd-agents ghcr.io/amitejmehta/nkd-agents:latest"
   echo -e "${GREEN}✓${NC}${WHITE} nkd-sandbox${NC}"
 fi
 
