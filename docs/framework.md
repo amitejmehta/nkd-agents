@@ -143,15 +143,9 @@ One built-in context var in `nkd_agents.ctx`:
 |-----|------|---------|
 | `cwd_ctx` | `ContextVar[Path]` | Working directory for tools. Relative paths resolve against this. Default: `Path.cwd()`. |
 
-## Cancellation
+## Atomicity
 
-When the task running `llm()` is cancelled (e.g., `task.cancel()`):
-
-1. The currently-running `asyncio.gather()` for tool calls raises `CancelledError`.
-2. The loop catches it, fills all tool results with `"Interrupted"`.
-3. Re-raises `CancelledError` so the cancellation propagates properly.
-
-This keeps the API in a valid state — no orphaned `tool_use` blocks without `tool_result`.
+Message history mutations are atomic: tool calls and results are only appended to `input` after all tool executions in a turn succeed. If any tool fails, is cancelled, or raises, that turn is not appended — `input` is left exactly as it was.
 
 ## Prompt Caching
 

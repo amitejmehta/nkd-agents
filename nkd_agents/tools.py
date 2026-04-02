@@ -122,10 +122,8 @@ async def glob(pattern: str, path: str | None = None) -> str:
     """
     base = resolve_path(path)
     logger.info(f"Glob: {GREEN}{pattern}{RESET} in {base}")
-    matches = sorted(
-        str(m.relative_to(base)) for m in base.glob(pattern) if m.is_file()
-    )
-    return "\n".join(matches) if matches else "No matches found"
+    matches = [str(m.relative_to(base)) for m in base.glob(pattern) if m.is_file()]
+    return "\n".join(sorted(matches)) if matches else "No matches found"
 
 
 async def grep(
