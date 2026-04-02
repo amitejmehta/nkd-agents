@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
+from typing import Literal
 
 from anthropic.types.tool_result_block_param import Content
 
@@ -12,12 +13,19 @@ from .utils import display_diff
 logger = logging.getLogger(__name__)
 
 
+def resolve_path(path: str | None = None) -> Path:
+    """Resolve an optional path string against cwd_ctx."""
+    if path is None:
+        return cwd_ctx.get()
+    p = Path(path)
+    return p if p.is_absolute() else cwd_ctx.get() / p
+
+
 # Anthropic-specific: returns Content format via bytes_to_content
 async def read_file(path: str) -> str | list[Content]:
     """Read and return the contents of a file at the given path. Only works with files, not directories.
     Supports image (jpg, jpeg, png, gif, webp), PDF, and all text files."""
-    p = Path(path)
-    file_path = p if p.is_absolute() else cwd_ctx.get() / p
+    file_path = resolve_path(path)
     logger.info(f"\nReading: {GREEN}{file_path}{RESET}\n")
     bytes, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
     if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and len(bytes) > 50000:
@@ -25,36 +33,42 @@ async def read_file(path: str) -> str | list[Content]:
     return [bytes_to_content(bytes, ext)]
 
 
-async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> str:
+async def edit_file(
+    path: str,
+    mode: Literal["create", "append", "replace"],
+    new_str: str,
+    old_str: str | None = None,
+    count: int = 1,
+) -> str:
     """Create or edit an existing file.
-    For creation: provide the new path and set old_str="create_file"
-    For editing: Replaces occurrences of old_str with new_str in the file at the provided path.
-    By default, only the first occurrence is replaced. Set count=-1 to replace all occurrences.
-    For multiple edits to the same file, call this function multiple times with smaller edits rather than one large edit.
 
     Args:
         path: Path to the file
-        old_str: String to search for (use "create_file" for file creation)
-        new_str: String to replace with
-        count: Maximum number of occurrences to replace (default: 1, use -1 for all)
+        mode: One of 'create', 'append', 'replace'
+        new_str: Content to write or insert
+        old_str: (replace) String to search for and replace
+        count: (replace) Max occurrences to replace (default: 1, use -1 for all)
 
     Returns "Success: Updated {path}" or raises ValueError.
     """
-    if old_str == new_str:
-        raise ValueError("old_str and new_str must be different")
+    file_path = resolve_path(path)
 
-    p = Path(path)
-    file_path = p if p.is_absolute() else cwd_ctx.get() / p
-
-    if old_str == "create_file":
+    if mode == "create":
         if file_path.exists():
-            raise ValueError(
-                f"File '{path}' already exists. Use old_str/new_str to edit it."
-            )
+            raise ValueError(f"File '{path}' already exists. Use a different mode.")
         content, edited_content = "", new_str
-    elif not file_path.exists():
-        raise ValueError(f"File '{path}' not found")
-    else:
+    elif mode == "append":
+        if not file_path.exists():
+            raise ValueError(f"File '{path}' not found")
+        content = file_path.read_text(encoding="utf-8")
+        edited_content = content + new_str
+    else:  # replace
+        if not file_path.exists():
+            raise ValueError(f"File '{path}' not found")
+        if old_str is None:
+            raise ValueError("old_str is required for replace mode")
+        if old_str == new_str:
+            raise ValueError("old_str and new_str must be different")
         content = file_path.read_text(encoding="utf-8")
         if old_str not in content:
             raise ValueError("old_str not found in file content")
@@ -94,14 +108,6 @@ async def bash(command: str, timeout: int = 30) -> str:
         raise TimeoutError(f"Command timed out after {timeout} seconds: {command}")
 
 
-def _resolve_base(path: str | None) -> Path:
-    """Resolve an optional path string against cwd_ctx."""
-    if path is None:
-        return cwd_ctx.get()
-    p = Path(path)
-    return p if p.is_absolute() else cwd_ctx.get() / p
-
-
 async def glob(pattern: str, path: str | None = None) -> str:
     """List files matching a glob pattern, relative to path (or cwd).
 
@@ -114,7 +120,7 @@ async def glob(pattern: str, path: str | None = None) -> str:
     Returns:
         Newline-separated list of matching paths (relative to search dir), or 'No matches found'.
     """
-    base = _resolve_base(path)
+    base = resolve_path(path)
     logger.info(f"Glob: {GREEN}{pattern}{RESET} in {base}")
     matches = sorted(
         str(m.relative_to(base)) for m in base.glob(pattern) if m.is_file()
@@ -136,7 +142,7 @@ async def grep(
     Returns:
         Ripgrep output with file paths, line numbers, and context. Truncated to 200 matches.
     """
-    base = _resolve_base(path)
+    base = resolve_path(path)
 
     cmd = [
         "rg",
