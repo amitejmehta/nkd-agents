@@ -43,7 +43,6 @@ BANNER = (
 
 # runtime config (override via env / ~/.nkd-agents/.env)
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
-LOG_SIMPLE = bool(os.environ.get("NKD_LOG_SIMPLE", True))
 THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
