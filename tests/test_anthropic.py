@@ -10,7 +10,6 @@ from pydantic import BaseModel
 
 from nkd_agents.anthropic import (
     extract_text_and_tool_calls,
-    format_tool_results,
     output_format,
     tool,
     tool_schema,
@@ -153,7 +152,9 @@ async def test_tool_success():
     )
 
     result = await tool(tool_dict, tool_call)
-    assert result == "Result: test"
+    assert result["type"] == "tool_result"
+    assert result["tool_use_id"] == "tool_1"
+    assert result["content"][0]["text"] == "Result: test"
 
 
 @pytest.mark.asyncio
@@ -173,61 +174,40 @@ async def test_tool_error_handling():
     )
 
     result = await tool(tool_dict, tool_call)
-    assert "Error calling tool 'failing_tool'" in result
-    assert "Something went wrong" in result
+    assert result["type"] == "tool_result"
+    assert "Error calling tool 'failing_tool'" in result["content"][0]["text"]
+    assert "Something went wrong" in result["content"][0]["text"]
 
 
-def test_format_tool_results_string():
-    """Test formatting string tool results"""
-    tool_calls = [
-        ToolUseBlock(
-            type="tool_use",
-            id="tool_1",
-            name="search",
-            input={"query": "test"},
-        )
-    ]
-    results = ["Search results here"]
+@pytest.mark.asyncio
+async def test_tool_returns_tool_result_block():
+    """Test tool returns a ToolResultBlockParam directly"""
 
-    formatted = format_tool_results(tool_calls, results)
-    assert len(formatted) == 1
-    assert formatted[0]["role"] == "user"
-    assert len(formatted[0]["content"]) == 1
-    assert formatted[0]["content"][0]["type"] == "tool_result"
-    assert formatted[0]["content"][0]["tool_use_id"] == "tool_1"
+    async def search(query: str) -> str:
+        """Search"""
+        return "Search results here"
+
+    tool_call = ToolUseBlock(
+        type="tool_use", id="tool_1", name="search", input={"query": "test"}
+    )
+    result = await tool({"search": search}, tool_call)
+    assert result["type"] == "tool_result"
+    assert result["tool_use_id"] == "tool_1"
+    assert result["content"][0]["text"] == "Search results here"
 
 
-def test_format_tool_results_content_blocks():
-    """Test formatting content block tool results"""
-    tool_calls = [
-        ToolUseBlock(
-            type="tool_use",
-            id="tool_1",
-            name="read_file",
-            input={"path": "test.txt"},
-        )
-    ]
-    results = [[{"type": "text", "text": "File content"}]]
+@pytest.mark.asyncio
+async def test_tool_returns_content_blocks():
+    """Test tool wraps content block return in ToolResultBlockParam"""
 
-    formatted = format_tool_results(tool_calls, results)
-    assert len(formatted) == 1
-    assert formatted[0]["role"] == "user"
-    assert formatted[0]["content"][0]["type"] == "tool_result"
-    assert formatted[0]["content"][0]["content"] == [
-        {"type": "text", "text": "File content"}
-    ]
+    async def read_file(path: str) -> list:
+        """Read file"""
+        return [{"type": "text", "text": "File content"}]
 
-
-def test_format_tool_results_multiple():
-    """Test formatting multiple tool results"""
-    tool_calls = [
-        ToolUseBlock(type="tool_use", id="tool_1", name="tool1", input={"a": 1}),
-        ToolUseBlock(type="tool_use", id="tool_2", name="tool2", input={"b": 2}),
-    ]
-    results = ["result1", "result2"]
-
-    formatted = format_tool_results(tool_calls, results)
-    assert len(formatted) == 1
-    assert len(formatted[0]["content"]) == 2
-    assert formatted[0]["content"][0]["tool_use_id"] == "tool_1"
-    assert formatted[0]["content"][1]["tool_use_id"] == "tool_2"
+    tool_call = ToolUseBlock(
+        type="tool_use", id="tool_1", name="read_file", input={"path": "test.txt"}
+    )
+    result = await tool({"read_file": read_file}, tool_call)
+    assert result["type"] == "tool_result"
+    assert result["tool_use_id"] == "tool_1"
+    assert result["content"] == [{"type": "text", "text": "File content"}]
