@@ -132,7 +132,7 @@ async def llm(
         text, tool_calls = extract_text_and_tool_calls(resp)
 
         # NOTE: assistant response must be appended after tool execution
-        # This prevents oprhaned tool calls in case of interruption/cancellation
+        # This prevents orphaned tool calls in case of interruption/cancellation
         results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
         input.append({"role": "assistant", "content": resp.content})
         if tool_calls:

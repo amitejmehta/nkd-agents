@@ -64,7 +64,7 @@ def process_param_annotation(annotation: Any, param_sig: str) -> dict[str, Any]:
 
 def extract_function_params(
     func: Callable[..., Any], allow_defaults: bool = True
-) -> tuple[dict[str, Any], list[str]]:
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
     """Extract parameter schema and required list from a function signature.
     Supports: str, int, float, bool, Literal of core types, T | None.
 
