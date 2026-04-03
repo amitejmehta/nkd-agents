@@ -8,7 +8,7 @@ from openai.types.responses import (
 )
 from openai.types.responses.response_reasoning_item import Summary
 
-from nkd_agents.openai_responses import (
+from nkd_agents.openai_v2 import (
     extract_text_and_tool_calls,
     tool,
     tool_schema,
