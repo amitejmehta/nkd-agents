@@ -127,7 +127,7 @@ async def llm(
 
     while True:
         resp = await client.messages.create(messages=input, stream=False, **kwargs)
-        # logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
+        logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
 
         text, tool_calls = extract_text_and_tool_calls(resp)
 
