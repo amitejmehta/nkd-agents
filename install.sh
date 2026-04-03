@@ -16,16 +16,16 @@ if ! command -v rg &>/dev/null; then
   if [[ "$OS" == "Darwin" ]]; then
     if ! command -v brew &>/dev/null; then
       echo -e "${WHITE}Installing Homebrew...${NC}"
-      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &>/dev/null
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
-    brew install ripgrep &>/dev/null
+    brew install ripgrep
   elif [[ "$OS" == "Linux" ]]; then
     if command -v apt-get &>/dev/null; then
-      sudo apt-get update -qq && sudo apt-get install -y ripgrep &>/dev/null
+      sudo apt-get update && sudo apt-get install -y ripgrep
     elif command -v dnf &>/dev/null; then
-      sudo dnf install -y ripgrep &>/dev/null
+      sudo dnf install -y ripgrep
     elif command -v pacman &>/dev/null; then
-      sudo pacman -S --noconfirm ripgrep &>/dev/null
+      sudo pacman -S --noconfirm ripgrep
     else
       echo -e "${RED}Could not install ripgrep — install it manually: https://github.com/BurntSushi/ripgrep${NC}"
     fi
@@ -37,13 +37,13 @@ echo -e "${GREEN}✓${NC}${WHITE} ripgrep${NC}"
 
 # ── uv ────────────────────────────────────────────────────────────────────────
 if ! command -v uv &>/dev/null; then
-  curl -LsSf https://astral.sh/uv/install.sh | sh &>/dev/null
+  curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
 fi
 echo -e "${GREEN}✓${NC}${WHITE} uv${NC}"
 
 # ── nkd CLI ───────────────────────────────────────────────────────────────────
-uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]' &>/dev/null
+uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'
 echo -e "${GREEN}✓${NC}${WHITE} nkd${NC}"
 
 # ── skills ────────────────────────────────────────────────────────────────────
@@ -94,9 +94,9 @@ if command -v docker &>/dev/null; then
   fi
 fi
 if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
-  docker pull ghcr.io/amitejmehta/nkd-agents:latest &>/dev/null \
-    || docker build -q -t nkd-agents 'https://github.com/amitejmehta/nkd-agents.git' &>/dev/null \
-    && docker tag nkd-agents ghcr.io/amitejmehta/nkd-agents:latest &>/dev/null || true
+  docker pull ghcr.io/amitejmehta/nkd-agents:latest \
+    || docker build -t nkd-agents 'https://github.com/amitejmehta/nkd-agents.git' \
+    && docker tag nkd-agents ghcr.io/amitejmehta/nkd-agents:latest || true
   add_alias "nkd-sandbox" \
     "docker run -it --rm --env-file ~/.nkd-agents/.env -v \$(pwd):/workspace -v \$HOME/.nkd-agents:/home/pwuser/.nkd-agents ghcr.io/amitejmehta/nkd-agents:latest"
   echo -e "${GREEN}✓${NC}${WHITE} nkd-sandbox${NC}"
