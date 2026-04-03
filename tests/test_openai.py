@@ -8,9 +8,8 @@ from openai.types.responses import (
 )
 from openai.types.responses.response_reasoning_item import Summary
 
-from nkd_agents.openai import (
+from nkd_agents.openai_responses import (
     extract_text_and_tool_calls,
-    format_tool_results,
     tool,
     tool_schema,
     user,
@@ -170,7 +169,8 @@ async def test_tool_success():
     )
 
     result = await tool(tool_dict, tool_call)
-    assert result == "Result: test"
+    assert result["output"] == "Result: test"
+    assert result["call_id"] == "call_1"
 
 
 @pytest.mark.asyncio
@@ -192,8 +192,8 @@ async def test_tool_error_handling():
     )
 
     result = await tool(tool_dict, tool_call)
-    assert "Error calling tool 'failing_tool'" in result
-    assert "Something went wrong" in result
+    assert "Error calling tool 'failing_tool'" in result["output"]
+    assert "Something went wrong" in result["output"]
 
 
 def _tool_call(
@@ -209,34 +209,40 @@ def _tool_call(
     )
 
 
-def test_format_tool_results_string():
-    """Test formatting string tool results"""
-    formatted = format_tool_results([_tool_call("call_1")], ["Search results here"])
-    assert len(formatted) == 1
-    assert formatted[0]["type"] == "function_call_output"
-    assert formatted[0]["call_id"] == "call_1"
-    assert formatted[0]["output"] == "Search results here"
+@pytest.mark.asyncio
+async def test_tool_returns_function_call_output():
+    """Test tool returns FunctionCallOutput directly"""
 
+    async def search(query: str) -> str:
+        """Search"""
+        return "Search results here"
 
-def test_format_tool_results_content_blocks():
-    """Test formatting content block tool results"""
-    formatted = format_tool_results(
-        [_tool_call("call_1")],
-        [[{"type": "output_text", "text": "File content"}]],
+    result = await tool(
+        {"search": search},
+        _tool_call("call_1", name="search", arguments='{"query": "test"}'),
     )
-    assert len(formatted) == 1
-    assert formatted[0]["type"] == "function_call_output"
-    assert formatted[0]["output"] == [{"type": "output_text", "text": "File content"}]
+    assert result["type"] == "function_call_output"
+    assert result["call_id"] == "call_1"
+    assert result["output"] == "Search results here"
 
 
-def test_format_tool_results_multiple():
-    """Test formatting multiple tool results"""
-    formatted = format_tool_results(
-        [_tool_call("call_1"), _tool_call("call_2")],
-        ["result1", "result2"],
+@pytest.mark.asyncio
+async def test_tool_returns_function_call_output_multiple():
+    """Test tool returns correct call_id for each call"""
+
+    async def echo(msg: str) -> str:
+        """Echo"""
+        return msg
+
+    r1 = await tool(
+        {"echo": echo},
+        _tool_call("call_1", name="echo", arguments='{"msg": "result1"}'),
     )
-    assert len(formatted) == 2
-    assert formatted[0]["call_id"] == "call_1"
-    assert formatted[0]["output"] == "result1"
-    assert formatted[1]["call_id"] == "call_2"
-    assert formatted[1]["output"] == "result2"
+    r2 = await tool(
+        {"echo": echo},
+        _tool_call("call_2", name="echo", arguments='{"msg": "result2"}'),
+    )
+    assert r1["call_id"] == "call_1"
+    assert r1["output"] == "result1"
+    assert r2["call_id"] == "call_2"
+    assert r2["output"] == "result2"
