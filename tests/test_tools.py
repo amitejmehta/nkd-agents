@@ -388,6 +388,34 @@ class TestGlob:
         lines = [line for line in result.splitlines() if line.strip()]
         assert len(lines) == 1
 
+    @pytest.mark.asyncio
+    async def test_glob_excludes_hidden_by_default(self, tmp_path):
+        """Test glob ignores hidden files and dirs by default."""
+        (tmp_path / "visible.py").write_text("x")
+        (tmp_path / ".hidden.py").write_text("x")
+        hidden_dir = tmp_path / ".venv"
+        hidden_dir.mkdir()
+        (hidden_dir / "pkg.py").write_text("x")
+
+        result = await glob("**/*.py", path=str(tmp_path))
+        assert "visible.py" in result
+        assert ".hidden.py" not in result
+        assert ".venv/pkg.py" not in result
+
+    @pytest.mark.asyncio
+    async def test_glob_include_hidden(self, tmp_path):
+        """Test glob includes hidden files when include_hidden=True."""
+        (tmp_path / "visible.py").write_text("x")
+        (tmp_path / ".hidden.py").write_text("x")
+        hidden_dir = tmp_path / ".venv"
+        hidden_dir.mkdir()
+        (hidden_dir / "pkg.py").write_text("x")
+
+        result = await glob("**/*.py", path=str(tmp_path), include_hidden=True)
+        assert "visible.py" in result
+        assert ".hidden.py" in result
+        assert ".venv/pkg.py" in result
+
 
 class TestGrep:
     @pytest.mark.asyncio
@@ -431,6 +459,32 @@ class TestGrep:
             assert "unique_marker_abc" in result
         finally:
             cwd_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_grep_excludes_hidden_by_default(self, tmp_path):
+        """Test grep ignores hidden files and dirs by default."""
+        (tmp_path / "visible.py").write_text("secret_token\n")
+        (tmp_path / ".hidden.py").write_text("secret_token\n")
+        hidden_dir = tmp_path / ".venv"
+        hidden_dir.mkdir()
+        (hidden_dir / "pkg.py").write_text("secret_token\n")
+
+        result = await grep("secret_token", path=str(tmp_path))
+        assert "visible.py" in result
+        assert ".hidden.py" not in result
+        assert ".venv" not in result
+
+    @pytest.mark.asyncio
+    async def test_grep_include_hidden(self, tmp_path):
+        """Test grep searches hidden files when include_hidden=True."""
+        (tmp_path / "visible.py").write_text("secret_token\n")
+        hidden_dir = tmp_path / ".venv"
+        hidden_dir.mkdir()
+        (hidden_dir / "pkg.py").write_text("secret_token\n")
+
+        result = await grep("secret_token", path=str(tmp_path), include_hidden=True)
+        assert "visible.py" in result
+        assert ".venv" in result
 
 
 class TestCwdContext:
