@@ -108,34 +108,56 @@ async def bash(command: str, timeout: int = 30) -> str:
         raise TimeoutError(f"Command timed out after {timeout} seconds: {command}")
 
 
-async def glob(pattern: str, path: str | None = None) -> str:
+async def glob(
+    pattern: str, path: str | None = None, include_hidden: bool = False
+) -> str:
     """List files matching a glob pattern, relative to path (or cwd).
 
     Fast file discovery without shelling out. Recursion via '**' is supported.
 
+    Hidden files and directories (any path component starting with '.') are excluded
+    by default — set include_hidden=True to include them (e.g. to search .venv or .git).
+
     Args:
         pattern: Glob pattern (e.g. '*.py', 'src/**/*.ts', '**/*.md')
         path: Optional directory to search in (default: cwd)
+        include_hidden: If True, include hidden files/dirs (default: False)
 
     Returns:
         Newline-separated list of matching paths (relative to search dir), or 'No matches found'.
     """
     base = resolve_path(path)
     logger.info(f"Glob: {GREEN}{pattern}{RESET} in {base}")
-    matches = [str(m.relative_to(base)) for m in base.glob(pattern) if m.is_file()]
+
+    def is_hidden(p: Path) -> bool:
+        return any(part.startswith(".") for part in p.parts)
+
+    matches = [
+        str(m.relative_to(base))
+        for m in base.glob(pattern)
+        if m.is_file() and (include_hidden or not is_hidden(m.relative_to(base)))
+    ]
     return "\n".join(sorted(matches)) if matches else "No matches found"
 
 
 async def grep(
-    pattern: str, include: str | None = None, path: str | None = None, context: int = 2
+    pattern: str,
+    include: str | None = None,
+    path: str | None = None,
+    context: int = 2,
+    include_hidden: bool = False,
 ) -> str:
     """Search file contents using ripgrep (rg), a much faster alternative to basic `grep`.
+
+    Hidden files and directories are excluded by default — set include_hidden=True to
+    search them (e.g. to search inside .venv or .git).
 
     Args:
         pattern: Regex pattern to search for
         include: Optional glob to filter files (e.g. '*.py', '*.ts')
         path: Optional directory to search in (default: cwd)
         context: Lines of context around each match (default: 2)
+        include_hidden: If True, include hidden files/dirs (default: False)
 
     Returns:
         Ripgrep output with file paths, line numbers, and context. Truncated to 200 matches.
@@ -149,6 +171,8 @@ async def grep(
         f"--context={context}",
         "--max-count=200",
     ]
+    if include_hidden:
+        cmd.append("--hidden")
     if include:
         cmd.extend(["--glob", include])
     cmd.extend(["--", pattern, str(base)])
