@@ -181,7 +181,7 @@ async def test_anthropic_iterations_with_tools(otel_setup):
 
 @pytest.mark.asyncio
 async def test_anthropic_execute_tool_spans(otel_setup):
-    """execute_tool spans created for each tool call, parented to invoke_agent."""
+    """execute_tool spans created for each tool call, parented to turn span."""
     tool_call = ToolUseBlock(
         type="tool_use", id="tool_1", name="get_weather", input={"city": "Paris"}
     )
@@ -206,8 +206,8 @@ async def test_anthropic_execute_tool_spans(otel_setup):
     assert tool_spans[0].attributes["gen_ai.operation.name"] == "execute_tool"
 
     # Verify parenting
-    agent_span = [s for s in spans if s.name.startswith("invoke_agent")][0]
-    assert tool_spans[0].parent.span_id == agent_span.context.span_id
+    turn_span = [s for s in spans if s.name.startswith("turn")][0]
+    assert tool_spans[0].parent.span_id == turn_span.context.span_id
 
 
 @pytest.mark.asyncio
@@ -279,7 +279,7 @@ async def test_openai_iterations_with_tools(otel_setup):
 
 @pytest.mark.asyncio
 async def test_openai_execute_tool_spans(otel_setup):
-    """execute_tool spans created for each tool call, parented to invoke_agent."""
+    """execute_tool spans created for each tool call, parented to turn span."""
     tc = _openai_tool_call("call_1", "get_weather", '{"city": "Paris"}')
     client = _openai_client(
         _openai_response("Checking.", [tc]),
@@ -295,8 +295,8 @@ async def test_openai_execute_tool_spans(otel_setup):
     assert tool_spans[0].name == "execute_tool get_weather"
     assert tool_spans[0].attributes["gen_ai.operation.name"] == "execute_tool"
 
-    agent_span = [s for s in spans if s.name.startswith("invoke_agent")][0]
-    assert tool_spans[0].parent.span_id == agent_span.context.span_id
+    turn_span = [s for s in spans if s.name.startswith("turn")][0]
+    assert tool_spans[0].parent.span_id == turn_span.context.span_id
 
 
 @pytest.mark.asyncio
