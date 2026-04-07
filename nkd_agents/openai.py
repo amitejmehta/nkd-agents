@@ -134,16 +134,22 @@ async def llm(
         iteration = 0
         while True:
             agent_span.set_attribute("iterations", iteration)
-            resp = await client.responses.create(input=input, stream=False, **kwargs)
-            logger.info(f"usage={resp.usage}")
+            with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
+                turn_span.set_attribute("gen_ai.operation.name", "turn")
+                resp = await client.responses.create(
+                    input=input, stream=False, **kwargs
+                )
+                logger.info(f"usage={resp.usage}")
 
-            text, tool_calls = extract_text_and_tool_calls(resp)
+                text, tool_calls = extract_text_and_tool_calls(resp)
 
-            # NOTE: assistant response must be appended after tool execution
-            # This prevents orphaned tool calls in case of interruption/cancellation
-            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
-            input += resp.output + results  # type: ignore[arg-type]
-            if not tool_calls:
-                return text
+                # NOTE: assistant response must be appended after tool execution
+                # This prevents orphaned tool calls in case of interruption/cancellation
+                results = await asyncio.gather(
+                    *[tool(tool_dict, c) for c in tool_calls]
+                )
+                input += resp.output + results  # type: ignore[arg-type]
+                if not tool_calls:
+                    return text
 
             iteration += 1
