@@ -109,14 +109,16 @@ The framework instruments the **orchestration layer** — the parts only it can 
 | Span | `gen_ai.operation.name` | Attributes |
 |------|------------------------|------------|
 | `invoke_agent {model}` | `invoke_agent` | `iterations` |
+| `turn {n}` | `turn` | — |
 | `execute_tool {name}` | `execute_tool` | — |
 
 A typical multi-tool run produces this tree:
 
 ```
 invoke_agent claude-haiku-4-5  [4.3s]
-  execute_tool get_weather     [0.1ms]
-  execute_tool get_population  [0.1ms]
+  turn 0                       [0.1ms]
+    execute_tool get_weather   [0.1ms]
+    execute_tool get_population[0.1ms]
 ```
 
 ### Full API call tracing
@@ -129,10 +131,12 @@ With auto-instrumentation enabled, the full tree looks like this:
 
 ```
 invoke_agent claude-haiku-4-5          [4.3s]   ← framework
-  chat claude-haiku-4-5                [1.2s]   ← auto-instrumented (tokens, payload)
-  execute_tool get_weather             [0.1ms]  ← framework
-  execute_tool get_population          [0.1ms]  ← framework
-  chat claude-haiku-4-5                [0.8s]   ← auto-instrumented (tool results, response)
+  turn 0                               [2.0s]   ← framework
+    chat claude-haiku-4-5              [1.2s]   ← auto-instrumented (tokens, payload)
+    execute_tool get_weather           [0.1ms]  ← framework
+    execute_tool get_population        [0.1ms]  ← framework
+  turn 1                               [0.8s]   ← framework
+    chat claude-haiku-4-5              [0.8s]   ← auto-instrumented (tool results, response)
 ```
 
 ### Wiring up an exporter

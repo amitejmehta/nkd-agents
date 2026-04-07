@@ -136,26 +136,32 @@ async def llm(
         iteration = 0
         while True:
             agent_span.set_attribute("iterations", iteration)
-            try:
-                if fns:
-                    input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore[index]
-                resp = await client.messages.create(
-                    messages=input, stream=False, **kwargs
+            with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
+                turn_span.set_attribute("gen_ai.operation.name", "turn")
+                try:
+                    if fns:
+                        input[-1]["content"][-1]["cache_control"] = {  # type: ignore[index]
+                            "type": "ephemeral"
+                        }
+                    resp = await client.messages.create(
+                        messages=input, stream=False, **kwargs
+                    )
+                    logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
+                finally:
+                    if fns:
+                        del input[-1]["content"][-1]["cache_control"]  # type: ignore[index]
+
+                text, tool_calls = extract_text_and_tool_calls(resp)
+
+                # NOTE: assistant response must be appended after tool execution
+                # This prevents orphaned tool calls in case of interruption/cancellation
+                results = await asyncio.gather(
+                    *[tool(tool_dict, c) for c in tool_calls]
                 )
-                logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-            finally:
-                if fns:
-                    del input[-1]["content"][-1]["cache_control"]  # type: ignore[index]
-
-            text, tool_calls = extract_text_and_tool_calls(resp)
-
-            # NOTE: assistant response must be appended after tool execution
-            # This prevents orphaned tool calls in case of interruption/cancellation
-            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
-            input.append({"role": "assistant", "content": resp.content})
-            if tool_calls:
-                input.append({"role": "user", "content": results})
-            else:
-                return text
+                input.append({"role": "assistant", "content": resp.content})
+                if tool_calls:
+                    input.append({"role": "user", "content": results})
+                else:
+                    return text
 
             iteration += 1
