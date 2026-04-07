@@ -3,7 +3,7 @@ from typing import Literal
 
 from openai import AsyncOpenAI
 
-from nkd_agents.openai_v2 import llm, user
+from nkd_agents.openai import llm, user
 
 from ..utils import test
 from .config import KWARGS

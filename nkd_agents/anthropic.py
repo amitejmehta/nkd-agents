@@ -16,11 +16,13 @@ from anthropic.types import (
 )
 from anthropic.types.json_output_format_param import JSONOutputFormatParam
 from anthropic.types.tool_result_block_param import Content
+from opentelemetry import trace
 from pydantic import BaseModel
 
 from .utils import extract_function_params
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("nkd-agents.anthropic")
 
 
 def user(content: str) -> MessageParam:
@@ -96,14 +98,16 @@ async def tool(
     tool_dict: Mapping[str, Callable[..., Awaitable[str | Iterable[Content]]]],
     tool_call: ToolUseBlock,
 ) -> ToolResultBlockParam:
-    try:
-        result = await tool_dict[tool_call.name](**tool_call.input)
-    except Exception as e:
-        result = f"Error calling tool '{tool_call.name}': {e}"
-        logger.warning(result)
-    if isinstance(result, str):
-        result = [TextBlockParam(type="text", text=result)]
-    return {"type": "tool_result", "tool_use_id": tool_call.id, "content": result}
+    with tracer.start_as_current_span(f"execute_tool {tool_call.name}") as span:
+        span.set_attribute("gen_ai.operation.name", "execute_tool")
+        try:
+            result = await tool_dict[tool_call.name](**tool_call.input)
+        except Exception as e:
+            result = f"Error calling tool '{tool_call.name}': {e}"
+            logger.warning(result)
+        if isinstance(result, str):
+            result = [TextBlockParam(type="text", text=result)]
+        return {"type": "tool_result", "tool_use_id": tool_call.id, "content": result}
 
 
 async def llm(
@@ -125,17 +129,33 @@ async def llm(
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
 
-    while True:
-        resp = await client.messages.create(messages=input, stream=False, **kwargs)
-        logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
+    with tracer.start_as_current_span(
+        f"invoke_agent {kwargs.get('model', '')}"
+    ) as agent_span:
+        agent_span.set_attribute("gen_ai.operation.name", "invoke_agent")
+        iteration = 0
+        while True:
+            agent_span.set_attribute("iterations", iteration)
+            try:
+                if fns:
+                    input[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}  # type: ignore[index]
+                resp = await client.messages.create(
+                    messages=input, stream=False, **kwargs
+                )
+                logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
+            finally:
+                if fns:
+                    del input[-1]["content"][-1]["cache_control"]  # type: ignore[index]
 
-        text, tool_calls = extract_text_and_tool_calls(resp)
+            text, tool_calls = extract_text_and_tool_calls(resp)
 
-        # NOTE: assistant response must be appended after tool execution
-        # This prevents orphaned tool calls in case of interruption/cancellation
-        results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
-        input.append({"role": "assistant", "content": resp.content})
-        if tool_calls:
-            input.append({"role": "user", "content": results})
-        else:
-            return text
+            # NOTE: assistant response must be appended after tool execution
+            # This prevents orphaned tool calls in case of interruption/cancellation
+            results = await asyncio.gather(*[tool(tool_dict, c) for c in tool_calls])
+            input.append({"role": "assistant", "content": resp.content})
+            if tool_calls:
+                input.append({"role": "user", "content": results})
+            else:
+                return text
+
+            iteration += 1

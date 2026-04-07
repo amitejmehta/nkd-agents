@@ -1,10 +1,12 @@
 import pytest
-from openai.types.chat import ChatCompletion, ChatCompletionMessage
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_message_tool_call import (
-    ChatCompletionMessageToolCall,
-    Function,
+from openai.types.responses import (
+    Response,
+    ResponseFunctionToolCall,
+    ResponseOutputMessage,
+    ResponseOutputText,
+    ResponseReasoningItem,
 )
+from openai.types.responses.response_reasoning_item import Summary
 from pydantic import BaseModel
 
 from nkd_agents.openai import (
@@ -16,34 +18,47 @@ from nkd_agents.openai import (
 )
 
 
-def _completion(content: str | None, tool_calls=None) -> ChatCompletion:
-    return ChatCompletion(
-        id="chatcmpl-1",
-        created=0,
-        model="gpt-4o",
-        object="chat.completion",
-        choices=[
-            Choice(
-                finish_reason="stop",
-                index=0,
-                message=ChatCompletionMessage(
-                    role="assistant", content=content, tool_calls=tool_calls
-                ),
-            )
-        ],
+def _response(output, model="gpt-4o") -> Response:
+    return Response(
+        id="resp_1",
+        created_at=0,
+        model=model,
+        object="response",
+        output=output,
+        parallel_tool_calls=True,
+        tool_choice="auto",
+        tools=[],
+        temperature=1.0,
+        top_p=1.0,
+        status="completed",
+        error=None,
+        incomplete_details=None,
+        instructions=None,
+        metadata={},
+        truncation=None,
+        text=None,
+        reasoning=None,
     )
 
 
 def _tool_call(
-    call_id: str, name: str, arguments: str
-) -> ChatCompletionMessageToolCall:
-    return ChatCompletionMessageToolCall(
-        id=call_id, type="function", function=Function(name=name, arguments=arguments)
+    call_id: str, name: str = "test", arguments: str = "{}"
+) -> ResponseFunctionToolCall:
+    return ResponseFunctionToolCall(
+        type="function_call",
+        id=f"fc_{call_id}",
+        call_id=call_id,
+        name=name,
+        arguments=arguments,
+        status="completed",
     )
 
 
 def test_user():
-    assert user("hi") == {"role": "user", "content": "hi"}
+    assert user("hi") == {
+        "role": "user",
+        "content": [{"type": "input_text", "text": "hi"}],
+    }
 
 
 def test_output_format():
@@ -53,13 +68,12 @@ def test_output_format():
 
     fmt = output_format(MyModel)
     assert fmt["type"] == "json_schema"
-    assert fmt["json_schema"]["name"] == "MyModel"
-    assert fmt["json_schema"]["strict"] is True
-    schema = fmt["json_schema"]["schema"]
-    assert schema["type"] == "object"
-    assert "name" in schema["properties"]
-    assert "age" in schema["properties"]
-    assert schema["additionalProperties"] is False
+    assert fmt["name"] == "MyModel"
+    assert fmt["strict"] is True
+    assert fmt["schema"]["type"] == "object"
+    assert "name" in fmt["schema"]["properties"]
+    assert "age" in fmt["schema"]["properties"]
+    assert fmt["schema"]["additionalProperties"] is False
 
 
 def test_tool_schema():
@@ -69,14 +83,13 @@ def test_tool_schema():
 
     schema = tool_schema(search)
     assert schema["type"] == "function"
-    assert schema["function"]["name"] == "search"
-    assert schema["function"]["description"] == "Search for something"
-    assert schema["function"]["strict"] is True
-    props = schema["function"]["parameters"]["properties"]
+    assert schema["name"] == "search"
+    assert schema["description"] == "Search for something"
+    assert schema["strict"] is True
+    props = schema["parameters"]["properties"]
     assert "query" in props
     assert "limit" in props
-    # allow_defaults=False → both required
-    assert set(schema["function"]["parameters"]["required"]) == {"query", "limit"}
+    assert set(schema["parameters"]["required"]) == {"query", "limit"}
 
 
 def test_tool_schema_requires_docstring():
@@ -88,24 +101,52 @@ def test_tool_schema_requires_docstring():
 
 
 def test_extract_text_only():
-    text, calls = extract_text_and_tool_calls(_completion("Hello!"))
+    msg = ResponseOutputMessage(
+        id="msg_1",
+        type="message",
+        role="assistant",
+        status="completed",
+        content=[ResponseOutputText(type="output_text", text="Hello!", annotations=[])],
+    )
+    text, calls = extract_text_and_tool_calls(_response([msg]))
     assert text == "Hello!"
     assert calls == []
 
 
-def test_extract_empty_content():
-    text, calls = extract_text_and_tool_calls(_completion(None))
-    assert text == ""
-    assert calls == []
-
-
 def test_extract_with_tool_calls():
-    tc = _tool_call("call_1", "search", '{"query": "test"}')
-    text, calls = extract_text_and_tool_calls(_completion("Searching...", [tc]))
+    msg = ResponseOutputMessage(
+        id="msg_1",
+        type="message",
+        role="assistant",
+        status="completed",
+        content=[
+            ResponseOutputText(type="output_text", text="Searching...", annotations=[])
+        ],
+    )
+    tc = _tool_call("call_1", name="search", arguments='{"query": "test"}')
+    text, calls = extract_text_and_tool_calls(_response([msg, tc]))
     assert text == "Searching..."
     assert len(calls) == 1
-    assert calls[0].function.name == "search"
-    assert calls[0].id == "call_1"
+    assert calls[0].name == "search"
+    assert calls[0].call_id == "call_1"
+
+
+def test_extract_reasoning_not_in_text():
+    reasoning = ResponseReasoningItem(
+        id="ri_1",
+        type="reasoning",
+        summary=[Summary(type="summary_text", text="thinking...")],
+    )
+    msg = ResponseOutputMessage(
+        id="msg_1",
+        type="message",
+        role="assistant",
+        status="completed",
+        content=[ResponseOutputText(type="output_text", text="42", annotations=[])],
+    )
+    text, calls = extract_text_and_tool_calls(_response([reasoning, msg]))
+    assert text == "42"
+    assert calls == []
 
 
 @pytest.mark.asyncio
@@ -117,9 +158,9 @@ async def test_tool_success():
     result = await tool(
         {"search": search}, _tool_call("call_1", "search", '{"query": "x"}')
     )
-    assert result["role"] == "tool"
-    assert result["tool_call_id"] == "call_1"
-    assert result["content"] == "results for x"
+    assert result["type"] == "function_call_output"
+    assert result["call_id"] == "call_1"
+    assert result["output"] == "results for x"
 
 
 @pytest.mark.asyncio
@@ -129,6 +170,18 @@ async def test_tool_error_handling():
         raise RuntimeError("boom")
 
     result = await tool({"bad": bad}, _tool_call("call_1", "bad", '{"arg": "x"}'))
-    assert result["role"] == "tool"
-    assert "Error calling tool 'bad'" in result["content"]
-    assert "boom" in result["content"]
+    assert result["type"] == "function_call_output"
+    assert "Error calling tool 'bad'" in result["output"]
+    assert "boom" in result["output"]
+
+
+@pytest.mark.asyncio
+async def test_tool_content_blocks():
+    async def read(path: str):
+        """Read file"""
+        return [{"type": "input_text", "text": "file content"}]
+
+    result = await tool(
+        {"read": read}, _tool_call("call_1", "read", '{"path": "f.txt"}')
+    )
+    assert result["output"] == [{"type": "input_text", "text": "file content"}]

@@ -98,6 +98,58 @@ async def search_hotels(city: str, budget: Literal["low", "medium", "high"]) -> 
 }
 ```
 
+## Observability
+
+`llm()` emits [OpenTelemetry](https://opentelemetry.io/) spans following the [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/). No exporter is configured by default — traces are no-ops unless you wire one up.
+
+### What the framework emits
+
+The framework instruments the **orchestration layer** — the parts only it can see:
+
+| Span | `gen_ai.operation.name` | Attributes |
+|------|------------------------|------------|
+| `invoke_agent {model}` | `invoke_agent` | `iterations` |
+| `execute_tool {name}` | `execute_tool` | — |
+
+A typical multi-tool run produces this tree:
+
+```
+invoke_agent claude-haiku-4-5  [4.3s]
+  execute_tool get_weather     [0.1ms]
+  execute_tool get_population  [0.1ms]
+```
+
+### Full API call tracing
+
+Every major tracing provider — Datadog, Braintrust, Arize, Langfuse, OpenLLMetry — ships auto-instrumentation for the Anthropic and OpenAI SDKs. These patch the SDK clients at import time and emit a `chat {model}` child span for each API call, capturing token counts, request/response payloads, and model parameters automatically.
+
+Because `execute_tool` and `invoke_agent` are already in the current span context, the auto-instrumented API call spans are parented correctly via `ContextVar` propagation — no extra configuration needed.
+
+With auto-instrumentation enabled, the full tree looks like this:
+
+```
+invoke_agent claude-haiku-4-5          [4.3s]   ← framework
+  chat claude-haiku-4-5                [1.2s]   ← auto-instrumented (tokens, payload)
+  execute_tool get_weather             [0.1ms]  ← framework
+  execute_tool get_population          [0.1ms]  ← framework
+  chat claude-haiku-4-5                [0.8s]   ← auto-instrumented (tool results, response)
+```
+
+### Wiring up an exporter
+
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+# e.g. Datadog, Braintrust, Langfuse, OTLP, etc.
+provider = TracerProvider()
+provider.add_span_processor(BatchSpanProcessor(your_exporter))
+trace.set_tracer_provider(provider)
+```
+
+See `examples/anthropic/test_otel.py` and `examples/openai/test_otel.py` for a working example using the in-memory + console exporters.
+
 ## Conversation History
 
 `llm()` mutates `input` in-place. To continue a conversation, pass the same list:
