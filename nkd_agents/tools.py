@@ -33,49 +33,66 @@ async def read_file(path: str) -> str | list[Content]:
     return [bytes_to_content(bytes, ext)]
 
 
+async def write_file(path: str, content: str) -> str:
+    """Create a new file with the given content. Fails if the file already exists.
+
+    Args:
+        path: Path to the new file (parent directories are created automatically)
+        content: Full content to write
+
+    Returns "Success: Created {path}" or raises ValueError if the file exists.
+    """
+    file_path = resolve_path(path)
+    if file_path.exists():
+        raise ValueError(f"File '{path}' already exists. Use edit_file to modify it.")
+    display_diff("", content, str(file_path))
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(content, encoding="utf-8")
+    return f"Success: Created {file_path}"
+
+
 async def edit_file(
     path: str,
-    mode: Literal["create", "append", "replace"],
+    mode: Literal["insert", "replace"],
     new_str: str,
     old_str: str | None = None,
     count: int = 1,
+    position: int | None = None,
 ) -> str:
-    """Create or edit an existing file.
+    """Edit an existing file.
 
     Args:
         path: Path to the file
-        mode: One of 'create', 'append', 'replace'
+        mode: One of 'insert', 'replace'
         new_str: Content to write or insert
         old_str: (replace) String to search for and replace
         count: (replace) Max occurrences to replace (default: 1, use -1 for all)
+        position: (insert) Character offset to insert at. 0 = beginning, omit or -1 = end.
 
     Returns "Success: Updated {path}" or raises ValueError.
     """
     file_path = resolve_path(path)
 
-    if mode == "create":
-        if file_path.exists():
-            raise ValueError(f"File '{path}' already exists. Use a different mode.")
-        content, edited_content = "", new_str
-    elif mode == "append":
-        if not file_path.exists():
-            raise ValueError(f"File '{path}' not found")
-        content = file_path.read_text(encoding="utf-8")
-        edited_content = content + new_str
+    if not file_path.exists():
+        raise ValueError(f"File '{path}' not found")
+
+    content = file_path.read_text(encoding="utf-8")
+
+    if mode == "insert":
+        if position is None or position == -1:
+            edited_content = content + new_str
+        else:
+            edited_content = content[:position] + new_str + content[position:]
     else:  # replace
-        if not file_path.exists():
-            raise ValueError(f"File '{path}' not found")
         if old_str is None:
             raise ValueError("old_str is required for replace mode")
         if old_str == new_str:
             raise ValueError("old_str and new_str must be different")
-        content = file_path.read_text(encoding="utf-8")
         if old_str not in content:
             raise ValueError("old_str not found in file content")
         edited_content = content.replace(old_str, new_str, count)
 
     display_diff(content, edited_content, str(file_path))
-    file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(edited_content, encoding="utf-8")
     return f"Success: Updated {file_path}"
 

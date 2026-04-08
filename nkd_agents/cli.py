@@ -18,7 +18,7 @@ from prompt_toolkit.styles import Style
 
 from .anthropic import llm, user
 from .logging import DIM, RED, RESET, configure_logging
-from .tools import bash, edit_file, glob, grep, read_file
+from .tools import bash, edit_file, glob, grep, read_file, write_file
 from .utils import load_env, serialize
 from .web import fetch_url, web_search
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # constants
 MODELS = ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")
-TOOLS = (read_file, edit_file, bash, glob, grep, fetch_url, web_search)
+TOOLS = (read_file, write_file, edit_file, bash, glob, grep, fetch_url, web_search)
 NKD_DIR = Path.home() / ".nkd-agents"
 SKILLS_DIR = NKD_DIR / "skills"
 BANNER = (

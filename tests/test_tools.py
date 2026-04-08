@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nkd_agents.tools import bash, edit_file, glob, grep, read_file
+from nkd_agents.tools import bash, edit_file, glob, grep, read_file, write_file
 
 
 class TestReadFile:
@@ -111,21 +111,19 @@ class TestReadFile:
             await read_file(str(dir_path))
 
 
-class TestEditFile:
+class TestWriteFile:
     @pytest.mark.asyncio
     async def test_create(self, tmp_path):
         file_path = tmp_path / "new_file.txt"
-        result = await edit_file(
-            str(file_path), mode="create", new_str="New file content"
-        )
-        assert result == f"Success: Updated {file_path}"
+        result = await write_file(str(file_path), content="New file content")
+        assert result == f"Success: Created {file_path}"
         assert file_path.read_text() == "New file content"
 
     @pytest.mark.asyncio
     async def test_create_nested_dirs(self, tmp_path):
         file_path = tmp_path / "a" / "b" / "c" / "file.txt"
-        result = await edit_file(str(file_path), mode="create", new_str="Nested file")
-        assert result == f"Success: Updated {file_path}"
+        result = await write_file(str(file_path), content="Nested file")
+        assert result == f"Success: Created {file_path}"
         assert file_path.read_text() == "Nested file"
 
     @pytest.mark.asyncio
@@ -133,21 +131,51 @@ class TestEditFile:
         file_path = tmp_path / "existing.txt"
         file_path.write_text("original")
         with pytest.raises(ValueError, match="already exists"):
-            await edit_file(str(file_path), mode="create", new_str="new content")
+            await write_file(str(file_path), content="new content")
         assert file_path.read_text() == "original"
 
+
+class TestEditFile:
     @pytest.mark.asyncio
-    async def test_append(self, tmp_path):
+    async def test_insert_end(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("hello")
-        result = await edit_file(str(file_path), mode="append", new_str=" world")
+        result = await edit_file(str(file_path), mode="insert", new_str=" world")
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == "hello world"
 
     @pytest.mark.asyncio
-    async def test_append_file_not_found(self):
+    async def test_insert_beginning(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("world")
+        result = await edit_file(
+            str(file_path), mode="insert", new_str="hello ", position=0
+        )
+        assert result == f"Success: Updated {file_path}"
+        assert file_path.read_text() == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_insert_middle(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("helloworld")
+        result = await edit_file(str(file_path), mode="insert", new_str=" ", position=5)
+        assert result == f"Success: Updated {file_path}"
+        assert file_path.read_text() == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_insert_explicit_end(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("hello")
+        result = await edit_file(
+            str(file_path), mode="insert", new_str=" world", position=-1
+        )
+        assert result == f"Success: Updated {file_path}"
+        assert file_path.read_text() == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_insert_file_not_found(self):
         with pytest.raises(ValueError, match="not found"):
-            await edit_file("/nonexistent/file.txt", mode="append", new_str="x")
+            await edit_file("/nonexistent/file.txt", mode="insert", new_str="x")
 
     @pytest.mark.asyncio
     async def test_replace_str_single(self, tmp_path):
@@ -509,15 +537,15 @@ class TestCwdContext:
 
     @pytest.mark.asyncio
     async def test_edit_file_relative_path(self, tmp_path):
-        """edit_file resolves relative paths against cwd_ctx."""
-        from nkd_agents.tools import cwd_ctx, edit_file
+        """write_file resolves relative paths against cwd_ctx."""
+        from nkd_agents.tools import cwd_ctx, write_file
 
         subdir = tmp_path / "subdir"
         subdir.mkdir()
 
         token = cwd_ctx.set(subdir)
         try:
-            result = await edit_file("new.txt", mode="create", new_str="created")
+            result = await write_file("new.txt", content="created")
             assert "Success" in result
             assert (subdir / "new.txt").read_text() == "created"
         finally:

@@ -24,44 +24,58 @@ Read and return the contents of a file. Supports:
 
 ---
 
+## `write_file`
+
+```python
+async def write_file(path: str, content: str) -> str
+```
+
+Create a new file. Fails if the file already exists — use `edit_file` to modify existing files.
+
+- Parent directories are created automatically.
+- Returns `"Success: Created {path}"` or raises `ValueError` if the file already exists.
+
+---
+
 ## `edit_file`
 
 ```python
-async def edit_file(path: str, old_str: str, new_str: str, count: int = 1) -> str
+async def edit_file(path: str, mode: Literal["insert", "replace"], new_str: str, old_str: str | None = None, count: int = 1, position: int | None = None) -> str
 ```
 
-Create a new file or replace text in an existing file.
+Edit an existing file. Fails if the file does not exist.
 
-### Creating a file
+### Insert mode
 
-```
-old_str = "create_file"
-new_str = <full file contents>
-```
+Inserts `new_str` at a character offset within the file:
 
-Parent directories are created automatically.
+| `position` | Effect |
+|------------|--------|
+| `0` | Insert at the beginning |
+| `N` | Insert after character N |
+| `-1` or omitted | Append to the end |
 
-### Editing a file
+### Replace mode
 
-Replaces the first occurrence of `old_str` with `new_str`. Set `count=-1` to replace all occurrences.
+Replaces occurrences of `old_str` with `new_str`. Set `count=-1` to replace all occurrences.
 
 ### Return values
 
 | Return | Meaning |
 |--------|---------|
 | `"Success: Updated {path}"` | Write succeeded |
-| `"Error: old_str not found in file content"` | String not present in file |
-| `"Error: old_str and new_str must be different"` | No-op guard |
-| `"Error: File '{path}' not found"` | File doesn't exist (non-create mode) |
-| `"Error editing file '{path}': {description}"` | Other I/O failure |
+| `ValueError("old_str not found in file content")` | String not present in file |
+| `ValueError("old_str and new_str must be different")` | No-op guard |
+| `ValueError("File '{path}' not found")` | File doesn't exist |
+| `ValueError("old_str is required for replace mode")` | Missing param |
 
 ### Diff display
 
-Before writing, `display_diff()` prints a colorized unified diff to stderr (green `+` lines, red `-` lines). This is always visible in the terminal regardless of log level.
+Before writing, `display_diff()` prints a colorized unified diff to stderr.
 
 ### Best practice
 
-For multiple changes to the same file, call `edit_file` multiple times with small, targeted `old_str` values rather than one large replacement. This minimises the chance of `old_str not found` errors and makes diffs readable.
+For multiple changes to the same file, call `edit_file` multiple times with small, targeted `old_str` values.
 
 ---
 
