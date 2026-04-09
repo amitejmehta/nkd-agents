@@ -34,11 +34,11 @@ async def main():
     client = AsyncAnthropic()
     prompt = "Greet Alice"
     current_language.set("english")
-    response_en = await llm(client, [user(prompt)], fns=[greet], **KWARGS)
+    response_en = await llm(client, messages=[user(prompt)], fns=[greet], **KWARGS)
     assert "Hello" in response_en or "hello" in response_en.lower()
 
     current_language.set("spanish")
-    response_es = await llm(client, [user(prompt)], fns=[greet], **KWARGS)
+    response_es = await llm(client, messages=[user(prompt)], fns=[greet], **KWARGS)
     assert "Hola" in response_es or "hola" in response_es.lower()
 
 

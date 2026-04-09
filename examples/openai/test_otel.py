@@ -1,5 +1,5 @@
 """
-Visualize OTel trace tree for a multi-tool Anthropic agent run.
+Visualize OTel trace tree for a multi-tool OpenAI agent run.
 
 Configures ConsoleSpanExporter + InMemorySpanExporter so spans are printed
 to stdout and the tree is logged for visual verification.
@@ -66,8 +66,12 @@ def log_tree(exporter: InMemorySpanExporter) -> None:
 @test("otel")
 async def main():
     exporter = setup_otel()
-    input = [user("What's the weather and population of Paris and London?")]
-    await llm(AsyncOpenAI(), input, fns=[get_weather, get_population], **KWARGS)
+    await llm(
+        AsyncOpenAI(),
+        input=[user("What's the weather and population of Paris and London?")],
+        fns=[get_weather, get_population],
+        **KWARGS,
+    )
     log_tree(exporter)
 
 

@@ -173,7 +173,7 @@ class CLI:
             self.messages.append(await self.queue.get())
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
-                llm(self.client, self.messages, TOOLS, **self.kwargs)
+                llm(self.client, messages=self.messages, fns=TOOLS, **self.kwargs)
             )
             try:
                 await self.llm_task
@@ -223,7 +223,7 @@ def main() -> None:
                 logger.info(f"Loaded session: {args.session}")
             if args.prompt:
                 cli.messages.append(user(args.prompt))
-                result = asyncio.run(llm(cli.client, cli.messages, TOOLS, **cli.kwargs))
+                result = asyncio.run(llm(cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs))
                 print(result)
             else:
                 print(BANNER)

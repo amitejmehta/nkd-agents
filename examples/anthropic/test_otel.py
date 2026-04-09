@@ -66,8 +66,12 @@ def log_tree(exporter: InMemorySpanExporter) -> None:
 @test("otel")
 async def main():
     exporter = setup_otel()
-    input = [user("What's the weather and population of Paris and London?")]
-    await llm(AsyncAnthropic(), input, fns=[get_weather, get_population], **KWARGS)
+    await llm(
+        AsyncAnthropic(),
+        messages=[user("What's the weather and population of Paris and London?")],
+        fns=[get_weather, get_population],
+        **KWARGS,
+    )
     log_tree(exporter)
 
 

@@ -43,15 +43,20 @@ async def main():
     """
     client = AsyncOpenAI()
     kwargs = {"text": {"format": output_format(Weather)}, **KWARGS}
-    input = [user("What's the weather in Paris?")]
+
     # 1. Structured output
     logger.info("1. Structured output (no tools)")
-    json_str = await llm(client, input, **kwargs)
-    weather = Weather.model_validate_json(json_str)
+    json_str = await llm(client, input=[user("What's the weather in Paris?")], **kwargs)
+    Weather.model_validate_json(json_str)
 
     # 2. Tool call with structured output
     logger.info("2. Tool call with structured output")
-    json_str = await llm(client, input, fns=[get_weather], **kwargs)
+    json_str = await llm(
+        client,
+        input=[user("What's the weather in Paris?")],
+        fns=[get_weather],
+        **kwargs,
+    )
     weather = Weather.model_validate_json(json_str)
     assert weather.temperature == 72
     assert "sunny" in weather.description.lower()

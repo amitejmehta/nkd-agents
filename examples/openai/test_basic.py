@@ -34,14 +34,18 @@ async def main():
     2. Basic tool call
     """
     client = AsyncOpenAI()
-    input = [user("What's the weather in Paris?")]
     # 1. No tools
     logger.info("1. Basic usage (no tools)")
-    _ = await llm(client, input, **KWARGS)
+    _ = await llm(client, input=[user("What's the weather in Paris?")], **KWARGS)
 
     # 2. With tools
     logger.info("2. Tool call")
-    response = await llm(client, input, fns=[get_weather], **KWARGS)
+    response = await llm(
+        client,
+        input=[user("What's the weather in Paris?")],
+        fns=[get_weather],
+        **KWARGS,
+    )
     assert "sunny" in response.lower() and "72" in response.lower()
 
 
