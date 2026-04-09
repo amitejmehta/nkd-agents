@@ -101,11 +101,27 @@ async def bash(command: str, timeout: int = 30) -> str:
         cwd=cwd_ctx.get(),
         start_new_session=True,  # new process group so kill() takes out child processes too
     )
+
+    async def drain(stream: asyncio.StreamReader, label: str) -> list[str]:
+        lines = []
+        while line := await stream.readline():
+            decoded = line.decode(errors="replace").rstrip("\n")
+            lines.append(decoded)
+            logger.info(f"{label}{decoded}{RESET}")
+        return lines
+
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        result_str = f"STDOUT:\n{stdout.decode().strip()[:50000]}\nSTDERR:\n{stderr.decode().strip()}\nEXIT CODE: {process.returncode}"
-        logger.info(result_str)
-        return result_str
+        stdout_lines, stderr_lines, _ = await asyncio.wait_for(
+            asyncio.gather(
+                drain(process.stdout, GREEN),  # type: ignore[arg-type]
+                drain(process.stderr, ""),  # type: ignore[arg-type]
+                process.wait(),
+            ),
+            timeout=timeout,
+        )
+        stdout_str = "\n".join(stdout_lines)[:50000]
+        stderr_str = "\n".join(stderr_lines)
+        return f"STDOUT:\n{stdout_str}\nSTDERR:\n{stderr_str}\nEXIT CODE: {process.returncode}"
     except asyncio.TimeoutError:
         try:
             os.killpg(os.getpgid(process.pid), signal.SIGKILL)
