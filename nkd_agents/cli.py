@@ -223,7 +223,9 @@ def main() -> None:
                 logger.info(f"Loaded session: {args.session}")
             if args.prompt:
                 cli.messages.append(user(args.prompt))
-                result = asyncio.run(llm(cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs))
+                result = asyncio.run(
+                    llm(cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs)
+                )
                 print(result)
             else:
                 print(BANNER)
