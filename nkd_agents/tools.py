@@ -13,6 +13,10 @@ from .utils import display_diff
 logger = logging.getLogger(__name__)
 
 
+def _normalize(s: str) -> str:
+    return "\n".join(line.rstrip() for line in s.splitlines())
+
+
 def resolve_path(path: str | None = None) -> Path:
     """Resolve an optional path string against cwd_ctx."""
     if path is None:
@@ -88,6 +92,9 @@ async def edit_file(
             raise ValueError("old_str is required for replace mode")
         if old_str == new_str:
             raise ValueError("old_str and new_str must be different")
+        content = _normalize(content)
+        old_str = _normalize(old_str)
+        new_str = _normalize(new_str)
         if old_str not in content:
             raise ValueError("old_str not found in file content")
         edited_content = content.replace(old_str, new_str, count)

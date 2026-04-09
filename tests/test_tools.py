@@ -6,7 +6,15 @@ from unittest.mock import patch
 
 import pytest
 
-from nkd_agents.tools import bash, edit_file, glob, grep, read_file, write_file
+from nkd_agents.tools import (
+    _normalize,
+    bash,
+    edit_file,
+    glob,
+    grep,
+    read_file,
+    write_file,
+)
 
 
 class TestReadFile:
@@ -253,6 +261,62 @@ class TestEditFile:
                 await edit_file(
                     str(file_path), mode="replace", new_str="new", old_str="old"
                 )
+
+
+class TestNormalize:
+    def test_lf_unchanged(self):
+        assert _normalize("a\nb\nc") == "a\nb\nc"
+
+    def test_crlf_converted(self):
+        assert _normalize("a\r\nb\r\nc") == "a\nb\nc"
+
+    def test_trailing_spaces_stripped(self):
+        assert _normalize("a  \nb  \nc") == "a\nb\nc"
+
+    def test_mixed_crlf_and_trailing_spaces(self):
+        assert _normalize("a  \r\nb  \r\nc  ") == "a\nb\nc"
+
+    def test_empty_string(self):
+        assert _normalize("") == ""
+
+    def test_single_line_no_newline(self):
+        assert _normalize("hello  ") == "hello"
+
+
+class TestEditFileNormalize:
+    @pytest.mark.asyncio
+    async def test_replace_crlf_file(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_bytes(b"foo\r\nbar\r\nbaz")
+        await edit_file(
+            str(file_path), mode="replace", old_str="foo\nbar", new_str="qux"
+        )
+        assert file_path.read_text(encoding="utf-8") == "qux\nbaz"
+
+    @pytest.mark.asyncio
+    async def test_replace_trailing_spaces_in_file(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo  \nbar  \nbaz")
+        await edit_file(
+            str(file_path), mode="replace", old_str="foo\nbar", new_str="qux"
+        )
+        assert file_path.read_text(encoding="utf-8") == "qux\nbaz"
+
+    @pytest.mark.asyncio
+    async def test_replace_trailing_spaces_in_old_str(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo\nbar\nbaz")
+        await edit_file(
+            str(file_path), mode="replace", old_str="foo  \nbar  ", new_str="qux"
+        )
+        assert file_path.read_text(encoding="utf-8") == "qux\nbaz"
+
+    @pytest.mark.asyncio
+    async def test_replace_new_str_trailing_spaces_stripped(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo\nbar")
+        await edit_file(str(file_path), mode="replace", old_str="foo", new_str="qux  ")
+        assert file_path.read_text(encoding="utf-8") == "qux\nbar"
 
 
 class TestBash:
