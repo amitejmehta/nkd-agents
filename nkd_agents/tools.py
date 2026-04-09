@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import signal
 from pathlib import Path
 from typing import Literal
 
@@ -93,9 +95,11 @@ async def bash(command: str, timeout: int = 30) -> str:
         "bash",
         "-c",
         command,
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd_ctx.get(),
+        start_new_session=True,  # new process group so kill() takes out child processes too
     )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
@@ -103,7 +107,10 @@ async def bash(command: str, timeout: int = 30) -> str:
         logger.info(result_str)
         return result_str
     except asyncio.TimeoutError:
-        process.kill()
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         await process.communicate()
         raise TimeoutError(f"Command timed out after {timeout} seconds: {command}")
 
