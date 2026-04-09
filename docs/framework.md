@@ -24,15 +24,16 @@ async def get_weather(city: str) -> str:
 
 response: str = await llm(
     AsyncAnthropic(),       # AsyncAnthropic | AsyncAnthropicVertex
-    [user("What's the weather in Paris?")],  # list[MessageParam]  — mutated in-place
+    messages=[user("What's the weather in Paris?")],  # list[MessageParam]
     fns=[get_weather],      # Sequence[async fn] — optional tools
     **kwargs                # model, max_tokens, system, temperature, thinking, tools, ...
 )
 ```
 
-- `input` is a **mutable list**. `llm()` appends every assistant turn and every tool-result turn to it as the loop runs. After `llm()` returns, `input` contains the full conversation including all intermediate steps. This is intentional: pass the same list across multiple calls to build conversation history.
+`llm()` is a thin agentic loop around `client.messages.create()`. Every `**kwarg` passes through verbatim — no translation, no wrapping. This means the full Anthropic SDK type signature is available and statically checked. `fns` is the only nkd-agents-specific parameter; everything else is native SDK params.
+
+- `messages` is a `list[MessageParam]` — the standard Anthropic conversation format.
 - `fns` is a list of async callables. Each must have a docstring (used as the tool description) and typed parameters (used to build the JSON schema). See [Tool Schema Auto-generation](#tool-schema-auto-generation).
-- `**kwargs` passes through to `client.messages.create()`. Common ones: `model`, `max_tokens`, `system`, `temperature`, `thinking`, `output_config`.
 - Returns the final text string from the last assistant turn.
 
 ## `llm()` — OpenAI
@@ -47,13 +48,13 @@ async def get_weather(city: str) -> str:
 
 response: str = await llm(
     AsyncOpenAI(),          # AsyncOpenAI
-    [user("What's the weather in Paris?")],  # list[ResponseInputItemParam]  — mutated in-place
+    input=[user("What's the weather in Paris?")],  # list[ResponseInputItemParam]
     fns=[get_weather],      # Sequence[async fn]
     **kwargs                # model, temperature, reasoning, tools, ...
 )
 ```
 
-Same contract. Uses `client.responses.parse()` internally (OpenAI Responses API).
+Same contract. `llm()` wraps `client.responses.create()` — all kwargs pass through verbatim to the OpenAI Responses API.
 
 ## Tool Schema Auto-generation
 
@@ -156,17 +157,17 @@ See `examples/anthropic/test_otel.py` and `examples/openai/test_otel.py` for a w
 
 ## Conversation History
 
-`llm()` mutates `input` in-place. To continue a conversation, pass the same list:
+Build the messages list yourself and pass it on each call:
 
 ```python
 msgs = [user("I live in Paris")]
-await llm(client, msgs, **kwargs)          # msgs now has assistant turn appended
+await llm(client, messages=msgs, **kwargs)
 
 msgs.append(user("What's the weather?"))
-await llm(client, msgs, fns=[get_weather], **kwargs)  # Paris inferred from history
+await llm(client, messages=msgs, fns=[get_weather], **kwargs)  # Paris inferred from history
 ```
 
-To start fresh, pass a new list. To preserve history across failures (fallback), the partially-mutated list already contains all state the fallback provider needs.
+To start fresh, pass a new list.
 
 ## Tool Execution
 
@@ -189,7 +190,7 @@ async def greet(name: str) -> str:
     return f"Hello in {current_language.get()}, {name}!"
 
 current_language.set("spanish")
-await llm(client, [user("Greet Alice")], fns=[greet], **kwargs)
+await llm(client, messages=[user("Greet Alice")], fns=[greet], **kwargs)
 # greet() sees "spanish" — no wrapper objects needed
 ```
 
@@ -198,16 +199,6 @@ One built-in context var in `nkd_agents.ctx`:
 | Var | Type | Purpose |
 |-----|------|---------|
 | `cwd_ctx` | `ContextVar[Path]` | Working directory for tools. Relative paths resolve against this. Default: `Path.cwd()`. |
-
-## Cancellation
-
-When the task running `llm()` is cancelled (e.g., `task.cancel()`):
-
-1. The currently-running `asyncio.gather()` for tool calls raises `CancelledError`.
-2. The loop catches it, fills all tool results with `"Interrupted"`.
-3. Re-raises `CancelledError` so the cancellation propagates properly.
-
-This keeps the API in a valid state — no orphaned `tool_use` blocks without `tool_result`.
 
 ## Prompt Caching
 
@@ -231,7 +222,7 @@ class Weather(BaseModel):
     temperature: int
     description: str
 
-json_str = await llm(client, messages, output_config={"format": output_format(Weather)}, **kwargs)
+json_str = await llm(client, messages=messages, output_config={"format": output_format(Weather)}, **kwargs)
 weather = Weather.model_validate_json(json_str)
 ```
 
@@ -246,7 +237,7 @@ output_config={"format": output_format(Weather), "effort": "low"}
 Pass the Pydantic model as the `response_format` kwarg:
 
 ```python
-response = await llm(client, messages, response_format=Weather, **kwargs)
+response = await llm(client, messages=messages, response_format=Weather, **kwargs)
 weather = Weather.model_validate_json(response)
 ```
 
@@ -261,7 +252,7 @@ Pass `thinking=anthropic.omit` (the default in the CLI) to disable.
 Control thinking depth via `effort` in `output_config` (separate from the `thinking` param):
 
 ```python
-await llm(client, messages, thinking={"type": "adaptive"}, output_config={"effort": "medium"}, **kwargs)
+await llm(client, messages=messages, thinking={"type": "adaptive"}, output_config={"effort": "medium"}, **kwargs)
 ```
 
 `effort` accepts `"low"`, `"medium"`, `"high"` (default), or `"max"` (Opus 4.6 only). On Opus 4.6 and Sonnet 4.6, `effort` replaces `budget_tokens` as the recommended way to control thinking depth.

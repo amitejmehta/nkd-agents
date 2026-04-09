@@ -145,7 +145,7 @@ class TestLLMLoop:
             assert len(cli.messages) == 1
             assert cli.messages[0] is msg
             mock_llm.assert_called_once_with(
-                cli.client, cli.messages, TOOLS, **cli.kwargs
+                cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs
             )
 
     async def test_survives_cancelled_llm_task(self, cli: CLI):

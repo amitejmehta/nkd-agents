@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Awaitable, Callable, Mapping, Sequence
+from typing import Awaitable, Callable, Mapping, Sequence
 
 from openai import AsyncOpenAI
 from openai.types.responses import (
@@ -12,9 +12,13 @@ from openai.types.responses import (
     ResponseFunctionToolCall,
     ResponseInputItemParam,
 )
+from openai.types.responses.response_create_params import (
+    ResponseCreateParamsNonStreaming,
+)
 from openai.types.responses.response_input_item_param import FunctionCallOutput
 from opentelemetry import trace
 from pydantic import BaseModel
+from typing_extensions import Unpack
 
 from .utils import extract_function_params
 
@@ -106,24 +110,25 @@ async def tool(
 
 async def llm(
     client: AsyncOpenAI,
-    input: list[ResponseInputItemParam],
     fns: Sequence[
         Callable[..., Awaitable[str | ResponseFunctionCallOutputItemListParam]]
     ] = (),
-    **kwargs: Any,
+    **kwargs: Unpack[ResponseCreateParamsNonStreaming],
 ) -> str:
     """Run GPT in agentic loop (run until no tool calls, then return text).
 
     Args:
         client: OpenAI client instance
-        input: List of messages forming the conversation history
         fns: Optional list of async tool functions
-        **kwargs: API parameters (model, temperature, reasoning, etc.)
+        **kwargs: API parameters (input, model, temperature, reasoning, etc.)
 
     - Tools must be async functions that return a string OR list of OpenAI content blocks.
     - Tools should handle their own errors and return descriptive, concise error strings.
-    - When cancelled, the loop will return "Interrupted" as the result for any cancelled tool calls.
     """
+    kwargs["input"] = kwargs.get("input", [])
+    if isinstance(kwargs["input"], str):
+        kwargs["input"] = [user(kwargs["input"])]
+
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
 
@@ -136,19 +141,15 @@ async def llm(
             agent_span.set_attribute("iterations", iteration)
             with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
                 turn_span.set_attribute("gen_ai.operation.name", "turn")
-                resp = await client.responses.create(
-                    input=input, stream=False, **kwargs
-                )
+                resp = await client.responses.create(**kwargs)
                 logger.info(f"usage={resp.usage}")
 
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
-                # NOTE: assistant response must be appended after tool execution
-                # This prevents orphaned tool calls in case of interruption/cancellation
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                input += resp.output + results  # type: ignore[arg-type]
+                kwargs["input"] = [*kwargs["input"], *resp.output, *results]  # type: ignore
                 if not tool_calls:
                     return text
 

@@ -47,12 +47,12 @@ async def main():
 
     # 1. Structured output
     logger.info("1. Structured output")
-    json_str = await llm(client, [user(prompt)], **kwargs)
-    weather = Weather.model_validate_json(json_str)
+    json_str = await llm(client, messages=[user(prompt)], **kwargs)
+    Weather.model_validate_json(json_str)
 
     # 2. Tool call with structured output
     logger.info("2. Tool call with structured output")
-    json_str = await llm(client, [user(prompt)], fns=[get_weather], **kwargs)
+    json_str = await llm(client, messages=[user(prompt)], fns=[get_weather], **kwargs)
     weather = Weather.model_validate_json(json_str)
     assert weather.temperature == 72
     assert "sunny" in weather.description.lower()

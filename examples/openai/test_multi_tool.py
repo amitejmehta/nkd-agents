@@ -39,11 +39,10 @@ async def main():
     The framework's agentic loop handles the complexity: tool A's output feeds into
     the decision to call tool B, then synthesize into a final answer.
     """
-
     prompt = "I want to visit Tokyo or Osaka from New York for 4 nights. I'm on a budget. What's the cheapest total cost?"
     tools = [search_flights, search_hotels, calculate_total_cost]
 
-    response = await llm(AsyncOpenAI(), [user(prompt)], fns=tools, **KWARGS)
+    response = await llm(AsyncOpenAI(), input=[user(prompt)], fns=tools, **KWARGS)
     assert "450" in response or "$450" in response
     assert "60" in response or "$60" in response
     assert "690" in response or "$690" in response

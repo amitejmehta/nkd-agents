@@ -48,7 +48,7 @@ async def main():
 
     document.set(doc)
     prompt = f"Current document: '{doc.content}'\n\nThat animal can't jump! Replace it with 'cat'"
-    await llm(client, [user(prompt)], fns=[edit_string], **KWARGS)
+    await llm(client, messages=[user(prompt)], fns=[edit_string], **KWARGS)
 
     logger.info(f"After: {doc.content}")
 

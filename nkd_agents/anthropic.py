@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import logging
-from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
+from typing import Awaitable, Callable, Iterable, Mapping, Sequence
 
 from anthropic import AsyncAnthropic, AsyncAnthropicVertex, transform_schema
 from anthropic.types import (
@@ -15,9 +15,11 @@ from anthropic.types import (
     ToolUseBlock,
 )
 from anthropic.types.json_output_format_param import JSONOutputFormatParam
+from anthropic.types.message_create_params import MessageCreateParamsBase
 from anthropic.types.tool_result_block_param import Content
 from opentelemetry import trace
 from pydantic import BaseModel
+from typing_extensions import Unpack
 
 from .utils import extract_function_params
 
@@ -112,17 +114,15 @@ async def tool(
 
 async def llm(
     client: AsyncAnthropic | AsyncAnthropicVertex,
-    input: list[MessageParam],
     fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
-    **kwargs: Any,
+    **kwargs: Unpack[MessageCreateParamsBase],
 ) -> str:
     """Run Claude in agentic loop (run until no tool calls, then return text).
 
     Args:
         client: Anthropic client instance
-        input: List of messages forming the conversation history
         fns: Optional list of async tool functions
-        **kwargs: API parameters (model, max_tokens, system, temperature, etc.)
+        **kwargs: API parameters (messages, model, max_tokens, system, temperature, etc.)
 
     - Tools must be async functions that return a string OR list of Anthropic content blocks.
     """
@@ -138,30 +138,20 @@ async def llm(
             agent_span.set_attribute("iterations", iteration)
             with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
                 turn_span.set_attribute("gen_ai.operation.name", "turn")
-                try:
-                    if fns:
-                        input[-1]["content"][-1]["cache_control"] = {  # type: ignore[index]
-                            "type": "ephemeral"
-                        }
-                    resp = await client.messages.create(
-                        messages=input, stream=False, **kwargs
-                    )
-                    logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-                finally:
-                    if fns:
-                        del input[-1]["content"][-1]["cache_control"]  # type: ignore[index]
+                resp = await client.messages.create(**kwargs)
+                logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
 
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
-                # NOTE: assistant response must be appended after tool execution
-                # This prevents orphaned tool calls in case of interruption/cancellation
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                input.append({"role": "assistant", "content": resp.content})
-                if tool_calls:
-                    input.append({"role": "user", "content": results})
-                else:
+                kwargs["messages"] = [
+                    *kwargs["messages"],
+                    {"role": "assistant", "content": resp.content},
+                    {"role": "user", "content": results},
+                ]
+                if not tool_calls:
                     return text
 
             iteration += 1

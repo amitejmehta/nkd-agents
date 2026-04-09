@@ -27,16 +27,15 @@ async def get_weather(city: str) -> str:
 
 @test("fallback")
 async def main():
-    """Test fallback preserves conversation state.
+    """Test fallback with manually preserved conversation state.
 
-    Demonstrates: input list is mutated during llm() execution.
-    When Vertex fails mid-loop, Anthropic receives the updated history.
+    Demonstrates: build the messages list yourself; hand it to whichever
+    client is available. No framework magic required.
     """
     client = AsyncAnthropic()
     msgs = [user("What's the weather in Paris?")]
 
     try:
-        # Simulate Vertex succeeding initially, mutating msgs
         msgs.append(
             {
                 "role": "assistant",
@@ -48,9 +47,8 @@ async def main():
         logger.info(
             f"Fallback to Anthropic with {len(msgs)} messages (state preserved)"
         )
-        response = await llm(client, msgs, fns=[get_weather], **KWARGS)
+        response = await llm(client, messages=msgs, fns=[get_weather], **KWARGS)
 
-    assert len(msgs) > 2  # Proves mutation happened
     assert "sunny" in response.lower()
 
 

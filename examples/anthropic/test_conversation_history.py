@@ -30,15 +30,15 @@ async def main():
     """Test conversation history.
 
     Demonstrates:
-    1. Conversation history with message list persisted across calls
+    1. Conversation history built manually across calls
     """
     client = AsyncAnthropic()
     logger.info("1. Conversation history")
     msgs = [user("I live in Paris")]
-    _ = await llm(client, msgs, **KWARGS)
+    _ = await llm(client, messages=msgs, **KWARGS)
 
     msgs.append(user("What's the weather?"))
-    response = await llm(client, msgs, fns=[get_weather], **KWARGS)
+    response = await llm(client, messages=msgs, fns=[get_weather], **KWARGS)
     assert "sunny" in response.lower() and "72" in response.lower()
 
 
