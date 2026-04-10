@@ -124,10 +124,12 @@ async def agent(
 
     - Tools must be async functions that return a string OR list of OpenAI content blocks.
     - Tools should handle their own errors and return descriptive, concise error strings.
+    - input must be a list[ResponseInputItemParam]. Passing a string raises ValueError.
+    - input is mutated in-place after each completed turn — callers see updates
+      immediately, so interrupts preserve all fully-committed turns.
     """
-    kwargs["input"] = kwargs.get("input", [])
-    if isinstance(kwargs["input"], str):
-        kwargs["input"] = [user(kwargs["input"])]
+    if not isinstance(kwargs.get("input", []), list):
+        raise ValueError("input is mutated in-place as history and must be a list")
 
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
@@ -141,15 +143,16 @@ async def agent(
             agent_span.set_attribute("iterations", iteration)
             with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
                 turn_span.set_attribute("gen_ai.operation.name", "turn")
+
                 resp = await client.responses.create(**kwargs)
                 logger.info(f"usage={resp.usage}")
-
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                kwargs["input"] = [*kwargs["input"], *resp.output, *results]  # type: ignore
+                kwargs["input"] += resp.output + results  # type: ignore[assignment]
+
                 if not tool_calls:
                     return text
 
