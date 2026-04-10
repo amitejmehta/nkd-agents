@@ -128,13 +128,8 @@ async def agent(
     - input is mutated in-place after each completed turn — callers see updates
       immediately, so interrupts preserve all fully-committed turns.
     """
-    raw_input = kwargs.get("input", [])
-    if isinstance(raw_input, str):
-        raise ValueError("input must be a list[ResponseInputItemParam], not a string")
-    if not isinstance(raw_input, list):
-        raw_input = list(raw_input)
-    kwargs["input"] = raw_input
-    inputs: list[ResponseInputItemParam] = raw_input
+    if not isinstance(kwargs.get("input", []), list):
+        raise ValueError("input is mutated in-place as history and must be a list")
 
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
@@ -148,19 +143,17 @@ async def agent(
             agent_span.set_attribute("iterations", iteration)
             with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
                 turn_span.set_attribute("gen_ai.operation.name", "turn")
+
                 resp = await client.responses.create(**kwargs)
                 logger.info(f"usage={resp.usage}")
-
                 text, tool_calls = extract_text_and_tool_calls(resp)
-
-                if not tool_calls:
-                    inputs += [*resp.output]  # type: ignore[arg-type]
-                    return text
 
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                # Atomic: output items + tool results land together.
-                inputs += [*resp.output, *results]  # type: ignore[arg-type]
+                kwargs["input"] += resp.output + results  # type: ignore[assignment]
+
+                if not tool_calls:
+                    return text
 
             iteration += 1

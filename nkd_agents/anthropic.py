@@ -114,6 +114,7 @@ async def tool(
 
 async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
+    *,
     fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
     **kwargs: Unpack[MessageCreateParamsBase],
 ) -> str:
@@ -128,13 +129,11 @@ async def agent(
     - messages is mutated in-place after each completed turn — callers see updates
       immediately, so interrupts preserve all fully-committed turns.
     """
+    if not isinstance(kwargs["messages"], list):
+        raise ValueError("messages is mutated in-place as history and must be a list")
+
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
-
-    # Ensure messages is a mutable list so in-place updates are visible to the caller.
-    if not isinstance(kwargs["messages"], list):
-        kwargs["messages"] = list(kwargs["messages"])
-    messages: list[MessageParam] = kwargs["messages"]
 
     with tracer.start_as_current_span(
         f"invoke_agent {kwargs.get('model', '')}"
@@ -145,23 +144,21 @@ async def agent(
             agent_span.set_attribute("iterations", iteration)
             with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
                 turn_span.set_attribute("gen_ai.operation.name", "turn")
+
                 resp = await client.messages.create(**kwargs)
                 logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-
                 text, tool_calls = extract_text_and_tool_calls(resp)
-
-                if not tool_calls:
-                    messages += [{"role": "assistant", "content": resp.content}]  # type: ignore[arg-type]
-                    return text
 
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                # Atomic: assistant (with tool_use blocks) + tool_results land together.
-                # No orphan tool_use blocks if interrupted between turns.
-                messages += [  # type: ignore[arg-type]
-                    {"role": "assistant", "content": resp.content},
-                    {"role": "user", "content": results},
-                ]
+
+                kwargs["messages"].append(
+                    {"role": "assistant", "content": resp.content}
+                )
+                if tool_calls:
+                    kwargs["messages"].append({"role": "user", "content": results})
+                else:
+                    return text
 
             iteration += 1

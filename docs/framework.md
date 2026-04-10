@@ -54,7 +54,7 @@ response: str = await agent(
 )
 ```
 
-Same contract. `agent()` wraps `client.responses.create()` — all kwargs pass through verbatim to the OpenAI Responses API. `input` follows the same in-place mutation contract as Anthropic's `messages`. Passing a string raises `ValueError`; pass a `list[ResponseInputItemParam]`.
+Same contract. `agent()` wraps `client.responses.create()` — all kwargs pass through verbatim to the OpenAI Responses API. `input` follows the same in-place mutation contract as Anthropic's `messages`. Passing a non-list raises `ValueError`; pass a `list[ResponseInputItemParam]`.
 
 ## Tool Schema Auto-generation
 
