@@ -107,6 +107,26 @@ The background `cache_warmer` task checks every 30s and, if the session has been
 
 Each warm costs 0.1× (a cache read). Break-even vs a fresh write is 12 warms (12 × 0.1× = 1.2× < 1.25×). The default of 2 gives ~15 minutes of coverage for **0.2×** — enough to step away, respond to a ping, or take a quick call and come back without paying for a re-write or 1-hour caching at 2×. Personally, I found 2 to be the right number: beyond ~15 minutes of inactivity I was either done with the session or away long enough that the cache wouldn't have helped. Set `NKD_MAX_CACHE_WARMS` in `~/.nkd-agents/.env` to tune it permanently to your own pattern.
 
+## Auto-Compact
+
+Before every user message is sent, `nkd` scans the history and drops any messages containing `tool_use` or `tool_result` blocks that are older than `NKD_AUTO_COMPACT_AFTER` messages (default: **50**). No summarization, no LLM call — just eviction of stale tool noise.
+
+**Why 50?** The right threshold depends on your session patterns. To find yours, run a quick analysis against your own saved sessions:
+
+```bash
+nkd -p "
+Analyze the sessions in ~/.nkd-agents/sessions/ (or ~/.claude/projects/ for Claude Code).
+Sample the 20 most recent .json files. For each compute: total message count, user message
+count, assistant message count, tool_use block count. Then answer: how many total messages
+correspond to one full human turn (including all tool round-trips it triggers)? What
+threshold would preserve 3–4 full human turns of context? Give a single recommended integer.
+"
+```
+
+For this repo's session data (5 largest sessions, 17–594 messages each): a typical human turn spans **6–12 messages** including tool round-trips, with agentic sessions hitting much higher. A threshold of 50 preserves 4–8 full user turns before eviction kicks in. The old default of 10 was firing after a single human turn — aggressively stripping context the model still needed.
+
+The `ctrl+k` keybinding still exists for manual full compaction when you want it.
+
 ## Configuration
 
 All config via environment variables. Set in `~/.nkd-agents/.env` (loaded at startup) or in the shell environment.
@@ -123,3 +143,4 @@ All config via environment variables. Set in `~/.nkd-agents/.env` (loaded at sta
 | `NKD_SOCRATIC_MODE` | `"ASK, DON'T TELL!"` | Prefix appended in Socratic mode |
 | `NKD_CACHE_WARM_MSG` | `"Sending msg to warm cache. Just respond: \"okay\""` | Message sent during cache warm |
 | `NKD_COMPACT` | `"FYI: removed tool calls/results to reduce context size."` | Message appended after compact |
+| `NKD_AUTO_COMPACT_AFTER` | `50` | Auto-compact threshold — drop tool messages older than this many total messages (see [Auto-Compact](#auto-compact)) |
