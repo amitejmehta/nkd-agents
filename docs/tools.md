@@ -159,7 +159,7 @@ async def get_stock_price(ticker: str) -> str:
     price = await some_api(ticker)
     return f"{ticker}: ${price:.2f}"
 
-response = await llm(client, messages, fns=[get_stock_price], **kwargs)
+response = await agent(client, messages, fns=[get_stock_price], **kwargs)
 ```
 
 Rules:

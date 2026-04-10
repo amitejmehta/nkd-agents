@@ -112,7 +112,7 @@ async def tool(
         return {"type": "tool_result", "tool_use_id": tool_call.id, "content": result}
 
 
-async def llm(
+async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
     fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
     **kwargs: Unpack[MessageCreateParamsBase],

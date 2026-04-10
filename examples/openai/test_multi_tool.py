@@ -3,7 +3,7 @@ from typing import Literal
 
 from openai import AsyncOpenAI
 
-from nkd_agents.openai import llm, user
+from nkd_agents.openai import agent, user
 
 from ..utils import test
 from .config import KWARGS
@@ -42,7 +42,7 @@ async def main():
     prompt = "I want to visit Tokyo or Osaka from New York for 4 nights. I'm on a budget. What's the cheapest total cost?"
     tools = [search_flights, search_hotels, calculate_total_cost]
 
-    response = await llm(AsyncOpenAI(), input=[user(prompt)], fns=tools, **KWARGS)
+    response = await agent(AsyncOpenAI(), input=[user(prompt)], fns=tools, **KWARGS)
     assert "450" in response or "$450" in response
     assert "60" in response or "$60" in response
     assert "690" in response or "$690" in response

@@ -16,7 +16,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 
-from .anthropic import llm, user
+from .anthropic import agent, user
 from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, glob, grep, read_file, write_file
 from .utils import load_env, serialize
@@ -63,7 +63,7 @@ class CLI:
         (NKD_DIR / "sessions").mkdir(parents=True, exist_ok=True)
         (NKD_DIR / "skills").mkdir(parents=True, exist_ok=True)
 
-        # llm
+        # agent
         self.client = AsyncAnthropic(max_retries=4)
         self.messages: list[MessageParam] = []
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
@@ -173,14 +173,14 @@ class CLI:
             self.messages.append(await self.queue.get())
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
-                llm(self.client, messages=self.messages, fns=TOOLS, **self.kwargs)
+                agent(self.client, messages=self.messages, fns=TOOLS, **self.kwargs)
             )
             try:
                 await self.llm_task
             except asyncio.CancelledError:
                 pass
             except Exception as e:
-                logger.exception(f"{RED}Error in llm loop: {e}{RESET}")
+                logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
                 self.last_message_at = time.monotonic()
 
@@ -224,7 +224,7 @@ def main() -> None:
             if args.prompt:
                 cli.messages.append(user(args.prompt))
                 result = asyncio.run(
-                    llm(cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs)
+                    agent(cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs)
                 )
                 print(result)
             else:

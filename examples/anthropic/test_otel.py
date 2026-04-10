@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProces
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import nkd_agents.anthropic as anthropic
-from nkd_agents.anthropic import llm, user
+from nkd_agents.anthropic import agent, user
 
 from ..utils import test
 from .config import KWARGS
@@ -66,7 +66,7 @@ def log_tree(exporter: InMemorySpanExporter) -> None:
 @test("otel")
 async def main():
     exporter = setup_otel()
-    await llm(
+    await agent(
         AsyncAnthropic(),
         messages=[user("What's the weather and population of Paris and London?")],
         fns=[get_weather, get_population],

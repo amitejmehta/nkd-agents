@@ -108,7 +108,7 @@ async def tool(
         )
 
 
-async def llm(
+async def agent(
     client: AsyncOpenAI,
     fns: Sequence[
         Callable[..., Awaitable[str | ResponseFunctionCallOutputItemListParam]]
