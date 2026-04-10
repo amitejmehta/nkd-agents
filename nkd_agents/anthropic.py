@@ -114,6 +114,7 @@ async def tool(
 
 async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
+    *,
     fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
     **kwargs: Unpack[MessageCreateParamsBase],
 ) -> str:
@@ -125,7 +126,12 @@ async def agent(
         **kwargs: API parameters (messages, model, max_tokens, system, temperature, etc.)
 
     - Tools must be async functions that return a string OR list of Anthropic content blocks.
+    - messages is mutated in-place after each completed turn — callers see updates
+      immediately, so interrupts preserve all fully-committed turns.
     """
+    if not isinstance(kwargs["messages"], list):
+        raise ValueError("messages is mutated in-place as history and must be a list")
+
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
 
@@ -138,20 +144,21 @@ async def agent(
             agent_span.set_attribute("iterations", iteration)
             with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
                 turn_span.set_attribute("gen_ai.operation.name", "turn")
+
                 resp = await client.messages.create(**kwargs)
                 logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                kwargs["messages"] = [
-                    *kwargs["messages"],
-                    {"role": "assistant", "content": resp.content},
-                    {"role": "user", "content": results},
-                ]
-                if not tool_calls:
+
+                kwargs["messages"].append(
+                    {"role": "assistant", "content": resp.content}
+                )
+                if tool_calls:
+                    kwargs["messages"].append({"role": "user", "content": results})
+                else:
                     return text
 
             iteration += 1
