@@ -46,6 +46,7 @@ LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
+AUTO_COMPACT_AFTER = int(os.environ.get("NKD_AUTO_COMPACT_AFTER", 10))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODE_PREFIXES: dict[str, str] = {
     "none": "",
@@ -55,6 +56,26 @@ MODE_PREFIXES: dict[str, str] = {
 CACHE_WARM_MSG = os.environ.get(
     "NKD_CACHE_WARM_MSG", 'Sending msg to warm cache. Just respond: "okay"'
 )
+
+
+def _has_tool_content(msg: MessageParam) -> bool:
+    content = msg.get("content")
+    return isinstance(content, list) and any(
+        isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result")
+        for b in content
+    )
+
+
+def auto_compact(messages: list[MessageParam]) -> int:
+    """Drop messages older than AUTO_COMPACT_AFTER that contain tool_use/tool_result blocks.
+
+    Returns the number of messages dropped.
+    """
+    boundary = max(0, len(messages) - AUTO_COMPACT_AFTER)
+    to_drop = [i for i in range(boundary) if _has_tool_content(messages[i])]
+    for i in reversed(to_drop):
+        messages.pop(i)
+    return len(to_drop)
 
 
 class CLI:
@@ -170,7 +191,10 @@ class CLI:
 
     async def llm_loop(self) -> None:
         while True:
-            self.messages.append(await self.queue.get())
+            msg = await self.queue.get()
+            if n := auto_compact(self.messages):
+                logger.info(f"{DIM}Auto-compacted {n} message(s){RESET}")
+            self.messages.append(msg)
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
                 agent(self.client, messages=self.messages, fns=TOOLS, **self.kwargs)
