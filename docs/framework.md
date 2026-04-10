@@ -204,7 +204,7 @@ One built-in context var in `nkd_agents.ctx`:
 
 **Anthropic** ([docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching))
 
-Anthropic prompt caching has a default TTL of 5 minutes and supports a maximum of four cache breakpoints. This framework uses a single breakpoint, always updated to be the most recent user message: when tools are present, `agent()` temporarily sets `cache_control: {type: ephemeral}` on the last content block of the last user message before each API call, then removes it immediately after in a `finally` block so the list is never left in a dirty state. This reduces costs and latency on long agentic loops.
+Anthropic prompt caching has a default TTL of 5 minutes. Pass `cache_control={"type": "ephemeral"}` as a top-level kwarg to enable it — the CLI does this by default. This pins a cache breakpoint at the system prompt, reducing costs and latency on long sessions.
 
 **OpenAI** ([docs](https://platform.openai.com/docs/guides/prompt-caching))
 
@@ -234,20 +234,27 @@ output_config={"format": output_format(Weather), "effort": "low"}
 
 **OpenAI**
 
-Pass the Pydantic model as the `response_format` kwarg:
+`output_format(model)` builds a `ResponseFormatTextConfigParam` with `strict=True` for use in the `text=` kwarg:
 
 ```python
-response = await agent(client, messages=messages, response_format=Weather, **kwargs)
-weather = Weather.model_validate_json(response)
+from pydantic import BaseModel
+from nkd_agents.openai import output_format
+
+class Weather(BaseModel):
+    temperature: int
+    description: str
+
+json_str = await agent(client, input=input, text=output_format(Weather), **kwargs)
+weather = Weather.model_validate_json(json_str)
 ```
 
 ## Thinking
 
 **Anthropic** ([docs](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking))
 
-Pass `thinking={"type": "adaptive"}` (or `{"type": "enabled", "budget_tokens": N}`) in kwargs. The CLI toggles this with `tab`. Thinking blocks are logged at INFO level but not included in the returned text.
+Pass `thinking={"type": "adaptive"}` (or `{"type": "enabled", "budget_tokens": N}`) in kwargs. The CLI toggles this with `tab` — thinking is off by default, pressing `tab` enables it using the `NKD_THINKING` value. Thinking blocks are logged at INFO level but not included in the returned text.
 
-Pass `thinking=anthropic.omit` (the default in the CLI) to disable.
+Omit the `thinking` key (or don't pass it) to disable.
 
 Control thinking depth via `effort` in `output_config` (separate from the `thinking` param):
 

@@ -24,12 +24,11 @@ caffeinate -u -t 3600 &  # keep awake for 1 hour
 
 | Key | Action |
 |-----|--------|
-| `tab` | Toggle **extended thinking** on/off (default: adaptive — Claude decides how much to think; override via `NKD_THINKING`) |
+| `tab` | Toggle **extended thinking** on/off (default: off; when toggled on, uses `NKD_THINKING` value) |
 | `shift+tab` | Cycle **mode**: None → Plan → Socratic → None |
 | `esc esc` | **Interrupt** — cancel the running LLM call or tool execution |
 | `ctrl+l` | **Cycle model**: sonnet → opus → haiku → sonnet (logged on switch, applies to next message) |
 | `ctrl+u` | Clear input line |
-| `ctrl+k` | **Compact history** — strip all tool call/result messages from context; appends a notification message (see `NKD_COMPACT` in [Configuration](#configuration)) |
 | `ctrl+c` / `ctrl+d` | Exit — session auto-saved to `~/.nkd-agents/sessions/{YYYYMMDDHHMMSS}.json` |
 
 **Message queuing:** you can type and submit a new message while the LLM is still responding — it queues and runs as soon as the current turn completes.
@@ -79,7 +78,7 @@ The prefixes are configurable via `NKD_PLAN_MODE` and `NKD_SOCRATIC_MODE` in `~/
 
 This repo ships concise, powerful skills — `read <path> and follow it` to use one. Paths printed at startup.
 
-Skills: [`ai_research`](../skills/ai_research), [`compact`](../skills/compact), [`parallel_worktrees`](../skills/parallel_worktrees), [`pptx`](../skills/pptx), [`subagents`](../skills/subagents).
+Skills: [`ai_research`](../skills/ai_research), [`memory_audit`](../skills/memory_audit), [`parallel_worktrees`](../skills/parallel_worktrees), [`pptx`](../skills/pptx), [`prompt_eval`](../skills/prompt_eval), [`ralph_loop`](../skills/ralph_loop), [`send_slack_message`](../skills/send_slack_message), [`skill_creator`](../skills/skill_creator), [`subagents`](../skills/subagents).
 
 Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of subagent patterns:
 
@@ -121,4 +120,3 @@ All config via environment variables. Set in `~/.nkd-agents/.env` (loaded at sta
 | `NKD_PLAN_MODE` | `"READ ONLY!"` | Prefix appended in Plan mode |
 | `NKD_SOCRATIC_MODE` | `"ASK, DON'T TELL!"` | Prefix appended in Socratic mode |
 | `NKD_CACHE_WARM_MSG` | `"Sending msg to warm cache. Just respond: \"okay\""` | Message sent during cache warm |
-| `NKD_COMPACT` | `"FYI: removed tool calls/results to reduce context size."` | Message appended after compact |
