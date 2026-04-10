@@ -1,8 +1,8 @@
 import logging
 
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
-from nkd_agents.anthropic import agent, user
+from nkd_agents.openai import agent, user
 
 from ..utils import test
 from .config import KWARGS
@@ -17,18 +17,18 @@ async def get_secret_word() -> str:
 
 @test("conversation_history")
 async def main():
-    """Test that agent() mutates messages in-place across calls.
+    """Test that agent() mutates input in-place across calls.
 
     The secret word comes from a tool result — it is never mentioned in any
     user message. The second call can only answer correctly if the tool result
     and assistant reply from the first call were appended to msgs.
     """
-    client = AsyncAnthropic()
+    client = AsyncOpenAI()
     msgs = [user("Use get_secret_word and tell me what it returned.")]
-    await agent(client, messages=msgs, fns=[get_secret_word], **KWARGS)
+    await agent(client, input=msgs, fns=[get_secret_word], **KWARGS)
 
     msgs.append(user("What was the secret word?"))
-    response = await agent(client, messages=msgs, **KWARGS)
+    response = await agent(client, input=msgs, **KWARGS)
     assert "xenon" in response.lower()
 
 
