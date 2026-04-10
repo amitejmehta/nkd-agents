@@ -141,7 +141,7 @@ async def test_anthropic_invoke_agent_span(otel_setup):
     client = _anthropic_client(_anthropic_message("Hello"))
     input = [anthropic.user("hi")]
 
-    await anthropic.llm(
+    await anthropic.agent(
         client, messages=input, model="claude-sonnet-4-20250514", max_tokens=1024
     )
 
@@ -166,7 +166,7 @@ async def test_anthropic_iterations_with_tools(otel_setup):
     )
     input = [anthropic.user("weather in Paris?")]
 
-    await anthropic.llm(
+    await anthropic.agent(
         client,
         messages=input,
         fns=[get_weather],
@@ -191,7 +191,7 @@ async def test_anthropic_execute_tool_spans(otel_setup):
     )
     input = [anthropic.user("weather?")]
 
-    await anthropic.llm(
+    await anthropic.agent(
         client,
         messages=input,
         fns=[get_weather],
@@ -227,7 +227,7 @@ async def test_anthropic_multiple_tools_parallel(otel_setup):
     )
     input = [anthropic.user("weather in Paris and London?")]
 
-    await anthropic.llm(
+    await anthropic.agent(
         client,
         messages=input,
         fns=[get_weather],
@@ -249,7 +249,7 @@ async def test_openai_invoke_agent_span(otel_setup):
     client = _openai_client(_openai_response("Hello"))
     input = [openai.user("hi")]
 
-    await openai.llm(client, input=input, model="gpt-4o")
+    await openai.agent(client, input=input, model="gpt-4o")
 
     spans = _spans(otel_setup)
     agent_spans = [s for s in spans if s.name.startswith("invoke_agent")]
@@ -270,7 +270,7 @@ async def test_openai_iterations_with_tools(otel_setup):
     )
     input = [openai.user("weather in Paris?")]
 
-    await openai.llm(client, input=input, fns=[get_weather], model="gpt-4o")
+    await openai.agent(client, input=input, fns=[get_weather], model="gpt-4o")
 
     spans = _spans(otel_setup)
     agent_spans = [s for s in spans if s.name.startswith("invoke_agent")]
@@ -287,7 +287,7 @@ async def test_openai_execute_tool_spans(otel_setup):
     )
     input = [openai.user("weather?")]
 
-    await openai.llm(client, input=input, fns=[get_weather], model="gpt-4o")
+    await openai.agent(client, input=input, fns=[get_weather], model="gpt-4o")
 
     spans = _spans(otel_setup)
     tool_spans = [s for s in spans if s.name.startswith("execute_tool")]
@@ -312,7 +312,7 @@ async def test_openai_multiple_tools_parallel(otel_setup):
     )
     input = [openai.user("weather in Paris and London?")]
 
-    await openai.llm(client, input=input, fns=[get_weather], model="gpt-4o")
+    await openai.agent(client, input=input, fns=[get_weather], model="gpt-4o")
 
     spans = _spans(otel_setup)
     tool_spans = [s for s in spans if s.name.startswith("execute_tool")]
@@ -324,13 +324,13 @@ async def test_openai_multiple_tools_parallel(otel_setup):
 
 @pytest.mark.asyncio
 async def test_nested_subagent_trace(otel_setup):
-    """A tool calling llm() produces a nested invoke_agent span."""
+    """A tool calling agent() produces a nested invoke_agent span."""
     inner_client = _anthropic_client(_anthropic_message("Subagent result"))
 
     async def research(query: str) -> str:
         """Research a topic using a subagent."""
         inner_input = [anthropic.user(query)]
-        return await anthropic.llm(
+        return await anthropic.agent(
             inner_client,
             messages=inner_input,
             model="claude-sonnet-4-20250514",
@@ -346,7 +346,7 @@ async def test_nested_subagent_trace(otel_setup):
     )
     input = [anthropic.user("research this")]
 
-    await anthropic.llm(
+    await anthropic.agent(
         outer_client,
         messages=input,
         fns=[research],

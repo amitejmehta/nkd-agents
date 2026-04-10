@@ -134,7 +134,7 @@ class TestInterrupt:
 
 class TestLLMLoop:
     async def test_processes_queue(self, cli: CLI):
-        with patch("nkd_agents.cli.llm", new_callable=AsyncMock) as mock_llm:
+        with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm:
             msg = {"role": "user", "content": [{"type": "text", "text": "hi"}]}
             await cli.queue.put(msg)
             loop_task = asyncio.create_task(cli.llm_loop())
@@ -157,7 +157,7 @@ class TestLLMLoop:
             if call_count == 1:
                 raise asyncio.CancelledError()
 
-        with patch("nkd_agents.cli.llm", side_effect=mock_llm):
+        with patch("nkd_agents.cli.agent", side_effect=mock_llm):
             await cli.queue.put(
                 {"role": "user", "content": [{"type": "text", "text": "first"}]}
             )

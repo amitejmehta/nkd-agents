@@ -2,7 +2,7 @@ import logging
 
 from openai import AsyncOpenAI
 
-from nkd_agents.openai import llm, user
+from nkd_agents.openai import agent, user
 
 from ..utils import test
 from .config import KWARGS
@@ -36,11 +36,11 @@ async def main():
     client = AsyncOpenAI()
     # 1. No tools
     logger.info("1. Basic usage (no tools)")
-    _ = await llm(client, input=[user("What's the weather in Paris?")], **KWARGS)
+    _ = await agent(client, input=[user("What's the weather in Paris?")], **KWARGS)
 
     # 2. With tools
     logger.info("2. Tool call")
-    response = await llm(
+    response = await agent(
         client,
         input=[user("What's the weather in Paris?")],
         fns=[get_weather],

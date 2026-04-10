@@ -2,7 +2,7 @@ import logging
 
 from anthropic import AsyncAnthropic
 
-from nkd_agents.anthropic import llm, user
+from nkd_agents.anthropic import agent, user
 
 from ..utils import test
 from .config import KWARGS
@@ -35,10 +35,10 @@ async def main():
     client = AsyncAnthropic()
     logger.info("1. Conversation history")
     msgs = [user("I live in Paris")]
-    _ = await llm(client, messages=msgs, **KWARGS)
+    _ = await agent(client, messages=msgs, **KWARGS)
 
     msgs.append(user("What's the weather?"))
-    response = await llm(client, messages=msgs, fns=[get_weather], **KWARGS)
+    response = await agent(client, messages=msgs, fns=[get_weather], **KWARGS)
     assert "sunny" in response.lower() and "72" in response.lower()
 
 

@@ -12,17 +12,17 @@ no tool calls → return text
 
 Both providers implement this identically. The only difference is wire format.
 
-## `llm()` — Anthropic
+## `agent()` — Anthropic
 
 ```python
 from anthropic import AsyncAnthropic
-from nkd_agents.anthropic import llm, user
+from nkd_agents.anthropic import agent, user
 
 async def get_weather(city: str) -> str:
     """Get the current weather for a city."""
     return f"Sunny, 24°C"
 
-response: str = await llm(
+response: str = await agent(
     AsyncAnthropic(),       # AsyncAnthropic | AsyncAnthropicVertex
     messages=[user("What's the weather in Paris?")],  # list[MessageParam]
     fns=[get_weather],      # Sequence[async fn] — optional tools
@@ -30,23 +30,23 @@ response: str = await llm(
 )
 ```
 
-`llm()` is a thin agentic loop around `client.messages.create()`. Every `**kwarg` passes through verbatim — no translation, no wrapping. This means the full Anthropic SDK type signature is available and statically checked. `fns` is the only nkd-agents-specific parameter; everything else is native SDK params.
+`agent()` is a thin agentic loop around `client.messages.create()`. Every `**kwarg` passes through verbatim — no translation, no wrapping. This means the full Anthropic SDK type signature is available and statically checked. `fns` is the only nkd-agents-specific parameter; everything else is native SDK params.
 
 - `messages` is a `list[MessageParam]` — the standard Anthropic conversation format.
 - `fns` is a list of async callables. Each must have a docstring (used as the tool description) and typed parameters (used to build the JSON schema). See [Tool Schema Auto-generation](#tool-schema-auto-generation).
 - Returns the final text string from the last assistant turn.
 
-## `llm()` — OpenAI
+## `agent()` — OpenAI
 
 ```python
 from openai import AsyncOpenAI
-from nkd_agents.openai import llm, user
+from nkd_agents.openai import agent, user
 
 async def get_weather(city: str) -> str:
     """Get the current weather for a city."""
     return f"Sunny, 24°C"
 
-response: str = await llm(
+response: str = await agent(
     AsyncOpenAI(),          # AsyncOpenAI
     input=[user("What's the weather in Paris?")],  # list[ResponseInputItemParam]
     fns=[get_weather],      # Sequence[async fn]
@@ -54,7 +54,7 @@ response: str = await llm(
 )
 ```
 
-Same contract. `llm()` wraps `client.responses.create()` — all kwargs pass through verbatim to the OpenAI Responses API.
+Same contract. `agent()` wraps `client.responses.create()` — all kwargs pass through verbatim to the OpenAI Responses API.
 
 ## Tool Schema Auto-generation
 
@@ -101,7 +101,7 @@ async def search_hotels(city: str, budget: Literal["low", "medium", "high"]) -> 
 
 ## Observability
 
-`llm()` emits [OpenTelemetry](https://opentelemetry.io/) spans following the [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/). No exporter is configured by default — traces are no-ops unless you wire one up.
+`agent()` emits [OpenTelemetry](https://opentelemetry.io/) spans following the [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/). No exporter is configured by default — traces are no-ops unless you wire one up.
 
 ### What the framework emits
 
@@ -161,10 +161,10 @@ Build the messages list yourself and pass it on each call:
 
 ```python
 msgs = [user("I live in Paris")]
-await llm(client, messages=msgs, **kwargs)
+await agent(client, messages=msgs, **kwargs)
 
 msgs.append(user("What's the weather?"))
-await llm(client, messages=msgs, fns=[get_weather], **kwargs)  # Paris inferred from history
+await agent(client, messages=msgs, fns=[get_weather], **kwargs)  # Paris inferred from history
 ```
 
 To start fresh, pass a new list.
@@ -176,7 +176,7 @@ Tools are called with `asyncio.gather()` — all tool calls in a single LLM turn
 - Tools in the same turn must not depend on each other's results.
 - Tools in separate turns execute sequentially (the LLM chooses).
 
-Tool errors are caught by the provider's `llm()` and returned to the model as an error string.
+Tool errors are caught by the provider's `agent()` and returned to the model as an error string.
 
 ## Context Variables
 
@@ -190,7 +190,7 @@ async def greet(name: str) -> str:
     return f"Hello in {current_language.get()}, {name}!"
 
 current_language.set("spanish")
-await llm(client, messages=[user("Greet Alice")], fns=[greet], **kwargs)
+await agent(client, messages=[user("Greet Alice")], fns=[greet], **kwargs)
 # greet() sees "spanish" — no wrapper objects needed
 ```
 
@@ -204,7 +204,7 @@ One built-in context var in `nkd_agents.ctx`:
 
 **Anthropic** ([docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching))
 
-Anthropic prompt caching has a default TTL of 5 minutes and supports a maximum of four cache breakpoints. This framework uses a single breakpoint, always updated to be the most recent user message: when tools are present, `llm()` temporarily sets `cache_control: {type: ephemeral}` on the last content block of the last user message before each API call, then removes it immediately after in a `finally` block so the list is never left in a dirty state. This reduces costs and latency on long agentic loops.
+Anthropic prompt caching has a default TTL of 5 minutes and supports a maximum of four cache breakpoints. This framework uses a single breakpoint, always updated to be the most recent user message: when tools are present, `agent()` temporarily sets `cache_control: {type: ephemeral}` on the last content block of the last user message before each API call, then removes it immediately after in a `finally` block so the list is never left in a dirty state. This reduces costs and latency on long agentic loops.
 
 **OpenAI** ([docs](https://platform.openai.com/docs/guides/prompt-caching))
 
@@ -222,7 +222,7 @@ class Weather(BaseModel):
     temperature: int
     description: str
 
-json_str = await llm(client, messages=messages, output_config={"format": output_format(Weather)}, **kwargs)
+json_str = await agent(client, messages=messages, output_config={"format": output_format(Weather)}, **kwargs)
 weather = Weather.model_validate_json(json_str)
 ```
 
@@ -237,7 +237,7 @@ output_config={"format": output_format(Weather), "effort": "low"}
 Pass the Pydantic model as the `response_format` kwarg:
 
 ```python
-response = await llm(client, messages=messages, response_format=Weather, **kwargs)
+response = await agent(client, messages=messages, response_format=Weather, **kwargs)
 weather = Weather.model_validate_json(response)
 ```
 
@@ -252,7 +252,7 @@ Pass `thinking=anthropic.omit` (the default in the CLI) to disable.
 Control thinking depth via `effort` in `output_config` (separate from the `thinking` param):
 
 ```python
-await llm(client, messages=messages, thinking={"type": "adaptive"}, output_config={"effort": "medium"}, **kwargs)
+await agent(client, messages=messages, thinking={"type": "adaptive"}, output_config={"effort": "medium"}, **kwargs)
 ```
 
 `effort` accepts `"low"`, `"medium"`, `"high"` (default), or `"max"` (Opus 4.6 only). On Opus 4.6 and Sonnet 4.6, `effort` replaces `budget_tokens` as the recommended way to control thinking depth.
