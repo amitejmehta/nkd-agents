@@ -124,10 +124,17 @@ async def agent(
 
     - Tools must be async functions that return a string OR list of OpenAI content blocks.
     - Tools should handle their own errors and return descriptive, concise error strings.
+    - input must be a list[ResponseInputItemParam]. Passing a string raises ValueError.
+    - input is mutated in-place after each completed turn — callers see updates
+      immediately, so interrupts preserve all fully-committed turns.
     """
-    kwargs["input"] = kwargs.get("input", [])
-    if isinstance(kwargs["input"], str):
-        kwargs["input"] = [user(kwargs["input"])]
+    raw_input = kwargs.get("input", [])
+    if isinstance(raw_input, str):
+        raise ValueError("input must be a list[ResponseInputItemParam], not a string")
+    if not isinstance(raw_input, list):
+        raw_input = list(raw_input)
+    kwargs["input"] = raw_input
+    inputs: list[ResponseInputItemParam] = raw_input
 
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
@@ -146,11 +153,14 @@ async def agent(
 
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
+                if not tool_calls:
+                    inputs += [*resp.output]  # type: ignore[arg-type]
+                    return text
+
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                kwargs["input"] = [*kwargs["input"], *resp.output, *results]  # type: ignore
-                if not tool_calls:
-                    return text
+                # Atomic: output items + tool results land together.
+                inputs += [*resp.output, *results]  # type: ignore[arg-type]
 
             iteration += 1

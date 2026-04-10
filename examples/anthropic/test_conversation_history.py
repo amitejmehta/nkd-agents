@@ -30,12 +30,14 @@ async def main():
     """Test conversation history.
 
     Demonstrates:
-    1. Conversation history built manually across calls
+    1. agent() mutates messages in-place — the list grows with each turn,
+       so appending the next user message and calling again continues the conversation.
     """
     client = AsyncAnthropic()
     logger.info("1. Conversation history")
     msgs = [user("I live in Paris")]
-    _ = await agent(client, messages=msgs, **KWARGS)
+    await agent(client, messages=msgs, **KWARGS)
+    # msgs now contains user + assistant reply; Paris is in context for the next call
 
     msgs.append(user("What's the weather?"))
     response = await agent(client, messages=msgs, fns=[get_weather], **KWARGS)

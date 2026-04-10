@@ -32,7 +32,7 @@ response: str = await agent(
 
 `agent()` is a thin agentic loop around `client.messages.create()`. Every `**kwarg` passes through verbatim — no translation, no wrapping. This means the full Anthropic SDK type signature is available and statically checked. `fns` is the only nkd-agents-specific parameter; everything else is native SDK params.
 
-- `messages` is a `list[MessageParam]` — the standard Anthropic conversation format.
+- `messages` is a `list[MessageParam]` — the standard Anthropic conversation format. **Mutated in-place** after each completed turn: assistant reply (and tool results if any) are appended atomically. Callers see updates immediately, so interrupts preserve all fully-committed turns.
 - `fns` is a list of async callables. Each must have a docstring (used as the tool description) and typed parameters (used to build the JSON schema). See [Tool Schema Auto-generation](#tool-schema-auto-generation).
 - Returns the final text string from the last assistant turn.
 
@@ -54,7 +54,7 @@ response: str = await agent(
 )
 ```
 
-Same contract. `agent()` wraps `client.responses.create()` — all kwargs pass through verbatim to the OpenAI Responses API.
+Same contract. `agent()` wraps `client.responses.create()` — all kwargs pass through verbatim to the OpenAI Responses API. `input` follows the same in-place mutation contract as Anthropic's `messages`. Passing a string raises `ValueError`; pass a `list[ResponseInputItemParam]`.
 
 ## Tool Schema Auto-generation
 
@@ -157,17 +157,18 @@ See `examples/anthropic/test_otel.py` and `examples/openai/test_otel.py` for a w
 
 ## Conversation History
 
-Build the messages list yourself and pass it on each call:
+`agent()` mutates `messages` in-place, so the list you pass grows with the full conversation as turns complete. Append the next user message and call again to continue:
 
 ```python
 msgs = [user("I live in Paris")]
 await agent(client, messages=msgs, **kwargs)
+# msgs now contains the user message + assistant reply
 
 msgs.append(user("What's the weather?"))
 await agent(client, messages=msgs, fns=[get_weather], **kwargs)  # Paris inferred from history
 ```
 
-To start fresh, pass a new list.
+Because updates are committed after each atomic turn (assistant reply + tool results together), interrupting mid-run leaves `msgs` in a valid, usable state — no orphan tool_use blocks. To start fresh, pass a new list.
 
 ## Tool Execution
 

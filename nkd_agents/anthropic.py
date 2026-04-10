@@ -125,9 +125,16 @@ async def agent(
         **kwargs: API parameters (messages, model, max_tokens, system, temperature, etc.)
 
     - Tools must be async functions that return a string OR list of Anthropic content blocks.
+    - messages is mutated in-place after each completed turn — callers see updates
+      immediately, so interrupts preserve all fully-committed turns.
     """
     tool_dict = {fn.__name__: fn for fn in fns}
     kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
+
+    # Ensure messages is a mutable list so in-place updates are visible to the caller.
+    if not isinstance(kwargs["messages"], list):
+        kwargs["messages"] = list(kwargs["messages"])
+    messages: list[MessageParam] = kwargs["messages"]
 
     with tracer.start_as_current_span(
         f"invoke_agent {kwargs.get('model', '')}"
@@ -143,15 +150,18 @@ async def agent(
 
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
+                if not tool_calls:
+                    messages += [{"role": "assistant", "content": resp.content}]  # type: ignore[arg-type]
+                    return text
+
                 results = await asyncio.gather(
                     *[tool(tool_dict, c) for c in tool_calls]
                 )
-                kwargs["messages"] = [
-                    *kwargs["messages"],
+                # Atomic: assistant (with tool_use blocks) + tool_results land together.
+                # No orphan tool_use blocks if interrupted between turns.
+                messages += [  # type: ignore[arg-type]
                     {"role": "assistant", "content": resp.content},
                     {"role": "user", "content": results},
                 ]
-                if not tool_calls:
-                    return text
 
             iteration += 1
