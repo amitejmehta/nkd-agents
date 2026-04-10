@@ -82,7 +82,7 @@ For multiple changes to the same file, call `edit_file` multiple times with smal
 ## `bash`
 
 ```python
-async def bash(command: str, timeout: int = 30, background: bool = False) -> str
+async def bash(command: str, timeout: int = 30) -> str
 ```
 
 Execute a shell command via `bash -c`. Returns:
@@ -95,12 +95,40 @@ STDERR:
 EXIT CODE: {returncode}
 ```
 
-Or `"Background PID: {pid}"` (when `background=True`), `"Error: Command timed out after {timeout} seconds"`.
+Or `"Error: Command timed out after {timeout} seconds"`.
 
 - Runs in `cwd_ctx` directory.
 - Default timeout: 30 seconds. Override per-call.
-- `background=True`: runs the process in the background, returning its PID immediately.
-- The process is killed on timeout (`process.kill()` + `await process.wait()`).
+- The process is killed on timeout (`SIGKILL` sent to the entire process group).
+
+---
+
+## `glob`
+
+```python
+async def glob(pattern: str, path: str | None = None, include_hidden: bool = False) -> str
+```
+
+List files matching a glob pattern, relative to `path` (or `cwd`).
+
+- Fast file discovery without shelling out. Recursion via `**` is supported.
+- Hidden files and directories (any path component starting with `.`) are excluded by default — set `include_hidden=True` to include them (e.g. to search `.venv` or `.git`).
+- Returns a newline-separated list of matching paths (relative to the search dir), or `"No matches found"`.
+
+---
+
+## `grep`
+
+```python
+async def grep(pattern: str, include: str | None = None, path: str | None = None, context: int = 2, include_hidden: bool = False) -> str
+```
+
+Search file contents using ripgrep (`rg`).
+
+- Hidden files and directories are excluded by default — set `include_hidden=True` to search them (e.g. inside `.venv` or `.git`).
+- `include`: optional glob to filter files (e.g. `'*.py'`, `'*.ts'`).
+- `context`: lines of context around each match (default: 2).
+- Returns ripgrep output with file paths, line numbers, and context. Truncated to 200 matches.
 
 ---
 
