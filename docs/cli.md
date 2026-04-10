@@ -43,10 +43,11 @@ See [tools.md](tools.md) for full details.
 | Tool | Notes |
 |------|-------|
 | `read_file` | Supports text, images (jpg/png/gif/webp), and PDFs — binary content passed natively, not transcribed. Text files >50k bytes are blocked with a hint to use `grep` instead |
-| `edit_file` | Create or string-replace. Shows a diff before writing |
+| `write_file` | Create a new file with given content. Fails if the file already exists |
+| `edit_file` | String-replace or insert into an existing file. Shows a diff before writing |
 | `bash` | Full shell access. Configurable timeout. STDOUT truncated to 50,000 chars |
-| `glob` | Fast file discovery via glob patterns — no shell needed |
-| `grep` | Regex search via ripgrep. Supports file filters and context lines. Truncated to 200 matches |
+| `glob` | Fast file discovery via glob patterns — no shell needed. Supports `include_hidden` |
+| `grep` | Regex search via ripgrep. Supports file filters, context lines, and `include_hidden`. Truncated to 200 matches |
 | `fetch_url` | Scrapes page as markdown and saves to file. Content only enters context when the LLM explicitly reads it |
 | `web_search` | Returns titles, URLs, snippets via DuckDuckGo. Relies on DDG ranking for source quality |
 
