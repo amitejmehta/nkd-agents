@@ -46,7 +46,7 @@ LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
-AUTO_COMPACT_AFTER = int(os.environ.get("NKD_AUTO_COMPACT_AFTER", 30))
+AUTO_COMPACT_AFTER = int(os.environ.get("NKD_AUTO_COMPACT_AFTER", 50))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODE_PREFIXES: dict[str, str] = {
     "none": "",
@@ -69,8 +69,9 @@ def _has_tool_content(msg: MessageParam) -> bool:
 def auto_compact(messages: list[MessageParam]) -> int:
     """Drop messages older than AUTO_COMPACT_AFTER that contain tool_use/tool_result blocks.
 
-    At ~8–12 messages per real user turn (including tool roundtrips), a threshold of 30
-    keeps roughly 2–3 full user turns of context before old tool calls are evicted.
+    Session analysis of real nkd usage shows ~6–12 messages per human turn (including
+    tool round-trips). A threshold of 50 preserves ~4–8 full user turns before old tool
+    calls are evicted — enough context to stay coherent without unbounded growth.
     Returns the number of messages dropped.
     """
     boundary = max(0, len(messages) - AUTO_COMPACT_AFTER)
