@@ -82,12 +82,23 @@ SUMMARY_PROMPT = (
 )
 
 
+def _clean_boundary(messages: list[MessageParam], boundary: int) -> int:
+    """Walk boundary back so the protected region never starts mid tool-pair.
+
+    A tool_result at messages[boundary] means its tool_use was dropped — walk
+    back until messages[boundary] is not a tool_result message.
+    """
+    while boundary > 0 and _has_tool_content(messages[boundary], "tool_result"):
+        boundary -= 1
+    return boundary
+
+
 def _mechanical_compact(messages: list[MessageParam]) -> int:
     """Fallback: drop old tool_use→tool_result pairs mechanically.
 
     Returns the number of messages dropped.
     """
-    boundary = len(messages) - AUTO_COMPACT_TARGET
+    boundary = _clean_boundary(messages, len(messages) - AUTO_COMPACT_TARGET)
     to_drop: set[int] = set()
     i = 0
     while i < boundary:
@@ -110,7 +121,9 @@ def _mechanical_compact(messages: list[MessageParam]) -> int:
 async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> int:
     """Summarize old messages via LLM when count exceeds threshold.
 
-    Replaces messages[0..boundary] with a summary user message + assistant ack.
+    Replaces messages[0..boundary] with a single summary user message.
+    If messages[0] is already a <conversation_summary>, it's included in the
+    context fed to the LLM so the new summary naturally incorporates it.
     Falls back to mechanical pair-drop if the LLM call fails.
 
     Returns the number of messages replaced/dropped.
@@ -119,25 +132,21 @@ async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> 
         return 0
 
     boundary = len(messages) - AUTO_COMPACT_TARGET
-    # Ensure protected region starts with a user message (after our assistant ack)
+    # Align to user message start, then clean any orphaned tool_result at boundary
     if boundary < len(messages) and messages[boundary].get("role") == "assistant":
         boundary = max(boundary - 1, 0)
+    boundary = _clean_boundary(messages, boundary)
     old_messages = messages[:boundary]
     old_count = len(old_messages)
 
     try:
-        resp = await client.messages.create(
-            model=COMPACT_MODEL,
-            max_tokens=2048,
-            messages=[*old_messages, user(SUMMARY_PROMPT)],
+        tmp: list[MessageParam] = [*old_messages, user(SUMMARY_PROMPT)]
+        summary = await agent(
+            client, messages=tmp, fns=(), model=COMPACT_MODEL, max_tokens=2048
         )
-        summary = ""
-        if resp.content and hasattr(resp.content[0], "text"):
-            summary = resp.content[0].text  # type: ignore[union-attr]
         if not summary:
             raise ValueError("Empty summary returned")
 
-        # Replace old messages with summary + ack
         summary_msg: MessageParam = {
             "role": "user",
             "content": [
@@ -148,18 +157,9 @@ async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> 
                 }
             ],
         }
-        ack_msg: MessageParam = {
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Understood. I have the full context from our conversation summary. Ready to continue.",
-                }
-            ],
-        }
-        messages[:boundary] = [summary_msg, ack_msg]
+        messages[:boundary] = [summary_msg]
         logger.info(
-            f"{DIM}Summarized {old_count} messages → 2 (via {COMPACT_MODEL}){RESET}"
+            f"{DIM}Summarized {old_count} messages → 1 (via {COMPACT_MODEL}){RESET}"
         )
         return old_count
     except Exception as e:

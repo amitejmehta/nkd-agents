@@ -9,6 +9,7 @@ from nkd_agents.cli import (
     MODELS,
     THINKING,
     TOOLS,
+    _clean_boundary,
     _mechanical_compact,
     auto_compact,
 )
@@ -325,9 +326,41 @@ def _assistant_text(text: str = "done") -> MessageParam:
     return {"role": "assistant", "content": [{"type": "text", "text": text}]}
 
 
+class TestCleanBoundary:
+    def test_no_tool_result_unchanged(self):
+        msgs = [_user_text("a"), _assistant_text("b"), _user_text("c")]
+        assert _clean_boundary(msgs, 2) == 2
+
+    def test_walks_back_past_tool_result(self):
+        msgs = [
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),  # boundary=1 → this is tool_result, walk back
+            _user_text("q"),
+            _assistant_text("a"),
+        ]
+        assert _clean_boundary(msgs, 1) == 0
+
+    def test_walks_back_multiple(self):
+        # Two consecutive tool_result messages at boundary — walk back past both
+        msgs = [
+            _user_text("x"),
+            _user_tool_result("t0"),
+            _user_tool_result(
+                "t1"
+            ),  # boundary=2 → tool_result, walk to 1 → also tool_result, walk to 0... but 0 is user_text
+            _user_text("y"),
+        ]
+        # boundary=2 points at tool_result → walks back to 1 → also tool_result → walks to 0 (user_text, stops)
+        assert _clean_boundary(msgs, 2) == 0
+
+    def test_boundary_zero_unchanged(self):
+        msgs = [_user_tool_result("t0"), _user_text("q")]
+        assert _clean_boundary(msgs, 0) == 0
+
+
 class TestMechanicalCompact:
     def test_drops_tool_pairs(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 3)
         msgs = [
             _user_text("hi"),
             _assistant_tool_use("t0"),
@@ -351,6 +384,29 @@ class TestMechanicalCompact:
             _assistant_text("a1"),
             _user_text("q2"),
             _assistant_text("a2"),
+        ]
+        _mechanical_compact(msgs)
+        tool_use_ids = set()
+        tool_result_ids = set()
+        for m in msgs:
+            for b in m.get("content", []):
+                if isinstance(b, dict):
+                    if b.get("type") == "tool_use":
+                        tool_use_ids.add(b["id"])
+                    elif b.get("type") == "tool_result":
+                        tool_result_ids.add(b["tool_use_id"])
+        assert tool_use_ids == tool_result_ids
+
+    def test_boundary_orphan_walked_back(self, monkeypatch):
+        """If raw boundary lands on a tool_result, clean_boundary walks it back."""
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 3)
+        msgs = [
+            _user_text("a"),
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),  # raw boundary=2 lands here — must walk back
+            _assistant_text("done"),
+            _user_text("q"),
+            _assistant_text("a"),
         ]
         _mechanical_compact(msgs)
         tool_use_ids = set()
@@ -404,15 +460,19 @@ class TestAutoCompact:
             _user_tool_result("t1"),
             _assistant_text("done B"),
         ]
-        client = _mock_client("Completed task A using bash tool.")
-        dropped = await auto_compact(msgs, client)
-        # Replaced 4 old messages with 2 (summary + ack)
+        with patch(
+            "nkd_agents.cli.agent",
+            new_callable=AsyncMock,
+            return_value="Completed task A.",
+        ):
+            dropped = await auto_compact(msgs, AsyncMock())
+        # Replaced 4 old messages with 1 summary
         assert dropped == 4
-        assert len(msgs) == 6  # 2 summary + 4 protected
+        assert len(msgs) == 5  # 1 summary + 4 protected
         assert "conversation_summary" in msgs[0]["content"][0]["text"]
-        assert msgs[1]["role"] == "assistant"
-        # Protected messages preserved
-        assert msgs[2] == _user_text("task B")
+        assert msgs[0]["role"] == "user"
+        # No ack message
+        assert msgs[1] == _user_text("task B")
 
     async def test_summary_content_injected(self, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
@@ -424,8 +484,12 @@ class TestAutoCompact:
             _assistant_text("reply2"),
             _user_text("third"),
         ]
-        client = _mock_client("User discussed first and second topics.")
-        await auto_compact(msgs, client)
+        with patch(
+            "nkd_agents.cli.agent",
+            new_callable=AsyncMock,
+            return_value="User discussed first and second topics.",
+        ):
+            await auto_compact(msgs, AsyncMock())
         summary_text = msgs[0]["content"][0]["text"]
         assert "User discussed first and second topics." in summary_text
 
@@ -442,11 +506,13 @@ class TestAutoCompact:
             _user_text("q2"),
             _assistant_text("a2"),
         ]
-        client = _mock_client_error()
-        dropped = await auto_compact(msgs, client)
-        # Should fall back to mechanical — drops 1 tool pair from droppable region
+        with patch(
+            "nkd_agents.cli.agent",
+            new_callable=AsyncMock,
+            side_effect=Exception("API down"),
+        ):
+            dropped = await auto_compact(msgs, AsyncMock())
         assert dropped == 2
-        # Pair integrity maintained
         tool_use_ids = set()
         tool_result_ids = set()
         for m in msgs:
@@ -468,17 +534,16 @@ class TestAutoCompact:
             _assistant_text("a1"),
             _user_text("q2"),
         ]
-        client = _mock_client("")
-        dropped = await auto_compact(msgs, client)
-        # Empty summary → fallback to mechanical
+        with patch("nkd_agents.cli.agent", new_callable=AsyncMock, return_value=""):
+            dropped = await auto_compact(msgs, AsyncMock())
         assert dropped == 2
 
     async def test_exact_threshold_no_compact(self, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
         msgs = [_user_text(f"m{i}") for i in range(4)]
-        assert await auto_compact(msgs, _mock_client()) == 0
+        assert await auto_compact(msgs, AsyncMock()) == 0
 
-    async def test_calls_haiku_with_old_messages(self, monkeypatch):
+    async def test_calls_agent_with_old_messages_and_summary_prompt(self, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
         monkeypatch.setattr("nkd_agents.cli.COMPACT_MODEL", "claude-haiku-4-5")
@@ -489,17 +554,74 @@ class TestAutoCompact:
             _assistant_text("did Y"),
             _user_text("do Z"),
         ]
-        client = _mock_client("Summary")
-        await auto_compact(msgs, client)
-        call_kwargs = client.messages.create.call_args
+        with patch(
+            "nkd_agents.cli.agent", new_callable=AsyncMock, return_value="Summary"
+        ) as mock_agent:
+            await auto_compact(msgs, AsyncMock())
+        call_kwargs = mock_agent.call_args
         assert call_kwargs.kwargs["model"] == "claude-haiku-4-5"
         assert call_kwargs.kwargs["max_tokens"] == 2048
-        # Old messages passed directly, summary prompt appended as final user turn
+        assert call_kwargs.kwargs["fns"] == ()
         sent = call_kwargs.kwargs["messages"]
-        assert sent[-1]["role"] == "user"  # summary prompt
-        # Old messages are the preceding entries
-        old_roles = [m["role"] for m in sent[:-1]]
-        assert old_roles[0] == "user"
+        assert sent[-1]["role"] == "user"  # summary prompt is last
+        assert sent[0]["role"] == "user"  # old messages start with user
+
+    async def test_stacks_existing_summary(self, monkeypatch):
+        """Prior <conversation_summary> is included in old_messages fed to agent."""
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
+        prior_summary: MessageParam = {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "<conversation_summary>\nPrior work.\n</conversation_summary>\n\nContinue.",
+                }
+            ],
+        }
+        msgs = [
+            prior_summary,
+            _assistant_text("ok"),
+            _user_text("new task"),
+            _assistant_text("done"),
+            _user_text("next"),
+        ]
+        with patch(
+            "nkd_agents.cli.agent",
+            new_callable=AsyncMock,
+            return_value="Updated summary.",
+        ) as mock_agent:
+            await auto_compact(msgs, AsyncMock())
+        sent = mock_agent.call_args.kwargs["messages"]
+        # Prior summary must be in the messages fed to agent
+        assert any("conversation_summary" in str(m.get("content", "")) for m in sent)
+
+    async def test_orphan_protection_at_boundary(self, monkeypatch):
+        """Boundary falling on a tool_result must be walked back."""
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
+        msgs = [
+            _user_text("a"),
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),  # raw boundary=3 lands here
+            _assistant_text("done"),
+            _user_text("q"),
+            _assistant_text("r"),
+        ]
+        with patch(
+            "nkd_agents.cli.agent", new_callable=AsyncMock, return_value="Summary"
+        ):
+            await auto_compact(msgs, AsyncMock())
+        tool_use_ids = set()
+        tool_result_ids = set()
+        for m in msgs:
+            for b in m.get("content", []):
+                if isinstance(b, dict):
+                    if b.get("type") == "tool_use":
+                        tool_use_ids.add(b["id"])
+                    elif b.get("type") == "tool_result":
+                        tool_result_ids.add(b["tool_use_id"])
+        assert tool_use_ids == tool_result_ids
 
     async def test_preserves_message_alternation(self, monkeypatch):
         """After compaction, messages must alternate user/assistant correctly."""
@@ -512,9 +634,13 @@ class TestAutoCompact:
             _assistant_text("d"),
             _user_text("e"),
         ]
-        client = _mock_client("Summary of a and b.")
-        await auto_compact(msgs, client)
-        # Should be: user(summary), assistant(ack), user(c), assistant(d), user(e)
-        roles = [m["role"] for m in msgs]
-        for i in range(len(roles) - 1):
-            assert roles[i] != roles[i + 1], f"Adjacent same roles at {i}: {roles}"
+        with patch(
+            "nkd_agents.cli.agent",
+            new_callable=AsyncMock,
+            return_value="Summary of a and b.",
+        ):
+            await auto_compact(msgs, AsyncMock())
+        # Should be: user(summary), user(c), assistant(d), user(e) — no ack
+        assert msgs[0]["role"] == "user"
+        assert "conversation_summary" in msgs[0]["content"][0]["text"]
+        assert msgs[1] == _user_text("c")
