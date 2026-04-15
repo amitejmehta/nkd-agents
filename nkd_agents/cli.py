@@ -48,6 +48,7 @@ MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
 AUTO_COMPACT_AFTER = int(os.environ.get("NKD_AUTO_COMPACT_AFTER", 50))
 AUTO_COMPACT_TARGET = int(os.environ.get("NKD_AUTO_COMPACT_TARGET", 30))
+COMPACT_MODEL = os.environ.get("NKD_COMPACT_MODEL", "claude-haiku-4-5")
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODE_PREFIXES: dict[str, str] = {
     "none": "",
@@ -59,32 +60,37 @@ CACHE_WARM_MSG = os.environ.get(
 )
 
 
+def _block_type(b: object) -> str:
+    """Get the type field from a content block (dict or Pydantic object)."""
+    if isinstance(b, dict):
+        return str(b.get("type", ""))
+    return str(getattr(b, "type", ""))
+
+
 def _has_tool_content(msg: MessageParam, block_type: str) -> bool:
     """Check if a message contains a specific tool block type."""
     content = msg.get("content")
     return isinstance(content, list) and any(
-        isinstance(b, dict) and b.get("type") == block_type for b in content
+        _block_type(b) == block_type for b in content
     )
 
 
-def auto_compact(messages: list[MessageParam]) -> int:
-    """Drop old tool_use→tool_result pairs in bulk when message count exceeds threshold.
+SUMMARY_PROMPT = (
+    "Summarize the conversation above concisely. Preserve: key decisions and rationale, "
+    "file paths/branch names/PR numbers/URLs, current task state, errors and resolutions, "
+    "pending work. Be direct, use bullet points, no preamble."
+)
 
-    Pairs are always adjacent (assistant with tool_use at i, user with tool_result at
-    i+1) per the agent loop structure. Dropping in bulk down to AUTO_COMPACT_TARGET
-    preserves cache prefix stability — the prefix stays unchanged for many turns between
-    compactions instead of invalidating every turn.
+
+def _mechanical_compact(messages: list[MessageParam]) -> int:
+    """Fallback: drop old tool_use→tool_result pairs mechanically.
 
     Returns the number of messages dropped.
     """
-    if len(messages) <= AUTO_COMPACT_AFTER:
-        return 0
-
-    # Only consider messages in the droppable region (protect the newest ones)
     boundary = len(messages) - AUTO_COMPACT_TARGET
     to_drop: set[int] = set()
     i = 0
-    while i < boundary - 1:
+    while i < boundary:
         msg, next_msg = messages[i], messages[i + 1]
         if (
             msg.get("role") == "assistant"
@@ -96,10 +102,71 @@ def auto_compact(messages: list[MessageParam]) -> int:
             i += 2
         else:
             i += 1
-
     for idx in sorted(to_drop, reverse=True):
         messages.pop(idx)
     return len(to_drop)
+
+
+async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> int:
+    """Summarize old messages via LLM when count exceeds threshold.
+
+    Replaces messages[0..boundary] with a summary user message + assistant ack.
+    Falls back to mechanical pair-drop if the LLM call fails.
+
+    Returns the number of messages replaced/dropped.
+    """
+    if len(messages) <= AUTO_COMPACT_AFTER:
+        return 0
+
+    boundary = len(messages) - AUTO_COMPACT_TARGET
+    # Ensure protected region starts with a user message (after our assistant ack)
+    if boundary < len(messages) and messages[boundary].get("role") == "assistant":
+        boundary = max(boundary - 1, 0)
+    old_messages = messages[:boundary]
+    old_count = len(old_messages)
+
+    try:
+        resp = await client.messages.create(
+            model=COMPACT_MODEL,
+            max_tokens=2048,
+            messages=[*old_messages, user(SUMMARY_PROMPT)],
+        )
+        summary = ""
+        if resp.content and hasattr(resp.content[0], "text"):
+            summary = resp.content[0].text  # type: ignore[union-attr]
+        if not summary:
+            raise ValueError("Empty summary returned")
+
+        # Replace old messages with summary + ack
+        summary_msg: MessageParam = {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"<conversation_summary>\n{summary}\n</conversation_summary>\n\n"
+                    "The above summarizes our conversation so far. Continue from here.",
+                }
+            ],
+        }
+        ack_msg: MessageParam = {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Understood. I have the full context from our conversation summary. Ready to continue.",
+                }
+            ],
+        }
+        messages[:boundary] = [summary_msg, ack_msg]
+        logger.info(
+            f"{DIM}Summarized {old_count} messages → 2 (via {COMPACT_MODEL}){RESET}"
+        )
+        return old_count
+    except Exception as e:
+        logger.warning(
+            f"{DIM}Summary compaction failed ({e}), falling back to mechanical{RESET}"
+        )
+        return _mechanical_compact(messages)
 
 
 class CLI:
@@ -216,7 +283,7 @@ class CLI:
     async def llm_loop(self) -> None:
         while True:
             msg = await self.queue.get()
-            if n := auto_compact(self.messages):
+            if n := await auto_compact(self.messages, self.client):
                 logger.info(f"{DIM}Auto-compacted {n} message(s){RESET}")
             self.messages.append(msg)
             self.warm_count = 0

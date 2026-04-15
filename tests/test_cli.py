@@ -4,7 +4,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from anthropic.types import MessageParam
 
-from nkd_agents.cli import CLI, MODELS, THINKING, TOOLS, auto_compact
+from nkd_agents.cli import (
+    CLI,
+    MODELS,
+    THINKING,
+    TOOLS,
+    _mechanical_compact,
+    auto_compact,
+)
 
 
 @pytest.fixture
@@ -318,28 +325,34 @@ def _assistant_text(text: str = "done") -> MessageParam:
     return {"role": "assistant", "content": [{"type": "text", "text": text}]}
 
 
-class TestAutoCompact:
-    def test_no_op_below_threshold(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 6)
-        msgs = [_user_text(f"msg{i}") for i in range(9)]
-        assert auto_compact(msgs) == 0
-        assert len(msgs) == 9
-
+class TestMechanicalCompact:
     def test_drops_tool_pairs(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 6)
-        # Build: user, assistant(tool), user(result), assistant(text), ...repeat, + tail
-        msgs = []
-        for i in range(4):
-            msgs.append(_user_text(f"turn{i}"))
-            msgs.append(_assistant_tool_use(f"t{i}"))
-            msgs.append(_user_tool_result(f"t{i}"))
-            msgs.append(_assistant_text(f"reply{i}"))
-        # 16 messages total, threshold 10, target 6 → boundary = 10
-        dropped = auto_compact(msgs)
-        assert dropped > 0
-        # All remaining tool_use have matching tool_result (pair integrity)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
+        msgs = [
+            _user_text("hi"),
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),
+            _assistant_text("ok"),
+            _user_text("q1"),
+            _assistant_text("a1"),
+        ]
+        dropped = _mechanical_compact(msgs)
+        assert dropped == 2
+        assert len(msgs) == 4
+
+    def test_never_orphans(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
+        msgs = [
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),
+            _assistant_tool_use("t1"),
+            _user_tool_result("t1"),
+            _user_text("q1"),
+            _assistant_text("a1"),
+            _user_text("q2"),
+            _assistant_text("a2"),
+        ]
+        _mechanical_compact(msgs)
         tool_use_ids = set()
         tool_result_ids = set()
         for m in msgs:
@@ -351,8 +364,72 @@ class TestAutoCompact:
                         tool_result_ids.add(b["tool_use_id"])
         assert tool_use_ids == tool_result_ids
 
-    def test_never_orphans_tool_use(self, monkeypatch):
-        """Dropping tool_use without its tool_result would break the API."""
+
+def _mock_client(summary_text: str = "Summary of conversation.") -> AsyncMock:
+    """Create a mock Anthropic client that returns a summary."""
+    client = AsyncMock()
+    mock_response = MagicMock()
+    mock_content = MagicMock()
+    mock_content.text = summary_text
+    mock_response.content = [mock_content]
+    client.messages.create = AsyncMock(return_value=mock_response)
+    return client
+
+
+def _mock_client_error() -> AsyncMock:
+    """Create a mock client that raises on create."""
+    client = AsyncMock()
+    client.messages.create = AsyncMock(side_effect=Exception("API down"))
+    return client
+
+
+class TestAutoCompact:
+    async def test_no_op_below_threshold(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
+        msgs = [_user_text(f"msg{i}") for i in range(9)]
+        result = await auto_compact(msgs, _mock_client())
+        assert result == 0
+        assert len(msgs) == 9
+
+    async def test_summarizes_old_messages(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 6)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
+        msgs = [
+            _user_text("task A"),
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),
+            _assistant_text("done A"),
+            _user_text("task B"),
+            _assistant_tool_use("t1"),
+            _user_tool_result("t1"),
+            _assistant_text("done B"),
+        ]
+        client = _mock_client("Completed task A using bash tool.")
+        dropped = await auto_compact(msgs, client)
+        # Replaced 4 old messages with 2 (summary + ack)
+        assert dropped == 4
+        assert len(msgs) == 6  # 2 summary + 4 protected
+        assert "conversation_summary" in msgs[0]["content"][0]["text"]
+        assert msgs[1]["role"] == "assistant"
+        # Protected messages preserved
+        assert msgs[2] == _user_text("task B")
+
+    async def test_summary_content_injected(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
+        msgs = [
+            _user_text("first"),
+            _assistant_text("reply"),
+            _user_text("second"),
+            _assistant_text("reply2"),
+            _user_text("third"),
+        ]
+        client = _mock_client("User discussed first and second topics.")
+        await auto_compact(msgs, client)
+        summary_text = msgs[0]["content"][0]["text"]
+        assert "User discussed first and second topics." in summary_text
+
+    async def test_falls_back_on_api_error(self, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 6)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
         msgs = [
@@ -361,82 +438,83 @@ class TestAutoCompact:
             _user_tool_result("t0"),
             _assistant_text("ok"),
             _user_text("q1"),
-            _assistant_tool_use("t1"),
-            _user_tool_result("t1"),
-            _assistant_text("ok2"),
-        ]
-        auto_compact(msgs)
-        # Check no orphans
-        roles_and_types = []
-        for m in msgs:
-            for b in m.get("content", []):
-                if isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result"):
-                    roles_and_types.append((m["role"], b["type"]))
-        # Every tool_use must be followed by a tool_result
-        for idx, (role, btype) in enumerate(roles_and_types):
-            if btype == "tool_use":
-                assert idx + 1 < len(roles_and_types)
-                assert roles_and_types[idx + 1] == ("user", "tool_result")
-
-    def test_preserves_text_only_messages(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 6)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
-        msgs = [
-            _user_text("hi"),  # text-only, should survive
-            _assistant_tool_use("t0"),
-            _user_tool_result("t0"),
-            _assistant_text("ok"),  # text-only, should survive
-            _user_text("q1"),
             _assistant_text("a1"),
             _user_text("q2"),
             _assistant_text("a2"),
         ]
-        auto_compact(msgs)
-        # The text-only messages in droppable region should still be there
-        texts = [
-            b["text"]  # type: ignore[typeddict-item]
-            for m in msgs
-            for b in m.get("content", [])
-            if isinstance(b, dict) and b.get("type") == "text"
-        ]
-        assert "hi" in texts
-        assert "ok" in texts
+        client = _mock_client_error()
+        dropped = await auto_compact(msgs, client)
+        # Should fall back to mechanical — drops 1 tool pair from droppable region
+        assert dropped == 2
+        # Pair integrity maintained
+        tool_use_ids = set()
+        tool_result_ids = set()
+        for m in msgs:
+            for b in m.get("content", []):
+                if isinstance(b, dict):
+                    if b.get("type") == "tool_use":
+                        tool_use_ids.add(b["id"])
+                    elif b.get("type") == "tool_result":
+                        tool_result_ids.add(b["tool_use_id"])
+        assert tool_use_ids == tool_result_ids
 
-    def test_compacts_down_to_near_target(self, monkeypatch):
-        """Bulk drop: all tool pairs in the droppable region are removed at once."""
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 6)
-        msgs = []
-        for i in range(6):  # 6 * 4 = 24 messages
-            msgs.append(_user_text(f"turn{i}"))
-            msgs.append(_assistant_tool_use(f"t{i}"))
-            msgs.append(_user_tool_result(f"t{i}"))
-            msgs.append(_assistant_text(f"reply{i}"))
-        dropped = auto_compact(msgs)
-        # Turns 0-3 have tool pairs fully in droppable region → 4 pairs × 2 = 8 dropped
-        # Turn 4's pair straddles boundary, turn 5 is fully protected
-        assert dropped == 8
-        assert len(msgs) == 16
-
-    def test_exact_threshold_no_compact(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
-        msgs = [_user_text(f"m{i}") for i in range(4)]
-        assert auto_compact(msgs) == 0
-        assert len(msgs) == 4
-
-    def test_skips_non_paired_tool_content(self, monkeypatch):
-        """An assistant text msg followed by user text shouldn't be dropped as a pair."""
+    async def test_falls_back_on_empty_summary(self, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
         msgs = [
-            _assistant_text("hi"),
-            _user_text("there"),
             _assistant_tool_use("t0"),
             _user_tool_result("t0"),
-            _assistant_text("done"),
-            _user_text("bye"),
+            _user_text("q1"),
+            _assistant_text("a1"),
+            _user_text("q2"),
         ]
-        dropped = auto_compact(msgs)
-        assert dropped == 2  # only the tool pair
-        assert len(msgs) == 4
+        client = _mock_client("")
+        dropped = await auto_compact(msgs, client)
+        # Empty summary → fallback to mechanical
+        assert dropped == 2
+
+    async def test_exact_threshold_no_compact(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        msgs = [_user_text(f"m{i}") for i in range(4)]
+        assert await auto_compact(msgs, _mock_client()) == 0
+
+    async def test_calls_haiku_with_old_messages(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
+        monkeypatch.setattr("nkd_agents.cli.COMPACT_MODEL", "claude-haiku-4-5")
+        msgs = [
+            _user_text("do X"),
+            _assistant_text("did X"),
+            _user_text("do Y"),
+            _assistant_text("did Y"),
+            _user_text("do Z"),
+        ]
+        client = _mock_client("Summary")
+        await auto_compact(msgs, client)
+        call_kwargs = client.messages.create.call_args
+        assert call_kwargs.kwargs["model"] == "claude-haiku-4-5"
+        assert call_kwargs.kwargs["max_tokens"] == 2048
+        # Old messages passed directly, summary prompt appended as final user turn
+        sent = call_kwargs.kwargs["messages"]
+        assert sent[-1]["role"] == "user"  # summary prompt
+        # Old messages are the preceding entries
+        old_roles = [m["role"] for m in sent[:-1]]
+        assert old_roles[0] == "user"
+
+    async def test_preserves_message_alternation(self, monkeypatch):
+        """After compaction, messages must alternate user/assistant correctly."""
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
+        msgs = [
+            _user_text("a"),
+            _assistant_text("b"),
+            _user_text("c"),
+            _assistant_text("d"),
+            _user_text("e"),
+        ]
+        client = _mock_client("Summary of a and b.")
+        await auto_compact(msgs, client)
+        # Should be: user(summary), assistant(ack), user(c), assistant(d), user(e)
+        roles = [m["role"] for m in msgs]
+        for i in range(len(roles) - 1):
+            assert roles[i] != roles[i + 1], f"Adjacent same roles at {i}: {roles}"
