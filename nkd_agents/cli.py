@@ -42,6 +42,7 @@ BANNER = (
 )
 
 # runtime config (override via env / ~/.nkd-agents/.env)
+load_env((NKD_DIR / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
@@ -82,91 +83,39 @@ SUMMARY_PROMPT = (
 )
 
 
-def _clean_boundary(messages: list[MessageParam], boundary: int) -> int:
-    """Walk boundary back so the protected region never starts mid tool-pair.
-
-    A tool_result at messages[boundary] means its tool_use was dropped — walk
-    back until messages[boundary] is not a tool_result message.
-    """
-    while boundary > 0 and _has_tool_content(messages[boundary], "tool_result"):
-        boundary -= 1
-    return boundary
-
-
-def _mechanical_compact(messages: list[MessageParam]) -> int:
-    """Fallback: drop old tool_use→tool_result pairs mechanically.
-
-    Returns the number of messages dropped.
-    """
-    boundary = _clean_boundary(messages, len(messages) - AUTO_COMPACT_TARGET)
-    to_drop: set[int] = set()
-    i = 0
-    while i < boundary:
-        msg, next_msg = messages[i], messages[i + 1]
-        if (
-            msg.get("role") == "assistant"
-            and _has_tool_content(msg, "tool_use")
-            and next_msg.get("role") == "user"
-            and _has_tool_content(next_msg, "tool_result")
-        ):
-            to_drop.update((i, i + 1))
-            i += 2
-        else:
-            i += 1
-    for idx in sorted(to_drop, reverse=True):
-        messages.pop(idx)
-    return len(to_drop)
-
-
-async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> int:
+async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> None:
     """Summarize old messages via LLM when count exceeds threshold.
 
     Replaces messages[0..boundary] with a single summary user message.
     If messages[0] is already a <conversation_summary>, it's included in the
     context fed to the LLM so the new summary naturally incorporates it.
-    Falls back to mechanical pair-drop if the LLM call fails.
-
-    Returns the number of messages replaced/dropped.
     """
     if len(messages) <= AUTO_COMPACT_AFTER:
-        return 0
+        return
 
     boundary = len(messages) - AUTO_COMPACT_TARGET
-    # Align to user message start, then clean any orphaned tool_result at boundary
     if boundary < len(messages) and messages[boundary].get("role") == "assistant":
         boundary = max(boundary - 1, 0)
-    boundary = _clean_boundary(messages, boundary)
+    # Walk back past any orphaned tool_result at the boundary
+    while boundary > 0 and _has_tool_content(messages[boundary], "tool_result"):
+        boundary -= 1
+
     old_messages = messages[:boundary]
-    old_count = len(old_messages)
-
-    try:
-        tmp: list[MessageParam] = [*old_messages, user(SUMMARY_PROMPT)]
-        summary = await agent(
-            client, messages=tmp, fns=(), model=COMPACT_MODEL, max_tokens=2048
+    summary = await agent(
+        client,
+        messages=[*old_messages, user(SUMMARY_PROMPT)],
+        model=COMPACT_MODEL,
+        max_tokens=2048,
+    )
+    messages[:boundary] = [
+        user(
+            f"<conversation_summary>\n{summary}\n</conversation_summary>\n\n"
+            "The above summarizes our conversation so far. Continue from here."
         )
-        if not summary:
-            raise ValueError("Empty summary returned")
-
-        summary_msg: MessageParam = {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"<conversation_summary>\n{summary}\n</conversation_summary>\n\n"
-                    "The above summarizes our conversation so far. Continue from here.",
-                }
-            ],
-        }
-        messages[:boundary] = [summary_msg]
-        logger.info(
-            f"{DIM}Summarized {old_count} messages → 1 (via {COMPACT_MODEL}){RESET}"
-        )
-        return old_count
-    except Exception as e:
-        logger.warning(
-            f"{DIM}Summary compaction failed ({e}), falling back to mechanical{RESET}"
-        )
-        return _mechanical_compact(messages)
+    ]
+    logger.info(
+        f"{DIM}Summarized {len(old_messages)} messages → 1 (via {COMPACT_MODEL}){RESET}"
+    )
 
 
 class CLI:
@@ -283,8 +232,7 @@ class CLI:
     async def llm_loop(self) -> None:
         while True:
             msg = await self.queue.get()
-            if n := await auto_compact(self.messages, self.client):
-                logger.info(f"{DIM}Auto-compacted {n} message(s){RESET}")
+            await auto_compact(self.messages, self.client)
             self.messages.append(msg)
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
@@ -318,7 +266,6 @@ class CLI:
 
 
 def main() -> None:
-    load_env((NKD_DIR / ".env").as_posix())
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-s", "--session", type=Path, help="Path to a saved session JSON file"
