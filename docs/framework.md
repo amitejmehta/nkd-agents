@@ -110,21 +110,24 @@ The framework instruments the **orchestration layer** — the parts only it can 
 | Span | `gen_ai.operation.name` | Attributes |
 |------|------------------------|------------|
 | `invoke_agent {model}` | `invoke_agent` | `iterations` |
-| `turn {n}` | `turn` | — |
+| `turn {n}` | `turn` | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`, `gen_ai.response` (full JSON) |
 | `execute_tool {name}` | `execute_tool` | — |
+
+`gen_ai.response` is the full provider response serialized as a JSON string (`resp.model_dump(mode="json")`), covering token counts, stop reason, model name, and content blocks. No exporter or auto-instrumentation library needed to capture LLM response details.
 
 A typical multi-tool run produces this tree:
 
 ```
-invoke_agent claude-haiku-4-5  [4.3s]
-  turn 0                       [0.1ms]
+invoke_agent claude-haiku-4-5  [4.3s]  iterations=1
+  turn 0                       [0.1ms] input_tokens=120 output_tokens=40 finish_reasons=["tool_use"] response={...}
     execute_tool get_weather   [0.1ms]
     execute_tool get_population[0.1ms]
+  turn 1                       [0.1ms] input_tokens=160 output_tokens=22 finish_reasons=["end_turn"]  response={...}
 ```
 
 ### Full API call tracing
 
-Every major tracing provider — Datadog, Braintrust, Arize, Langfuse, OpenLLMetry — ships auto-instrumentation for the Anthropic and OpenAI SDKs. These patch the SDK clients at import time and emit a `chat {model}` child span for each API call, capturing token counts, request/response payloads, and model parameters automatically.
+The framework already captures token counts, finish reason, and the full response payload on each `turn` span. For environments that additionally require per-request latency, streaming, or request payload logging, every major tracing provider — Datadog, Braintrust, Arize, Langfuse, OpenLLMetry — ships auto-instrumentation for the Anthropic and OpenAI SDKs. These patch the SDK clients at import time and emit a `chat {model}` child span for each API call.
 
 Because `execute_tool` and `invoke_agent` are already in the current span context, the auto-instrumented API call spans are parented correctly via `ContextVar` propagation — no extra configuration needed.
 

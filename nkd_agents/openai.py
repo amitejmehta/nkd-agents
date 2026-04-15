@@ -146,6 +146,21 @@ async def agent(
 
                 resp = await client.responses.create(**kwargs)
                 logger.info(f"usage={resp.usage}")
+                if resp.usage:
+                    turn_span.set_attribute(
+                        "gen_ai.usage.input_tokens", resp.usage.input_tokens
+                    )
+                    turn_span.set_attribute(
+                        "gen_ai.usage.output_tokens", resp.usage.output_tokens
+                    )
+                if resp.status:
+                    turn_span.set_attribute(
+                        "gen_ai.response.finish_reasons", [resp.status]
+                    )
+                turn_span.set_attribute(
+                    "gen_ai.response",
+                    json.dumps(resp.model_dump(mode="json"), default=str),
+                )
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
                 results = await asyncio.gather(

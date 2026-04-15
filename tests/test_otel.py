@@ -1,5 +1,6 @@
 """Tests for OpenTelemetry instrumentation in anthropic and openai loops."""
 
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -155,6 +156,28 @@ async def test_anthropic_invoke_agent_span(otel_setup):
 
 
 @pytest.mark.asyncio
+async def test_anthropic_turn_response_attributes(otel_setup):
+    """turn span captures token usage, finish reason, and full response payload."""
+    client = _anthropic_client(_anthropic_message("Hello"))
+    input = [anthropic.user("hi")]
+
+    await anthropic.agent(
+        client, messages=input, model="claude-sonnet-4-20250514", max_tokens=1024
+    )
+
+    spans = _spans(otel_setup)
+    turn_spans = [s for s in spans if s.name.startswith("turn")]
+    assert len(turn_spans) == 1
+    attrs = turn_spans[0].attributes
+    assert attrs["gen_ai.usage.input_tokens"] == 10
+    assert attrs["gen_ai.usage.output_tokens"] == 5
+    assert attrs["gen_ai.response.finish_reasons"] == ("end_turn",)
+    payload = json.loads(attrs["gen_ai.response"])
+    assert payload["stop_reason"] == "end_turn"
+    assert payload["usage"]["input_tokens"] == 10
+
+
+@pytest.mark.asyncio
 async def test_anthropic_iterations_with_tools(otel_setup):
     """iterations increments on tool use loops."""
     tool_call = ToolUseBlock(
@@ -258,6 +281,24 @@ async def test_openai_invoke_agent_span(otel_setup):
     assert "gpt-4o" in span.name
     assert span.attributes["gen_ai.operation.name"] == "invoke_agent"
     assert span.attributes["iterations"] == 0
+
+
+@pytest.mark.asyncio
+async def test_openai_turn_response_attributes(otel_setup):
+    """turn span captures finish reason and full response payload (usage omitted when None)."""
+    client = _openai_client(_openai_response("Hello"))
+    input = [openai.user("hi")]
+
+    await openai.agent(client, input=input, model="gpt-4o")
+
+    spans = _spans(otel_setup)
+    turn_spans = [s for s in spans if s.name.startswith("turn")]
+    assert len(turn_spans) == 1
+    attrs = turn_spans[0].attributes
+    assert attrs["gen_ai.response.finish_reasons"] == ("completed",)
+    payload = json.loads(attrs["gen_ai.response"])
+    assert payload["status"] == "completed"
+    assert payload["model"] == "gpt-4o"
 
 
 @pytest.mark.asyncio

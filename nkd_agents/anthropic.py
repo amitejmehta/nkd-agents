@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import logging
 from typing import Awaitable, Callable, Iterable, Mapping, Sequence
 
@@ -147,6 +148,20 @@ async def agent(
 
                 resp = await client.messages.create(**kwargs)
                 logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
+                turn_span.set_attribute(
+                    "gen_ai.usage.input_tokens", resp.usage.input_tokens
+                )
+                turn_span.set_attribute(
+                    "gen_ai.usage.output_tokens", resp.usage.output_tokens
+                )
+                if resp.stop_reason:
+                    turn_span.set_attribute(
+                        "gen_ai.response.finish_reasons", [resp.stop_reason]
+                    )
+                turn_span.set_attribute(
+                    "gen_ai.response",
+                    json.dumps(resp.model_dump(mode="json"), default=str),
+                )
                 text, tool_calls = extract_text_and_tool_calls(resp)
 
                 results = await asyncio.gather(
