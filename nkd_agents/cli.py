@@ -42,12 +42,14 @@ BANNER = (
 )
 
 # runtime config (override via env / ~/.nkd-agents/.env)
+load_env((NKD_DIR / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
 AUTO_COMPACT_AFTER = int(os.environ.get("NKD_AUTO_COMPACT_AFTER", 50))
 AUTO_COMPACT_TARGET = int(os.environ.get("NKD_AUTO_COMPACT_TARGET", 30))
+COMPACT_MODEL = os.environ.get("NKD_COMPACT_MODEL", "claude-haiku-4-5")
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODE_PREFIXES: dict[str, str] = {
     "none": "",
@@ -59,47 +61,61 @@ CACHE_WARM_MSG = os.environ.get(
 )
 
 
+def _block_type(b: object) -> str:
+    """Get the type field from a content block (dict or Pydantic object)."""
+    if isinstance(b, dict):
+        return str(b.get("type", ""))
+    return str(getattr(b, "type", ""))
+
+
 def _has_tool_content(msg: MessageParam, block_type: str) -> bool:
     """Check if a message contains a specific tool block type."""
     content = msg.get("content")
     return isinstance(content, list) and any(
-        isinstance(b, dict) and b.get("type") == block_type for b in content
+        _block_type(b) == block_type for b in content
     )
 
 
-def auto_compact(messages: list[MessageParam]) -> int:
-    """Drop old tool_use→tool_result pairs in bulk when message count exceeds threshold.
+SUMMARY_PROMPT = (
+    "Summarize the conversation above concisely. Preserve: key decisions and rationale, "
+    "file paths/branch names/PR numbers/URLs, current task state, errors and resolutions, "
+    "pending work. Be direct, use bullet points, no preamble."
+)
 
-    Pairs are always adjacent (assistant with tool_use at i, user with tool_result at
-    i+1) per the agent loop structure. Dropping in bulk down to AUTO_COMPACT_TARGET
-    preserves cache prefix stability — the prefix stays unchanged for many turns between
-    compactions instead of invalidating every turn.
 
-    Returns the number of messages dropped.
+async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> None:
+    """Summarize old messages via LLM when count exceeds threshold.
+
+    Replaces messages[0..boundary] with a single summary user message.
+    If messages[0] is already a <conversation_summary>, it's included in the
+    context fed to the LLM so the new summary naturally incorporates it.
     """
     if len(messages) <= AUTO_COMPACT_AFTER:
-        return 0
+        return
 
-    # Only consider messages in the droppable region (protect the newest ones)
     boundary = len(messages) - AUTO_COMPACT_TARGET
-    to_drop: set[int] = set()
-    i = 0
-    while i < boundary - 1:
-        msg, next_msg = messages[i], messages[i + 1]
-        if (
-            msg.get("role") == "assistant"
-            and _has_tool_content(msg, "tool_use")
-            and next_msg.get("role") == "user"
-            and _has_tool_content(next_msg, "tool_result")
-        ):
-            to_drop.update((i, i + 1))
-            i += 2
-        else:
-            i += 1
+    if boundary < len(messages) and messages[boundary].get("role") == "assistant":
+        boundary = max(boundary - 1, 0)
+    # Walk back past any orphaned tool_result at the boundary
+    while boundary > 0 and _has_tool_content(messages[boundary], "tool_result"):
+        boundary -= 1
 
-    for idx in sorted(to_drop, reverse=True):
-        messages.pop(idx)
-    return len(to_drop)
+    old_messages = messages[:boundary]
+    summary = await agent(
+        client,
+        messages=[*old_messages, user(SUMMARY_PROMPT)],
+        model=COMPACT_MODEL,
+        max_tokens=2048,
+    )
+    messages[:boundary] = [
+        user(
+            f"<conversation_summary>\n{summary}\n</conversation_summary>\n\n"
+            "The above summarizes our conversation so far. Continue from here."
+        )
+    ]
+    logger.info(
+        f"{DIM}Summarized {len(old_messages)} messages → 1 (via {COMPACT_MODEL}){RESET}"
+    )
 
 
 class CLI:
@@ -216,8 +232,7 @@ class CLI:
     async def llm_loop(self) -> None:
         while True:
             msg = await self.queue.get()
-            if n := auto_compact(self.messages):
-                logger.info(f"{DIM}Auto-compacted {n} message(s){RESET}")
+            await auto_compact(self.messages, self.client)
             self.messages.append(msg)
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
@@ -251,7 +266,6 @@ class CLI:
 
 
 def main() -> None:
-    load_env((NKD_DIR / ".env").as_posix())
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-s", "--session", type=Path, help="Path to a saved session JSON file"
