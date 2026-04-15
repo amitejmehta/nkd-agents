@@ -47,6 +47,7 @@ THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
 AUTO_COMPACT_AFTER = int(os.environ.get("NKD_AUTO_COMPACT_AFTER", 50))
+AUTO_COMPACT_TARGET = int(os.environ.get("NKD_AUTO_COMPACT_TARGET", 30))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODE_PREFIXES: dict[str, str] = {
     "none": "",
@@ -58,26 +59,46 @@ CACHE_WARM_MSG = os.environ.get(
 )
 
 
-def _has_tool_content(msg: MessageParam) -> bool:
+def _has_tool_content(msg: MessageParam, block_type: str) -> bool:
+    """Check if a message contains a specific tool block type."""
     content = msg.get("content")
     return isinstance(content, list) and any(
-        isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result")
-        for b in content
+        isinstance(b, dict) and b.get("type") == block_type for b in content
     )
 
 
 def auto_compact(messages: list[MessageParam]) -> int:
-    """Drop messages older than AUTO_COMPACT_AFTER that contain tool_use/tool_result blocks.
+    """Drop old tool_use→tool_result pairs in bulk when message count exceeds threshold.
 
-    Session analysis of real nkd usage shows ~6–12 messages per human turn (including
-    tool round-trips). A threshold of 50 preserves ~4–8 full user turns before old tool
-    calls are evicted — enough context to stay coherent without unbounded growth.
+    Pairs are always adjacent (assistant with tool_use at i, user with tool_result at
+    i+1) per the agent loop structure. Dropping in bulk down to AUTO_COMPACT_TARGET
+    preserves cache prefix stability — the prefix stays unchanged for many turns between
+    compactions instead of invalidating every turn.
+
     Returns the number of messages dropped.
     """
-    boundary = max(0, len(messages) - AUTO_COMPACT_AFTER)
-    to_drop = [i for i in range(boundary) if _has_tool_content(messages[i])]
-    for i in reversed(to_drop):
-        messages.pop(i)
+    if len(messages) <= AUTO_COMPACT_AFTER:
+        return 0
+
+    # Only consider messages in the droppable region (protect the newest ones)
+    boundary = len(messages) - AUTO_COMPACT_TARGET
+    to_drop: set[int] = set()
+    i = 0
+    while i < boundary - 1:
+        msg, next_msg = messages[i], messages[i + 1]
+        if (
+            msg.get("role") == "assistant"
+            and _has_tool_content(msg, "tool_use")
+            and next_msg.get("role") == "user"
+            and _has_tool_content(next_msg, "tool_result")
+        ):
+            to_drop.update((i, i + 1))
+            i += 2
+        else:
+            i += 1
+
+    for idx in sorted(to_drop, reverse=True):
+        messages.pop(idx)
     return len(to_drop)
 
 

@@ -2,8 +2,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from anthropic.types import MessageParam
 
-from nkd_agents.cli import CLI, MODELS, THINKING, TOOLS
+from nkd_agents.cli import CLI, MODELS, THINKING, TOOLS, auto_compact
 
 
 @pytest.fixture
@@ -135,7 +136,10 @@ class TestInterrupt:
 class TestLLMLoop:
     async def test_processes_queue(self, cli: CLI):
         with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm:
-            msg = {"role": "user", "content": [{"type": "text", "text": "hi"}]}
+            msg: MessageParam = {
+                "role": "user",
+                "content": [{"type": "text", "text": "hi"}],
+            }
             await cli.queue.put(msg)
             loop_task = asyncio.create_task(cli.llm_loop())
             await asyncio.sleep(0.05)
@@ -287,3 +291,152 @@ class TestBuildMessage:
         cli.mode = "plan"
         result = cli.build_message("review")
         assert "(HANDS OFF!)" in result
+
+
+# --- helpers for auto_compact tests ---
+
+
+def _user_text(text: str) -> MessageParam:
+    return {"role": "user", "content": [{"type": "text", "text": text}]}
+
+
+def _assistant_tool_use(tool_id: str = "t1") -> MessageParam:
+    return {
+        "role": "assistant",
+        "content": [{"type": "tool_use", "id": tool_id, "name": "bash", "input": {}}],
+    }
+
+
+def _user_tool_result(tool_id: str = "t1") -> MessageParam:
+    return {
+        "role": "user",
+        "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "ok"}],
+    }
+
+
+def _assistant_text(text: str = "done") -> MessageParam:
+    return {"role": "assistant", "content": [{"type": "text", "text": text}]}
+
+
+class TestAutoCompact:
+    def test_no_op_below_threshold(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 6)
+        msgs = [_user_text(f"msg{i}") for i in range(9)]
+        assert auto_compact(msgs) == 0
+        assert len(msgs) == 9
+
+    def test_drops_tool_pairs(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 6)
+        # Build: user, assistant(tool), user(result), assistant(text), ...repeat, + tail
+        msgs = []
+        for i in range(4):
+            msgs.append(_user_text(f"turn{i}"))
+            msgs.append(_assistant_tool_use(f"t{i}"))
+            msgs.append(_user_tool_result(f"t{i}"))
+            msgs.append(_assistant_text(f"reply{i}"))
+        # 16 messages total, threshold 10, target 6 → boundary = 10
+        dropped = auto_compact(msgs)
+        assert dropped > 0
+        # All remaining tool_use have matching tool_result (pair integrity)
+        tool_use_ids = set()
+        tool_result_ids = set()
+        for m in msgs:
+            for b in m.get("content", []):
+                if isinstance(b, dict):
+                    if b.get("type") == "tool_use":
+                        tool_use_ids.add(b["id"])
+                    elif b.get("type") == "tool_result":
+                        tool_result_ids.add(b["tool_use_id"])
+        assert tool_use_ids == tool_result_ids
+
+    def test_never_orphans_tool_use(self, monkeypatch):
+        """Dropping tool_use without its tool_result would break the API."""
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 6)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
+        msgs = [
+            _user_text("hi"),
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),
+            _assistant_text("ok"),
+            _user_text("q1"),
+            _assistant_tool_use("t1"),
+            _user_tool_result("t1"),
+            _assistant_text("ok2"),
+        ]
+        auto_compact(msgs)
+        # Check no orphans
+        roles_and_types = []
+        for m in msgs:
+            for b in m.get("content", []):
+                if isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result"):
+                    roles_and_types.append((m["role"], b["type"]))
+        # Every tool_use must be followed by a tool_result
+        for idx, (role, btype) in enumerate(roles_and_types):
+            if btype == "tool_use":
+                assert idx + 1 < len(roles_and_types)
+                assert roles_and_types[idx + 1] == ("user", "tool_result")
+
+    def test_preserves_text_only_messages(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 6)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
+        msgs = [
+            _user_text("hi"),  # text-only, should survive
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),
+            _assistant_text("ok"),  # text-only, should survive
+            _user_text("q1"),
+            _assistant_text("a1"),
+            _user_text("q2"),
+            _assistant_text("a2"),
+        ]
+        auto_compact(msgs)
+        # The text-only messages in droppable region should still be there
+        texts = [
+            b["text"]  # type: ignore[typeddict-item]
+            for m in msgs
+            for b in m.get("content", [])
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        assert "hi" in texts
+        assert "ok" in texts
+
+    def test_compacts_down_to_near_target(self, monkeypatch):
+        """Bulk drop: all tool pairs in the droppable region are removed at once."""
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 6)
+        msgs = []
+        for i in range(6):  # 6 * 4 = 24 messages
+            msgs.append(_user_text(f"turn{i}"))
+            msgs.append(_assistant_tool_use(f"t{i}"))
+            msgs.append(_user_tool_result(f"t{i}"))
+            msgs.append(_assistant_text(f"reply{i}"))
+        dropped = auto_compact(msgs)
+        # Turns 0-3 have tool pairs fully in droppable region → 4 pairs × 2 = 8 dropped
+        # Turn 4's pair straddles boundary, turn 5 is fully protected
+        assert dropped == 8
+        assert len(msgs) == 16
+
+    def test_exact_threshold_no_compact(self, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
+        msgs = [_user_text(f"m{i}") for i in range(4)]
+        assert auto_compact(msgs) == 0
+        assert len(msgs) == 4
+
+    def test_skips_non_paired_tool_content(self, monkeypatch):
+        """An assistant text msg followed by user text shouldn't be dropped as a pair."""
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
+        msgs = [
+            _assistant_text("hi"),
+            _user_text("there"),
+            _assistant_tool_use("t0"),
+            _user_tool_result("t0"),
+            _assistant_text("done"),
+            _user_text("bye"),
+        ]
+        dropped = auto_compact(msgs)
+        assert dropped == 2  # only the tool pair
+        assert len(msgs) == 4
