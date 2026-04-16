@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic
 
-from nkd_agents.anthropic import agent, user
+from nkd_agents.anthropic import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -48,7 +48,12 @@ async def main():
 
     document.set(doc)
     prompt = f"Current document: '{doc.content}'\n\nThat animal can't jump! Replace it with 'cat'"
-    await agent(client, messages=[user(prompt)], fns=[edit_string], **KWARGS)
+    await agent(
+        client,
+        messages=[{"role": "user", "content": prompt}],
+        fns=[edit_string],
+        **KWARGS,
+    )
 
     logger.info(f"After: {doc.content}")
 

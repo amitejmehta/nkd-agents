@@ -139,7 +139,7 @@ async def get_weather(city: str) -> str:
 async def test_anthropic_invoke_agent_span(otel_setup):
     """invoke_agent span wraps the full run with correct attributes."""
     client = _anthropic_client(_anthropic_message("Hello"))
-    input = [anthropic.user("hi")]
+    input = [{"role": "user", "content": "hi"}]
 
     await anthropic.agent(
         client, messages=input, model="claude-sonnet-4-20250514", max_tokens=1024
@@ -164,7 +164,7 @@ async def test_anthropic_iterations_with_tools(otel_setup):
         _anthropic_message("Let me check.", [tool_call]),
         _anthropic_message("72°F in Paris"),
     )
-    input = [anthropic.user("weather in Paris?")]
+    input = [{"role": "user", "content": "weather in Paris?"}]
 
     await anthropic.agent(
         client,
@@ -189,7 +189,7 @@ async def test_anthropic_execute_tool_spans(otel_setup):
         _anthropic_message("Checking.", [tool_call]),
         _anthropic_message("Done"),
     )
-    input = [anthropic.user("weather?")]
+    input = [{"role": "user", "content": "weather?"}]
 
     await anthropic.agent(
         client,
@@ -225,7 +225,7 @@ async def test_anthropic_multiple_tools_parallel(otel_setup):
         _anthropic_message("Checking both.", tool_calls),
         _anthropic_message("Done"),
     )
-    input = [anthropic.user("weather in Paris and London?")]
+    input = [{"role": "user", "content": "weather in Paris and London?"}]
 
     await anthropic.agent(
         client,
@@ -247,7 +247,7 @@ async def test_anthropic_multiple_tools_parallel(otel_setup):
 async def test_openai_invoke_agent_span(otel_setup):
     """invoke_agent span wraps the full run with correct attributes."""
     client = _openai_client(_openai_response("Hello"))
-    input = [openai.user("hi")]
+    input = [{"role": "user", "content": "hi"}]
 
     await openai.agent(client, input=input, model="gpt-4o")
 
@@ -268,7 +268,7 @@ async def test_openai_iterations_with_tools(otel_setup):
         _openai_response("Let me check.", [tc]),
         _openai_response("72°F in Paris"),
     )
-    input = [openai.user("weather in Paris?")]
+    input = [{"role": "user", "content": "weather in Paris?"}]
 
     await openai.agent(client, input=input, fns=[get_weather], model="gpt-4o")
 
@@ -285,7 +285,7 @@ async def test_openai_execute_tool_spans(otel_setup):
         _openai_response("Checking.", [tc]),
         _openai_response("Done"),
     )
-    input = [openai.user("weather?")]
+    input = [{"role": "user", "content": "weather?"}]
 
     await openai.agent(client, input=input, fns=[get_weather], model="gpt-4o")
 
@@ -310,7 +310,7 @@ async def test_openai_multiple_tools_parallel(otel_setup):
         _openai_response("Checking both.", tool_calls),
         _openai_response("Done"),
     )
-    input = [openai.user("weather in Paris and London?")]
+    input = [{"role": "user", "content": "weather in Paris and London?"}]
 
     await openai.agent(client, input=input, fns=[get_weather], model="gpt-4o")
 
@@ -329,7 +329,7 @@ async def test_nested_subagent_trace(otel_setup):
 
     async def research(query: str) -> str:
         """Research a topic using a subagent."""
-        inner_input = [anthropic.user(query)]
+        inner_input = [{"role": "user", "content": query}]
         return await anthropic.agent(
             inner_client,
             messages=inner_input,
@@ -344,7 +344,7 @@ async def test_nested_subagent_trace(otel_setup):
         _anthropic_message("Researching.", [tool_call]),
         _anthropic_message("Final answer"),
     )
-    input = [anthropic.user("research this")]
+    input = [{"role": "user", "content": "research this"}]
 
     await anthropic.agent(
         outer_client,

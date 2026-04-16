@@ -1,8 +1,9 @@
 import logging
 
 from anthropic import AsyncAnthropic
+from anthropic.types import MessageParam
 
-from nkd_agents.anthropic import agent, user
+from nkd_agents.anthropic import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -24,10 +25,12 @@ async def main():
     and assistant reply from the first call were appended to msgs.
     """
     client = AsyncAnthropic()
-    msgs = [user("Use get_secret_word and tell me what it returned.")]
+    msgs: list[MessageParam] = [
+        {"role": "user", "content": "Use get_secret_word and tell me what it returned."}
+    ]
     await agent(client, messages=msgs, fns=[get_secret_word], **KWARGS)
 
-    msgs.append(user("What was the secret word?"))
+    msgs.append({"role": "user", "content": "What was the secret word?"})
     response = await agent(client, messages=msgs, **KWARGS)
     assert "xenon" in response.lower()
 

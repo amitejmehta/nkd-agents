@@ -2,7 +2,7 @@ import logging
 
 from openai import AsyncOpenAI
 
-from nkd_agents.openai import agent, user
+from nkd_agents.openai import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -46,7 +46,7 @@ async def main():
     logger.info("2. Tool call")
     response = await agent(
         client,
-        input=[user("What's the weather in Paris?")],
+        input=[{"role": "user", "content": "What's the weather in Paris?"}],
         fns=[get_weather],
         **KWARGS,
     )

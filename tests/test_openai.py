@@ -14,7 +14,6 @@ from nkd_agents.openai import (
     output_format,
     tool,
     tool_schema,
-    user,
 )
 
 
@@ -52,13 +51,6 @@ def _tool_call(
         arguments=arguments,
         status="completed",
     )
-
-
-def test_user():
-    assert user("hi") == {
-        "role": "user",
-        "content": [{"type": "input_text", "text": "hi"}],
-    }
 
 
 def test_output_format():

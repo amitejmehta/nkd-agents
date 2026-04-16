@@ -3,7 +3,7 @@ import logging
 from anthropic import AsyncAnthropic
 from pydantic import BaseModel
 
-from nkd_agents.anthropic import agent, output_format, user
+from nkd_agents.anthropic import agent, output_format
 
 from ..utils import test
 from .config import KWARGS
@@ -47,12 +47,19 @@ async def main():
 
     # 1. Structured output
     logger.info("1. Structured output")
-    json_str = await agent(client, messages=[user(prompt)], **kwargs)
+    json_str = await agent(
+        client, messages=[{"role": "user", "content": prompt}], **kwargs
+    )
     Weather.model_validate_json(json_str)
 
     # 2. Tool call with structured output
     logger.info("2. Tool call with structured output")
-    json_str = await agent(client, messages=[user(prompt)], fns=[get_weather], **kwargs)
+    json_str = await agent(
+        client,
+        messages=[{"role": "user", "content": prompt}],
+        fns=[get_weather],
+        **kwargs,
+    )
     weather = Weather.model_validate_json(json_str)
     assert weather.temperature == 72
     assert "sunny" in weather.description.lower()

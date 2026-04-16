@@ -16,7 +16,7 @@ Both providers implement this identically. The only difference is wire format.
 
 ```python
 from anthropic import AsyncAnthropic
-from nkd_agents.anthropic import agent, user
+from nkd_agents.anthropic import agent
 
 async def get_weather(city: str) -> str:
     """Get the current weather for a city."""
@@ -24,7 +24,7 @@ async def get_weather(city: str) -> str:
 
 response: str = await agent(
     AsyncAnthropic(),       # AsyncAnthropic | AsyncAnthropicVertex
-    messages=[user("What's the weather in Paris?")],  # list[MessageParam]
+    messages=[{"role": "user", "content": "What's the weather in Paris?"}],  # list[MessageParam]
     fns=[get_weather],      # Sequence[async fn] — optional tools
     **kwargs                # model, max_tokens, system, temperature, thinking, tools, ...
 )
@@ -40,7 +40,7 @@ response: str = await agent(
 
 ```python
 from openai import AsyncOpenAI
-from nkd_agents.openai import agent, user
+from nkd_agents.openai import agent
 
 async def get_weather(city: str) -> str:
     """Get the current weather for a city."""
@@ -48,7 +48,7 @@ async def get_weather(city: str) -> str:
 
 response: str = await agent(
     AsyncOpenAI(),          # AsyncOpenAI
-    input=[user("What's the weather in Paris?")],  # list[ResponseInputItemParam]
+    input=[{"role": "user", "content": "What's the weather in Paris?"}],  # list[ResponseInputItemParam]
     fns=[get_weather],      # Sequence[async fn]
     **kwargs                # model, temperature, reasoning, tools, ...
 )
@@ -160,11 +160,11 @@ See `examples/anthropic/test_otel.py` and `examples/openai/test_otel.py` for a w
 `agent()` mutates `messages` in-place, so the list you pass grows with the full conversation as turns complete. Append the next user message and call again to continue:
 
 ```python
-msgs = [user("I live in Paris")]
+msgs = [{"role": "user", "content": "I live in Paris"}]
 await agent(client, messages=msgs, **kwargs)
 # msgs now contains the user message + assistant reply
 
-msgs.append(user("What's the weather?"))
+msgs.append({"role": "user", "content": "What's the weather?"})
 await agent(client, messages=msgs, fns=[get_weather], **kwargs)  # Paris inferred from history
 ```
 
@@ -191,7 +191,7 @@ async def greet(name: str) -> str:
     return f"Hello in {current_language.get()}, {name}!"
 
 current_language.set("spanish")
-await agent(client, messages=[user("Greet Alice")], fns=[greet], **kwargs)
+await agent(client, messages=[{"role": "user", "content": "Greet Alice"}], fns=[greet], **kwargs)
 # greet() sees "spanish" — no wrapper objects needed
 ```
 

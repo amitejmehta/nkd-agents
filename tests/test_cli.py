@@ -360,7 +360,7 @@ class TestAutoCompact:
             await auto_compact(msgs, AsyncMock())
         assert len(msgs) == 5  # 1 summary + 4 protected
         assert msgs[0]["role"] == "user"
-        assert "conversation_summary" in msgs[0]["content"][0]["text"]
+        assert "conversation_summary" in str(msgs[0]["content"])
         assert msgs[1] == _user_text("task B")
 
     async def test_summary_content_injected(self, monkeypatch):
@@ -379,9 +379,7 @@ class TestAutoCompact:
             return_value="User discussed first and second topics.",
         ):
             await auto_compact(msgs, AsyncMock())
-        assert (
-            "User discussed first and second topics." in msgs[0]["content"][0]["text"]
-        )
+        assert "User discussed first and second topics." in str(msgs[0]["content"])
 
     async def test_calls_agent_with_correct_args(self, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
@@ -476,5 +474,5 @@ class TestAutoCompact:
             "nkd_agents.cli.agent", new_callable=AsyncMock, return_value="Summary."
         ):
             await auto_compact(msgs, AsyncMock())
-        assert "conversation_summary" in msgs[0]["content"][0]["text"]
+        assert "conversation_summary" in str(msgs[0]["content"])
         assert msgs[1] == _user_text("c")
