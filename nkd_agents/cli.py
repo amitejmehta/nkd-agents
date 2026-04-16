@@ -25,7 +25,7 @@ from .web import fetch_url, web_search
 logger = logging.getLogger(__name__)
 
 # constants
-MODELS = ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")
+MODELS = ("claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5")
 TOOLS = (read_file, write_file, edit_file, bash, glob, grep, fetch_url, web_search)
 NKD_DIR = Path.home() / ".nkd-agents"
 SKILLS_DIR = NKD_DIR / "skills"
