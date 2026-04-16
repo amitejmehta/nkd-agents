@@ -54,18 +54,18 @@ def tool_schema(
         func, allow_defaults=False
     )
 
-    return FunctionToolParam(
-        type="function",
-        name=func.__name__,
-        description=func.__doc__,
-        parameters={
+    return {
+        "type": "function",
+        "name": func.__name__,
+        "description": func.__doc__,
+        "parameters": {
             "type": "object",
             "properties": parameters,
             "required": required_parameters,
             "additionalProperties": False,
         },
-        strict=True,
-    )
+        "strict": True,
+    }
 
 
 def extract_text_and_tool_calls(
