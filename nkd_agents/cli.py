@@ -47,8 +47,8 @@ LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
-AUTO_COMPACT_AFTER = int(os.environ.get("NKD_AUTO_COMPACT_AFTER", 50))
-AUTO_COMPACT_TARGET = int(os.environ.get("NKD_AUTO_COMPACT_TARGET", 30))
+AUTO_COMPACT_THRESHOLD = int(os.environ.get("NKD_AUTO_COMPACT_THRESHOLD", 50))
+AUTO_COMPACT_TARGET = int(os.environ.get("NKD_AUTO_COMPACT_TARGET", 15))
 COMPACT_MODEL = os.environ.get("NKD_COMPACT_MODEL", "claude-haiku-4-5")
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODE_PREFIXES: dict[str, str] = {
@@ -90,7 +90,7 @@ async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> 
     If messages[0] is already a <conversation_summary>, it's included in the
     context fed to the LLM so the new summary naturally incorporates it.
     """
-    if len(messages) <= AUTO_COMPACT_AFTER:
+    if len(messages) <= AUTO_COMPACT_THRESHOLD:
         return
 
     boundary = len(messages) - AUTO_COMPACT_TARGET

@@ -332,7 +332,7 @@ def _mock_client() -> AsyncMock:
 
 class TestAutoCompact:
     async def test_no_op_below_threshold(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 10)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 10)
         msgs = [_user_text(f"msg{i}") for i in range(9)]
         with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_agent:
             await auto_compact(msgs, AsyncMock())
@@ -340,7 +340,7 @@ class TestAutoCompact:
         assert len(msgs) == 9
 
     async def test_summarizes_old_messages(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 6)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 6)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
         msgs = [
             _user_text("task A"),
@@ -364,7 +364,7 @@ class TestAutoCompact:
         assert msgs[1] == _user_text("task B")
 
     async def test_summary_content_injected(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
         msgs = [
             _user_text("first"),
@@ -384,7 +384,7 @@ class TestAutoCompact:
         )
 
     async def test_calls_agent_with_correct_args(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
         monkeypatch.setattr("nkd_agents.cli.COMPACT_MODEL", "claude-haiku-4-5")
         msgs = [
@@ -407,7 +407,7 @@ class TestAutoCompact:
 
     async def test_stacks_existing_summary(self, monkeypatch):
         """Prior <conversation_summary> is fed to agent so new summary is cumulative."""
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
         prior: MessageParam = {
             "role": "user",
@@ -434,7 +434,7 @@ class TestAutoCompact:
 
     async def test_orphan_protection_at_boundary(self, monkeypatch):
         """Boundary landing on tool_result walks back — no orphaned pairs."""
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
         msgs = [
             _user_text("a"),
@@ -463,7 +463,7 @@ class TestAutoCompact:
         assert tool_use_ids == tool_result_ids
 
     async def test_preserves_protected_region(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_AFTER", 4)
+        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
         monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
         msgs = [
             _user_text("a"),
