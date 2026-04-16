@@ -36,7 +36,11 @@ async def main():
     client = AsyncOpenAI()
     # 1. No tools
     logger.info("1. Basic usage (no tools)")
-    _ = await agent(client, input=[user("What's the weather in Paris?")], **KWARGS)
+    _ = await agent(
+        client,
+        input=[{"role": "user", "content": "What's the weather in Paris?"}],
+        **KWARGS,
+    )
 
     # 2. With tools
     logger.info("2. Tool call")
