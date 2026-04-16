@@ -67,17 +67,17 @@ def tool_schema(func: Callable[..., Awaitable[str | Iterable[Content]]]) -> Tool
 
     parameters, required_parameters = extract_function_params(func)
 
-    return ToolParam(
-        name=func.__name__,
-        description=func.__doc__,
-        input_schema={
+    return {
+        "name": func.__name__,
+        "description": func.__doc__,
+        "input_schema": {
             "type": "object",
             "properties": parameters,
             "required": required_parameters,
             "additionalProperties": False,
         },
-        strict=True,
-    )
+        "strict": True,
+    }
 
 
 def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlock]]:
