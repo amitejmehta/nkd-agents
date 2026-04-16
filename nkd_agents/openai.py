@@ -10,7 +10,6 @@ from openai.types.responses import (
     ResponseFormatTextConfigParam,
     ResponseFunctionCallOutputItemListParam,
     ResponseFunctionToolCall,
-    ResponseInputItemParam,
 )
 from openai.types.responses.response_create_params import (
     ResponseCreateParamsNonStreaming,
@@ -24,11 +23,6 @@ from .utils import extract_function_params
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("nkd-agents.openai")
-
-
-def user(content: str) -> ResponseInputItemParam:
-    "Take a string and return a full OpenAI user message."
-    return {"role": "user", "content": [{"type": "input_text", "text": content}]}
 
 
 def output_format(model: type[BaseModel]) -> ResponseFormatTextConfigParam:

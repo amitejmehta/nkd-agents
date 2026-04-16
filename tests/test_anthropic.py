@@ -13,17 +13,7 @@ from nkd_agents.anthropic import (
     output_format,
     tool,
     tool_schema,
-    user,
 )
-
-
-def test_user():
-    """Test user message formatting"""
-    result = user("Hello, world!")
-    assert result == {
-        "role": "user",
-        "content": [{"type": "text", "text": "Hello, world!"}],
-    }
 
 
 def test_output_format():

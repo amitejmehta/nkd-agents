@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProces
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import nkd_agents.openai as openai_provider
-from nkd_agents.openai import agent, user
+from nkd_agents.openai import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -68,7 +68,12 @@ async def main():
     exporter = setup_otel()
     await agent(
         AsyncOpenAI(),
-        input=[user("What's the weather and population of Paris and London?")],
+        input=[
+            {
+                "role": "user",
+                "content": "What's the weather and population of Paris and London?",
+            }
+        ],
         fns=[get_weather, get_population],
         **KWARGS,
     )

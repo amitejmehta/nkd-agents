@@ -1,8 +1,9 @@
 import logging
 
 from anthropic import AsyncAnthropic
+from anthropic.types import MessageParam
 
-from nkd_agents.anthropic import agent, user
+from nkd_agents.anthropic import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -33,7 +34,9 @@ async def main():
     client is available. No framework magic required.
     """
     client = AsyncAnthropic()
-    msgs = [user("What's the weather in Paris?")]
+    msgs: list[MessageParam] = [
+        {"role": "user", "content": "What's the weather in Paris?"}
+    ]
 
     try:
         msgs.append(

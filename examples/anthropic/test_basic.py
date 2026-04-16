@@ -2,7 +2,7 @@ import logging
 
 from anthropic import AsyncAnthropic
 
-from nkd_agents.anthropic import agent, user
+from nkd_agents.anthropic import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -37,11 +37,16 @@ async def main():
     prompt = "What's the weather in Paris?"
     # 1. No tools
     logger.info("1. Basic usage (no tools)")
-    _ = await agent(client, messages=[user(prompt)], **KWARGS)
+    _ = await agent(client, messages=[{"role": "user", "content": prompt}], **KWARGS)
 
     # 2. With tools
     logger.info("2. Tool call")
-    response = await agent(client, messages=[user(prompt)], fns=[get_weather], **KWARGS)
+    response = await agent(
+        client,
+        messages=[{"role": "user", "content": prompt}],
+        fns=[get_weather],
+        **KWARGS,
+    )
     assert "sunny" in response.lower() and "72" in response.lower()
 
 

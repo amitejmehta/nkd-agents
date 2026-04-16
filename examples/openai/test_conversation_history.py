@@ -1,8 +1,9 @@
 import logging
 
 from openai import AsyncOpenAI
+from openai.types.responses import ResponseInputItemParam
 
-from nkd_agents.openai import agent, user
+from nkd_agents.openai import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -24,10 +25,12 @@ async def main():
     and assistant reply from the first call were appended to msgs.
     """
     client = AsyncOpenAI()
-    msgs = [user("Use get_secret_word and tell me what it returned.")]
+    msgs: list[ResponseInputItemParam] = [
+        {"role": "user", "content": "Use get_secret_word and tell me what it returned."}
+    ]
     await agent(client, input=msgs, fns=[get_secret_word], **KWARGS)
 
-    msgs.append(user("What was the secret word?"))
+    msgs.append({"role": "user", "content": "What was the secret word?"})
     response = await agent(client, input=msgs, **KWARGS)
     assert "xenon" in response.lower()
 
