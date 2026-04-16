@@ -8,7 +8,6 @@ from anthropic.types import (
     Base64ImageSourceParam,
     Base64PDFSourceParam,
     Message,
-    MessageParam,
     TextBlockParam,
     ToolParam,
     ToolResultBlockParam,
@@ -25,11 +24,6 @@ from .utils import extract_function_params
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("nkd-agents.anthropic")
-
-
-def user(content: str) -> MessageParam:
-    "Take a string and return a full Anthropic user message."
-    return {"role": "user", "content": [{"type": "text", "text": content}]}
 
 
 def output_format(model: type[BaseModel]) -> JSONOutputFormatParam:

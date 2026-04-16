@@ -16,7 +16,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 
-from .anthropic import agent, user
+from .anthropic import agent
 from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, glob, grep, read_file, write_file
 from .utils import load_env, serialize
@@ -103,15 +103,18 @@ async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> 
     old_messages = messages[:boundary]
     summary = await agent(
         client,
-        messages=[*old_messages, user(SUMMARY_PROMPT)],
+        messages=[*old_messages, {"role": "user", "content": SUMMARY_PROMPT}],
         model=COMPACT_MODEL,
         max_tokens=2048,
     )
     messages[:boundary] = [
-        user(
-            f"<conversation_summary>\n{summary}\n</conversation_summary>\n\n"
-            "The above summarizes our conversation so far. Continue from here."
-        )
+        {
+            "role": "user",
+            "content": (
+                f"<conversation_summary>\n{summary}\n</conversation_summary>\n\n"
+                "The above summarizes our conversation so far. Continue from here."
+            ),
+        }
     ]
     logger.info(
         f"{DIM}Summarized {len(old_messages)} messages → 1 (via {COMPACT_MODEL}){RESET}"
@@ -219,7 +222,9 @@ class CLI:
                 and (not self.llm_task or self.llm_task.done())
             ):
                 try:
-                    messages = self.messages + [user(CACHE_WARM_MSG)]
+                    messages = self.messages + [
+                        {"role": "user", "content": CACHE_WARM_MSG}
+                    ]
                     await self.client.messages.create(messages=messages, **self.kwargs)
                     self.last_message_at = time.monotonic()
                     self.warm_count += 1
@@ -251,7 +256,9 @@ class CLI:
         while True:
             text: str = await self.session.prompt_async("> ")
             if text and text.strip():
-                await self.queue.put(user(self.build_message(text.strip())))
+                await self.queue.put(
+                    {"role": "user", "content": self.build_message(text.strip())}
+                )
 
     def save_session(self, path: Path | None = None) -> None:
         if path is None:
@@ -284,7 +291,7 @@ def main() -> None:
                 cli.messages[:] = json.loads(args.session.read_text())
                 logger.info(f"Loaded session: {args.session}")
             if args.prompt:
-                cli.messages.append(user(args.prompt))
+                cli.messages.append({"role": "user", "content": args.prompt})
                 result = asyncio.run(
                     agent(cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs)
                 )
