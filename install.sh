@@ -43,7 +43,7 @@ fi
 echo -e "${GREEN}✓${NC}${WHITE} uv${NC}"
 
 # ── nkd CLI ───────────────────────────────────────────────────────────────────
-uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli]'
+uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[cli,web]'
 echo -e "${GREEN}✓${NC}${WHITE} nkd${NC}"
 
 # ── skills ────────────────────────────────────────────────────────────────────
