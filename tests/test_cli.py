@@ -9,6 +9,8 @@ from nkd_agents.cli import (
     MODELS,
     THINKING,
     TOOLS,
+    _git_context,
+    _run,
     auto_compact,
 )
 
@@ -181,6 +183,121 @@ class TestLLMLoop:
                 await loop_task
             assert call_count == 2
             assert len(cli.messages) == 2
+
+
+class TestRun:
+    def test_success(self):
+        assert _run(["echo", "hi"]) == "hi"
+
+    def test_failure_returns_empty(self):
+        assert _run(["false"]) == ""
+
+    def test_timeout_returns_empty(self):
+        assert _run(["sleep", "10"], timeout=0) == ""
+
+    def test_missing_command_returns_empty(self):
+        assert _run(["nonexistent_cmd_xyz"]) == ""
+
+
+class TestGitContext:
+    def _patch(self, responses: dict[str, str]):
+        """Patch _run so each cmd list maps to a canned response."""
+
+        def fake_run(cmd: list[str], timeout: int = 2) -> str:
+            key = " ".join(cmd)
+            for prefix, val in responses.items():
+                if key.startswith(prefix):
+                    return val
+            return ""
+
+        return patch("nkd_agents.cli._run", side_effect=fake_run)
+
+    def test_not_a_repo(self):
+        with patch("nkd_agents.cli._run", return_value=""):
+            assert _git_context() is None
+
+    def test_basic(self):
+        responses = {
+            "git rev-parse --is-inside-work-tree": "true",
+            "git remote get-url origin": "https://github.com/owner/myrepo.git",
+            "git rev-parse --abbrev-ref HEAD": "main",
+            "gh pr view": "",
+        }
+        with self._patch(responses):
+            result = _git_context()
+        assert result is not None
+        assert "owner/myrepo" in result
+        assert "main" in result
+        assert "PR" not in result
+
+    def test_pr_number(self):
+        responses = {
+            "git rev-parse --is-inside-work-tree": "true",
+            "git remote get-url origin": "git@github.com:owner/repo.git",
+            "git rev-parse --abbrev-ref HEAD": "feature",
+            "gh pr view": "42",
+        }
+        with self._patch(responses):
+            result = _git_context()
+        assert result is not None
+        assert "PR: #42" in result
+
+    def test_detached_head(self):
+        def fake_run(cmd: list[str], timeout: int = 2) -> str:
+            key = " ".join(cmd)
+            if "is-inside-work-tree" in key:
+                return "true"
+            if "--abbrev-ref" in key:
+                return "HEAD"
+            if "--short" in key:
+                return "abc1234"
+            if "get-url" in key:
+                return "https://github.com/a/b.git"
+            return ""
+
+        with patch("nkd_agents.cli._run", side_effect=fake_run):
+            result = _git_context()
+        assert result is not None
+        assert "detached HEAD" in result
+        assert "abc1234" in result
+
+    def test_ssh_remote_normalized(self):
+        responses = {
+            "git rev-parse --is-inside-work-tree": "true",
+            "git remote get-url origin": "git@github.com:acme/tool.git",
+            "git rev-parse --abbrev-ref HEAD": "main",
+            "gh pr view": "",
+        }
+        with self._patch(responses):
+            result = _git_context()
+        assert result is not None
+        assert "acme/tool" in result
+
+    def test_no_remote_still_shows_branch(self):
+        responses = {
+            "git rev-parse --is-inside-work-tree": "true",
+            "git remote get-url origin": "",
+            "git rev-parse --abbrev-ref HEAD": "my-branch",
+            "gh pr view": "",
+        }
+        with self._patch(responses):
+            result = _git_context()
+        assert result is not None
+        assert "my-branch" in result
+
+    def test_appended_to_system_prompt(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        (tmp_path / "CLAUDE.md").write_text("local content")
+        with patch(
+            "nkd_agents.cli._git_context",
+            return_value="## Git Context\nRepo: a/b\nBranch: main",
+        ):
+            result = CLI().build_system_prompt()
+        assert result is not None
+        assert "Git Context" in result
+        assert "a/b" in result
 
 
 class TestBuildSystemPrompt:
