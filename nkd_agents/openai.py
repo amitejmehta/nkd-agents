@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import logging
 from typing import Awaitable, Callable, Mapping, Sequence
@@ -19,6 +20,7 @@ from opentelemetry import trace
 from pydantic import BaseModel
 from typing_extensions import Unpack
 
+from .tools import FileContent
 from .utils import extract_function_params
 
 logger = logging.getLogger(__name__)
@@ -38,7 +40,9 @@ def output_format(model: type[BaseModel]) -> ResponseFormatTextConfigParam:
 
 
 def tool_schema(
-    func: Callable[..., Awaitable[str | ResponseFunctionCallOutputItemListParam]],
+    func: Callable[
+        ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
+    ],
 ) -> FunctionToolParam:
     """Convert a function to OpenAI's tool JSON schema"""
     if not func.__doc__:
@@ -84,9 +88,31 @@ def extract_text_and_tool_calls(
     return text, tool_calls
 
 
+def _file_content_to_openai(
+    fc: FileContent,
+) -> str | ResponseFunctionCallOutputItemListParam:
+    """Convert FileContent to OpenAI tool output format."""
+    ext = "jpeg" if fc.ext == "jpg" else fc.ext
+    b64 = base64.standard_b64encode(fc.data).decode("utf-8")
+    if ext in ("jpeg", "png", "gif", "webp"):
+        return [{"type": "input_image", "image_url": f"data:image/{ext};base64,{b64}"}]
+    if ext == "pdf":
+        return [
+            {
+                "type": "input_file",
+                "filename": "file.pdf",
+                "file_data": f"data:application/pdf;base64,{b64}",
+            }
+        ]
+    return fc.data.decode("utf-8", errors="ignore").strip()
+
+
 async def tool(
     tool_dict: Mapping[
-        str, Callable[..., Awaitable[str | ResponseFunctionCallOutputItemListParam]]
+        str,
+        Callable[
+            ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
+        ],
     ],
     tool_call: ResponseFunctionToolCall,
 ) -> FunctionCallOutput:
@@ -97,6 +123,8 @@ async def tool(
         except Exception as e:
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
+        if isinstance(result, FileContent):
+            result = _file_content_to_openai(result)
         return FunctionCallOutput(
             type="function_call_output", call_id=tool_call.call_id, output=result
         )
@@ -105,7 +133,9 @@ async def tool(
 async def agent(
     client: AsyncOpenAI,
     fns: Sequence[
-        Callable[..., Awaitable[str | ResponseFunctionCallOutputItemListParam]]
+        Callable[
+            ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
+        ]
     ] = (),
     **kwargs: Unpack[ResponseCreateParamsNonStreaming],
 ) -> str:
