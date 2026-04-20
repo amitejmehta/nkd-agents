@@ -13,17 +13,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: "3.12"
-    
+
     - name: Install uv
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "$HOME/.local/bin" >> $GITHUB_PATH
-    
+
     - name: Cache uv dependencies
       uses: actions/cache@v3
       with:
@@ -31,34 +31,34 @@ jobs:
         key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-uv-
-    
+
     - name: Install ripgrep
       run: sudo apt-get install -y ripgrep
 
     - name: Install dependencies
       run: |
-        uv pip install --system -e ".[dev,cli]"
-    
+        uv pip install --system -e ".[dev,cli,web]"
+
     - name: Run ruff linting
       run: |
         ruff check nkd_agents/ examples/ tests/
-    
+
     - name: Run ruff formatting check
       run: |
         ruff format --check nkd_agents/ examples/ tests/
-    
+
     - name: Run pytest
       run: |
         pytest tests/ -v --cov=nkd_agents --cov-report=term-missing
-    
+
     - name: Run pyright type checking
       run: |
         pyright nkd_agents/ examples/
-    
+
     - name: Run xenon cyclomatic complexity analysis
       run: |
         xenon --max-average A --max-modules A --max-absolute B nkd_agents/ examples/
-    
+
     - name: Generate complexity report
       run: |
         echo "## Cyclomatic Complexity Report" >> $GITHUB_STEP_SUMMARY
