@@ -151,7 +151,7 @@ Title: ...
 
 Or `"No results found"`.
 
-- Requires `pip install nkd_agents[cli]` (installs `playwright`).
+- Requires `pip install nkd_agents[cli,web]` (installs `playwright`).
 - Requires `playwright install chromium` (or `chrome` channel — uses Chrome if available).
 - Uses a realistic User-Agent to avoid bot detection.
 - Waits for `article` elements with a 10-second timeout.
