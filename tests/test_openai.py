@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 from openai.types.responses import (
     Response,
@@ -15,6 +17,7 @@ from nkd_agents.openai import (
     tool,
     tool_schema,
 )
+from nkd_agents.tools import FileContent
 
 
 def _response(output, model="gpt-4o") -> Response:
@@ -177,3 +180,57 @@ async def test_tool_content_blocks():
         {"read": read}, _tool_call("call_1", "read", '{"path": "f.txt"}')
     )
     assert result["output"] == [{"type": "input_text", "text": "file content"}]
+
+
+@pytest.mark.asyncio
+async def test_tool_file_content_image():
+    """FileContent with image ext produces input_image content list."""
+    image_data = b"\xff\xd8\xff"
+    b64 = base64.standard_b64encode(image_data).decode()
+
+    async def read_img(path: str) -> FileContent:
+        """Read image"""
+        return FileContent(data=image_data, ext="jpg")
+
+    result = await tool(
+        {"read_img": read_img}, _tool_call("c1", "read_img", '{"path": "x.jpg"}')
+    )
+    assert result["output"] == [
+        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tool_file_content_pdf():
+    """FileContent with pdf ext produces input_file content list."""
+    pdf_data = b"%PDF-1.4"
+    b64 = base64.standard_b64encode(pdf_data).decode()
+
+    async def read_pdf(path: str) -> FileContent:
+        """Read pdf"""
+        return FileContent(data=pdf_data, ext="pdf")
+
+    result = await tool(
+        {"read_pdf": read_pdf}, _tool_call("c2", "read_pdf", '{"path": "x.pdf"}')
+    )
+    assert result["output"] == [
+        {
+            "type": "input_file",
+            "filename": "file.pdf",
+            "file_data": f"data:application/pdf;base64,{b64}",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tool_file_content_text():
+    """FileContent with text ext is decoded to a plain string."""
+
+    async def read_txt(path: str) -> FileContent:
+        """Read txt"""
+        return FileContent(data=b"hello world", ext="txt")
+
+    result = await tool(
+        {"read_txt": read_txt}, _tool_call("c3", "read_txt", '{"path": "f.txt"}')
+    )
+    assert result["output"] == "hello world"
