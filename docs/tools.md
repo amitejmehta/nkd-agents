@@ -194,5 +194,5 @@ Rules:
 - Must be `async`.
 - Must have a docstring (description shown to the model).
 - Parameters must use supported types: `str`, `int`, `float`, `bool`, `Literal[...]`, `T | None`.
-- Return `str` for plain text. For rich content (images, PDFs, mixed blocks) return `list[Content]` (Anthropic: `anthropic.types.tool_result_block_param.Content`) or `ResponseFunctionCallOutputItemListParam` (OpenAI).
+- Return `str` for plain text. For rich content (images, PDFs, mixed blocks) return `FileContent` (`nkd_agents.tools.FileContent` — a frozen dataclass with `data: bytes` and `ext: str`; each provider converts it to its own content format) or `ResponseFunctionCallOutputItemListParam` (OpenAI).
 - Raise `ValueError` for user-facing errors (bad args, missing files, etc).
