@@ -88,7 +88,7 @@ def extract_text_and_tool_calls(
     return text, tool_calls
 
 
-def _file_content_to_openai(
+def bytes_to_content(
     fc: FileContent,
 ) -> str | ResponseFunctionCallOutputItemListParam:
     """Convert FileContent to OpenAI tool output format."""
@@ -124,7 +124,7 @@ async def tool(
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
         if isinstance(result, FileContent):
-            result = _file_content_to_openai(result)
+            result = bytes_to_content(result)
         return FunctionCallOutput(
             type="function_call_output", call_id=tool_call.call_id, output=result
         )
