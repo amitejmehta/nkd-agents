@@ -2,17 +2,23 @@ import asyncio
 import logging
 import os
 import signal
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from anthropic.types.tool_result_block_param import Content
-
-from .anthropic import bytes_to_content
 from .ctx import cwd_ctx
 from .logging import GREEN, RESET
 from .utils import display_diff
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class FileContent:
+    """Raw file bytes with extension — returned by read_file; providers convert to their content format."""
+
+    data: bytes
+    ext: str  # lowercase, no leading dot; "" if no extension
 
 
 def _normalize(s: str) -> str:
@@ -28,15 +34,15 @@ def resolve_path(path: str | None = None) -> Path:
 
 
 # Anthropic-specific: returns Content format via bytes_to_content
-async def read_file(path: str) -> str | list[Content]:
+async def read_file(path: str) -> str | FileContent:
     """Read and return the contents of a file at the given path. Only works with files, not directories.
     Supports image (jpg, jpeg, png, gif, webp), PDF, and all text files."""
     file_path = resolve_path(path)
     logger.info(f"\nReading: {GREEN}{file_path}{RESET}\n")
-    bytes, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
-    if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and len(bytes) > 50000:
-        return f"File too large ({len(bytes):,} bytes) to read directly. Use grep() to search for specific content."
-    return [bytes_to_content(bytes, ext)]
+    data, ext = file_path.read_bytes(), file_path.suffix[1:].lower()
+    if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and len(data) > 50000:
+        return f"File too large ({len(data):,} bytes) to read directly. Use grep() to search for specific content."
+    return FileContent(data=data, ext=ext)
 
 
 async def write_file(path: str, content: str) -> str:

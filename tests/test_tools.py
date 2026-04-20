@@ -1,12 +1,12 @@
 """Comprehensive tests for nkd_agents/tools.py"""
 
 import asyncio
-import base64
 from unittest.mock import patch
 
 import pytest
 
 from nkd_agents.tools import (
+    FileContent,
     _normalize,
     bash,
     edit_file,
@@ -20,98 +20,98 @@ from nkd_agents.tools import (
 class TestReadFile:
     @pytest.mark.asyncio
     async def test_read_file_text(self, tmp_path):
-        """Test reading a plain text file."""
+        """Text file returns FileContent with raw bytes and ext."""
         file_path = tmp_path / "test.txt"
         content = "Hello, World!"
         file_path.write_text(content)
 
         result = await read_file(str(file_path))
-        # Text files return list with text block
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["type"] == "text"
-        assert result[0]["text"] == content
+        assert isinstance(result, FileContent)
+        assert result.ext == "txt"
+        assert result.data == content.encode("utf-8")
 
     @pytest.mark.asyncio
     async def test_read_file_image_jpg(self, tmp_path):
-        """Test reading a JPG image returns base64 encoded content."""
+        """JPG returns FileContent with ext='jpg'."""
         file_path = tmp_path / "test.jpg"
-        image_data = b"\xff\xd8\xff\xe0\x00\x10JFIF"  # Minimal JPEG header
+        image_data = b"\xff\xd8\xff\xe0\x00\x10JFIF"
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-
-        # Should return list with dict containing base64 encoded data
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["type"] == "image"
-        assert result[0]["source"]["type"] == "base64"
-        assert result[0]["source"]["media_type"] == "image/jpeg"
-        assert result[0]["source"]["data"] == base64.b64encode(image_data).decode()
+        assert isinstance(result, FileContent)
+        assert result.ext == "jpg"
+        assert result.data == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_image_png(self, tmp_path):
-        """Test reading a PNG image returns base64 encoded content."""
         file_path = tmp_path / "test.png"
-        image_data = b"\x89PNG\r\n\x1a\n"  # PNG signature
+        image_data = b"\x89PNG\r\n\x1a\n"
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-
-        assert isinstance(result, list)
-        assert result[0]["source"]["media_type"] == "image/png"
-        assert result[0]["source"]["data"] == base64.b64encode(image_data).decode()
+        assert isinstance(result, FileContent)
+        assert result.ext == "png"
+        assert result.data == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_image_gif(self, tmp_path):
-        """Test reading a GIF image returns base64 encoded content."""
         file_path = tmp_path / "test.gif"
-        image_data = b"GIF89a"  # GIF signature
+        image_data = b"GIF89a"
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-
-        assert isinstance(result, list)
-        assert result[0]["source"]["media_type"] == "image/gif"
-        assert result[0]["source"]["data"] == base64.b64encode(image_data).decode()
+        assert isinstance(result, FileContent)
+        assert result.ext == "gif"
+        assert result.data == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_image_webp(self, tmp_path):
-        """Test reading a WEBP image returns base64 encoded content."""
         file_path = tmp_path / "test.webp"
-        image_data = b"RIFF\x00\x00\x00\x00WEBP"  # WEBP signature
+        image_data = b"RIFF\x00\x00\x00\x00WEBP"
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-
-        assert isinstance(result, list)
-        assert result[0]["source"]["media_type"] == "image/webp"
-        assert result[0]["source"]["data"] == base64.b64encode(image_data).decode()
+        assert isinstance(result, FileContent)
+        assert result.ext == "webp"
+        assert result.data == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_pdf(self, tmp_path):
-        """Test reading a PDF returns base64 encoded content."""
         file_path = tmp_path / "test.pdf"
-        pdf_data = b"%PDF-1.4"  # PDF signature
+        pdf_data = b"%PDF-1.4"
         file_path.write_bytes(pdf_data)
 
         result = await read_file(str(file_path))
+        assert isinstance(result, FileContent)
+        assert result.ext == "pdf"
+        assert result.data == pdf_data
 
-        assert isinstance(result, list)
-        assert result[0]["type"] == "document"
-        assert result[0]["source"]["type"] == "base64"
-        assert result[0]["source"]["media_type"] == "application/pdf"
-        assert result[0]["source"]["data"] == base64.b64encode(pdf_data).decode()
+    @pytest.mark.asyncio
+    async def test_read_file_no_extension(self, tmp_path):
+        file_path = tmp_path / "Makefile"
+        file_path.write_text("all:")
+
+        result = await read_file(str(file_path))
+        assert isinstance(result, FileContent)
+        assert result.ext == ""
+
+    @pytest.mark.asyncio
+    async def test_read_file_too_large(self, tmp_path):
+        """Non-binary files over 50 000 bytes return an error string."""
+        file_path = tmp_path / "big.txt"
+        file_path.write_bytes(b"x" * 50001)
+
+        result = await read_file(str(file_path))
+        assert isinstance(result, str)
+        assert "too large" in result
 
     @pytest.mark.asyncio
     async def test_read_file_not_found(self):
-        """Test reading a non-existent file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
             await read_file("/nonexistent/file.txt")
 
     @pytest.mark.asyncio
     async def test_read_file_directory(self, tmp_path):
-        """Test reading a directory returns error message."""
         dir_path = tmp_path / "testdir"
         dir_path.mkdir()
 
@@ -595,7 +595,9 @@ class TestCwdContext:
         token = cwd_ctx.set(subdir)
         try:
             result = await read_file(path="test.txt")
-            assert result == [{"type": "text", "text": "content"}]
+            assert isinstance(result, FileContent)
+            assert result.data == b"content"
+            assert result.ext == "txt"
         finally:
             cwd_ctx.reset(token)
 
@@ -650,5 +652,5 @@ class TestCwdContext:
         result2 = await read_file(path="file.txt")
         cwd_ctx.reset(token2)
 
-        assert result1 == [{"type": "text", "text": "dir1_content"}]
-        assert result2 == [{"type": "text", "text": "dir2_content"}]
+        assert isinstance(result1, FileContent) and result1.data == b"dir1_content"
+        assert isinstance(result2, FileContent) and result2.data == b"dir2_content"

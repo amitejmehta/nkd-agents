@@ -9,11 +9,13 @@ from anthropic.types import (
 from pydantic import BaseModel
 
 from nkd_agents.anthropic import (
+    bytes_to_content,
     extract_text_and_tool_calls,
     output_format,
     tool,
     tool_schema,
 )
+from nkd_agents.tools import FileContent
 
 
 def test_output_format():
@@ -201,3 +203,54 @@ async def test_tool_returns_content_blocks():
     assert result["type"] == "tool_result"
     assert result["tool_use_id"] == "tool_1"
     assert result["content"] == [{"type": "text", "text": "File content"}]
+
+
+@pytest.mark.asyncio
+async def test_tool_file_content_image():
+    """FileContent with image ext is converted to Anthropic image block."""
+    image_data = b"\xff\xd8\xff"
+
+    async def read_img(path: str) -> FileContent:
+        """Read image"""
+        return FileContent(data=image_data, ext="jpg")
+
+    tool_call = ToolUseBlock(
+        type="tool_use", id="t1", name="read_img", input={"path": "img.jpg"}
+    )
+    result = await tool({"read_img": read_img}, tool_call)
+    assert result["content"] == [bytes_to_content(image_data, "jpg")]
+    assert result["content"][0]["type"] == "image"
+
+
+@pytest.mark.asyncio
+async def test_tool_file_content_pdf():
+    """FileContent with pdf ext is converted to Anthropic document block."""
+    pdf_data = b"%PDF-1.4"
+
+    async def read_pdf(path: str) -> FileContent:
+        """Read pdf"""
+        return FileContent(data=pdf_data, ext="pdf")
+
+    tool_call = ToolUseBlock(
+        type="tool_use", id="t2", name="read_pdf", input={"path": "doc.pdf"}
+    )
+    result = await tool({"read_pdf": read_pdf}, tool_call)
+    assert result["content"] == [bytes_to_content(pdf_data, "pdf")]
+    assert result["content"][0]["type"] == "document"
+
+
+@pytest.mark.asyncio
+async def test_tool_file_content_text():
+    """FileContent with text ext is decoded and returned as text block."""
+    text_data = b"hello world"
+
+    async def read_txt(path: str) -> FileContent:
+        """Read txt"""
+        return FileContent(data=text_data, ext="txt")
+
+    tool_call = ToolUseBlock(
+        type="tool_use", id="t3", name="read_txt", input={"path": "f.txt"}
+    )
+    result = await tool({"read_txt": read_txt}, tool_call)
+    assert result["content"][0]["type"] == "text"
+    assert result["content"][0]["text"] == "hello world"

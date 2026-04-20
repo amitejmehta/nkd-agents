@@ -20,6 +20,7 @@ from opentelemetry import trace
 from pydantic import BaseModel
 from typing_extensions import Unpack
 
+from .tools import FileContent
 from .utils import extract_function_params
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,9 @@ def bytes_to_content(data: bytes, ext: str) -> Content:
         return {"type": "text", "text": text}
 
 
-def tool_schema(func: Callable[..., Awaitable[str | Iterable[Content]]]) -> ToolParam:
+def tool_schema(
+    func: Callable[..., Awaitable[str | FileContent | Iterable[Content]]],
+) -> ToolParam:
     """Convert a function to Anthropic's tool JSON schema."""
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
@@ -91,7 +94,9 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
 
 
 async def tool(
-    tool_dict: Mapping[str, Callable[..., Awaitable[str | Iterable[Content]]]],
+    tool_dict: Mapping[
+        str, Callable[..., Awaitable[str | FileContent | Iterable[Content]]]
+    ],
     tool_call: ToolUseBlock,
 ) -> ToolResultBlockParam:
     with tracer.start_as_current_span(f"execute_tool {tool_call.name}") as span:
@@ -101,6 +106,8 @@ async def tool(
         except Exception as e:
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
+        if isinstance(result, FileContent):
+            result = [bytes_to_content(result.data, result.ext)]
         if isinstance(result, str):
             result = [TextBlockParam(type="text", text=result)]
         return {"type": "tool_result", "tool_use_id": tool_call.id, "content": result}
@@ -109,7 +116,7 @@ async def tool(
 async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
     *,
-    fns: Sequence[Callable[..., Awaitable[str | Iterable[Content]]]] = (),
+    fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]] = (),
     **kwargs: Unpack[MessageCreateParamsBase],
 ) -> str:
     """Run Claude in agentic loop (run until no tool calls, then return text).
