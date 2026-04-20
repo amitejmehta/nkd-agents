@@ -151,7 +151,7 @@ Title: ...
 
 Or `"No results found"`.
 
-- Requires `pip install nkd_agents[cli]` (installs `playwright`).
+- Requires `pip install nkd_agents[cli,web]` (installs `playwright`).
 - Requires `playwright install chromium` (or `chrome` channel — uses Chrome if available).
 - Uses a realistic User-Agent to avoid bot detection.
 - Waits for `article` elements with a 10-second timeout.
@@ -194,5 +194,5 @@ Rules:
 - Must be `async`.
 - Must have a docstring (description shown to the model).
 - Parameters must use supported types: `str`, `int`, `float`, `bool`, `Literal[...]`, `T | None`.
-- Return `str` for text, or `list[Content]` for rich content (Anthropic) / `ResponseFunctionCallOutputItemListParam` (OpenAI).
-- Catch your own exceptions and return descriptive error strings — don't let tools raise.
+- Return `str` for plain text. For rich content (images, PDFs, mixed blocks) return `FileContent` (`nkd_agents.tools.FileContent` — a frozen dataclass with `data: bytes` and `ext: str`; each provider converts it to its own content format) or `ResponseFunctionCallOutputItemListParam` (OpenAI).
+- Raise `ValueError` for user-facing errors (bad args, missing files, etc).
