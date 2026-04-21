@@ -176,3 +176,4 @@ scratch.*
 # Code Editing Tools
 .cursor
 .claude
+prompts/
