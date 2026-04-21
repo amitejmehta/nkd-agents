@@ -1,6 +1,6 @@
 # Nightly Orchestrator
 
-Ship up to 3 PRs. Do not merge.
+Ship up to 3 PRs. Do not merge PRs.
 
 1. **Pick.** Top 3 `status: ready` items from `BACKLOG.md`. If none, exit.
 
