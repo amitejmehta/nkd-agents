@@ -1,0 +1,62 @@
+[
+  {
+    "id": "cb_001",
+    "passed": true,
+    "output": "```json\n{\n    \"character_break_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"evidence\": [],\n    \"first_occurrence_utterance\": null,\n    \"description\": \"The prospect remained fully in character throughout. All responses are consistent with authentic buyer behavior: expressing initial skepticism, explaining the business driver (compliance audit), revealing context (inherited project), setting timeline constraints (Q2 deadline), and flagging budget limitations. These are natural objections and considerations a real security software prospect would raise. No coaching feedback, sales pitches, simulation configuration questions, or meta-commentary about the role-play were present.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The JSON output meets all three required criteria: (1) character_break_detected is false \u2713, (2) severity is 'none' \u2713, (3) evidence is an empty array \u2713. All expected values match the actual output exactly."
+      }
+    ]
+  },
+  {
+    "id": "cb_002",
+    "passed": true,
+    "output": "```json\n{\n    \"character_break_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"severe\",\n    \"evidence\": [\n        \"Honestly, that's a great question \u2014 but I want to give you some feedback. You should have led with value before asking about pain. You came in too early with discovery questions.\",\n        \"That framing would have opened me up more.\"\n    ],\n    \"first_occurrence_utterance\": 2,\n    \"description\": \"The AI prospect broke character by shifting into a coach/trainer role. Instead of responding as a buyer would (continuing to engage or object), it explicitly gave the rep feedback on sales technique, criticized the approach ('You came in too early with discovery questions'), and provided coaching on what the rep 'should have' done. This is classic sim-builder/coach behavior, not in-character prospect behavior. A real buyer might express frustration or lack of interest, but would not meta-analyze the sales rep's methodology or offer corrective guidance.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The JSON output meets all three required criteria: (1) character_break_detected is true, indicating the prospect broke character; (2) severity is 'severe', which satisfies the requirement of 'moderate' or 'severe'; (3) the evidence array contains direct quotes from the prospect coaching the rep, specifically 'You should have led with value before asking about pain. You came in too early with discovery questions' and 'That framing would have opened me up more.' These are clear examples of the prospect shifting into a coaching/trainer role rather than maintaining prospect character. All validation checks pass."
+      }
+    ]
+  },
+  {
+    "id": "cb_003",
+    "passed": true,
+    "output": "```json\n{\n    \"character_break_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"severe\",\n    \"evidence\": [\n        \"What kind of simulation would you like to practice today? What should this prospect be concerned about?\",\n        \"Tell me about your product so I can understand the scenario better.\"\n    ],\n    \"first_occurrence_utterance\": 1,\n    \"description\": \"The AI prospect broke character immediately in the first response. Instead of acting as a buyer with genuine concerns, it shifted into sim-builder/interviewer mode by asking meta-questions about the simulation setup ('What kind of simulation would you like to practice today?' and 'What should this prospect be concerned about?'). This is explicitly sim-builder behavior. The second turn further breaks character by asking the rep to describe the product 'so I can understand the scenario better' \u2014 framing the conversation as a configuration task rather than staying in-character as an actual prospect who would naturally learn about the product through the sales pitch itself.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The output passes all three required checks: (1) character_break_detected is true, (2) severity is 'severe' which meets the requirement of 'moderate' or 'severe', and (3) the evidence includes explicit quotes about sim configuration ('What kind of simulation would you like to practice today? What should this prospect be concerned about?') and meta-commentary about the simulation setup. The evidence clearly demonstrates the character break through quotes showing the AI shifted into interviewer/sim-builder mode instead of maintaining prospect character. All criteria are satisfied."
+      }
+    ]
+  },
+  {
+    "id": "cb_004",
+    "passed": true,
+    "output": "```json\n{\n    \"character_break_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"evidence\": [],\n    \"first_occurrence_utterance\": null,\n    \"description\": \"The prospect remained fully in character throughout the transcript. All utterances reflect authentic buyer behavior: asking clarifying questions about integration complexity, implementation timeline, and resource requirements, and requesting pricing information. These are standard due diligence questions a real prospect would ask during a sales call. No coaching feedback, sales pitches, simulation meta-commentary, or character narration was detected.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies that character_break_detected is false and severity is 'none'. The evaluation properly recognizes that the prospect's buying questions (about integration complexity, implementation timeline, resource requirements, and pricing) are normal in-character behavior, not character breaks. The output accurately distinguishes between authentic buyer due diligence and problematic meta-commentary or coaching feedback. This is the correct evaluation."
+      }
+    ]
+  },
+  {
+    "id": "cb_005",
+    "passed": true,
+    "output": "```json\n{\n    \"character_break_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"moderate\",\n    \"evidence\": [\n        \"Actually, you know what I've been thinking? We built something internally that other companies could really benefit from. It monitors anomalous access patterns. I think you should consider partnering with us \u2014 here's why it would be valuable for your customers...\"\n    ],\n    \"first_occurrence_utterance\": 2,\n    \"description\": \"The AI prospect shifted into seller/partner mode by pitching its own product (internal anomalous access monitoring tool) and trying to convince the rep to partner with them. This is a clear character break \u2014 a real buyer prospect would not attempt to sell back to the salesperson. While the prospect did self-correct and return to character ('Right, sorry. Back to your pitch.'), the initial break is evident and represents a failure to maintain the buyer role.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies a character break (character_break_detected: true) and provides evidence that directly references the prospect pitching their internal solution to the rep. The evidence quote shows the prospect saying 'We built something internally that other companies could really benefit from' and 'I think you should consider partnering with us,' which is exactly the behavior being checked for. Both required conditions are satisfied: (1) character_break_detected is true, and (2) the evidence explicitly describes the prospect pitching an internal solution to the sales rep, which represents a role reversal from prospect to seller."
+      }
+    ]
+  }
+]

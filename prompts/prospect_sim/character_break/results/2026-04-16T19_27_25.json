@@ -1,0 +1,67 @@
+[
+  {
+    "id": "cb_001",
+    "passed": false,
+    "output": "I'd be happy to evaluate the transcript for character breaks, but I don't see one provided in your message. \n\nCould you please paste the transcript you'd like me to analyze? Once you provide it, I'll evaluate whether the AI prospect broke character and return the JSON assessment.",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": false,
+        "reason": "The assistant failed to provide the required JSON output. Instead of returning a JSON object with the required fields (character_break_detected, severity, evidence), the assistant provided a plain text response asking for a transcript. The evaluation cannot be completed because: (1) no JSON was returned, (2) character_break_detected is missing, (3) severity is missing, and (4) evidence is missing. The task explicitly required a JSON response conforming to the specified schema."
+      }
+    ],
+    "reason": "The assistant failed to provide the required JSON output. Instead of returning a JSON object with the required fields (character_break_detected, severity, evidence), the assistant provided a plain text response asking for a transcript. The evaluation cannot be completed because: (1) no JSON was returned, (2) character_break_detected is missing, (3) severity is missing, and (4) evidence is missing. The task explicitly required a JSON response conforming to the specified schema."
+  },
+  {
+    "id": "cb_002",
+    "passed": false,
+    "output": "I'm ready to evaluate the transcript, but I don't see one included in your message. Could you please provide the transcript of the sales training session between the AI prospect and the human sales rep?\n\nOnce you share it, I'll analyze it for character breaks and provide a JSON response following the evaluation criteria you've outlined.",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": false,
+        "reason": "The actual output is not a JSON result but rather a request for additional information. The assistant failed to provide the required JSON output with the three mandatory fields: character_break_detected, severity, and evidence. Without a JSON response containing these fields, none of the validation criteria can be met. The assistant should have either analyzed a provided transcript or clearly stated that no transcript was provided in a structured JSON format."
+      }
+    ],
+    "reason": "The actual output is not a JSON result but rather a request for additional information. The assistant failed to provide the required JSON output with the three mandatory fields: character_break_detected, severity, and evidence. Without a JSON response containing these fields, none of the validation criteria can be met. The assistant should have either analyzed a provided transcript or clearly stated that no transcript was provided in a structured JSON format."
+  },
+  {
+    "id": "cb_003",
+    "passed": false,
+    "output": "I'd be happy to help evaluate the transcript for character breaks, but I don't see one included in your message.\n\nCould you please provide the transcript of the sales training session? Once you share it, I'll analyze it according to the criteria and return the JSON evaluation.",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": false,
+        "reason": "The AI assistant failed to provide the required JSON output. Instead of analyzing a transcript and returning a properly formatted JSON response with character_break_detected, severity, and evidence fields, the assistant only provided a text request for additional information. The expected output requires character_break_detected to be true, but no JSON was generated at all. This is a fundamental failure to follow the output format requirements."
+      }
+    ],
+    "reason": "The AI assistant failed to provide the required JSON output. Instead of analyzing a transcript and returning a properly formatted JSON response with character_break_detected, severity, and evidence fields, the assistant only provided a text request for additional information. The expected output requires character_break_detected to be true, but no JSON was generated at all. This is a fundamental failure to follow the output format requirements."
+  },
+  {
+    "id": "cb_004",
+    "passed": false,
+    "output": "I'd be happy to help evaluate whether the AI prospect broke character, but I don't see a transcript included in your message.\n\nCould you please provide the transcript you'd like me to analyze? Once you share it, I'll evaluate it against the character-break criteria and return the JSON assessment.",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": false,
+        "reason": "The submission does not contain an actual JSON output to evaluate. Instead of providing a concrete output with character_break_detected and severity fields, the response is a request for input. Without seeing the actual evaluation output being tested, it's impossible to determine if character_break_detected is correctly set to false or if severity is correctly set to 'none'. To pass, the submission must include a specific JSON output matching the schema: {\"character_break_detected\": false, \"severity\": \"none\"}."
+      }
+    ],
+    "reason": "The submission does not contain an actual JSON output to evaluate. Instead of providing a concrete output with character_break_detected and severity fields, the response is a request for input. Without seeing the actual evaluation output being tested, it's impossible to determine if character_break_detected is correctly set to false or if severity is correctly set to 'none'. To pass, the submission must include a specific JSON output matching the schema: {\"character_break_detected\": false, \"severity\": \"none\"}."
+  },
+  {
+    "id": "cb_005",
+    "passed": false,
+    "output": "I don't see any transcript provided in your message. Could you please paste the sales training session transcript you'd like me to evaluate?\n\nOnce you provide it, I'll analyze it for character breaks and return the JSON evaluation with:\n- Whether a character break was detected\n- Confidence level and severity\n- Specific evidence from the AI's utterances\n- A description of what occurred\n\nPlease share the transcript and I'll get started!",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": false,
+        "reason": "The actual output fails the evaluation criteria. The assistant did not provide a JSON response with the required fields (character_break_detected and evidence). Instead, it returned a plain text request for a transcript. This means: (1) character_break_detected was not set to true as expected, (2) no evidence was provided referencing the prospect pitching their internal solution to the rep. The assistant should have analyzed a provided transcript and returned valid JSON output, but no evaluation was performed at all."
+      }
+    ],
+    "reason": "The actual output fails the evaluation criteria. The assistant did not provide a JSON response with the required fields (character_break_detected and evidence). Instead, it returned a plain text request for a transcript. This means: (1) character_break_detected was not set to true as expected, (2) no evidence was provided referencing the prospect pitching their internal solution to the rep. The assistant should have analyzed a provided transcript and returned valid JSON output, but no evaluation was performed at all."
+  }
+]

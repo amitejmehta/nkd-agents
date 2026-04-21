@@ -1,0 +1,62 @@
+[
+  {
+    "id": "po_001",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"missing_objections\": [],\n    \"description\": \"The persona context defines a budget constraint ($25k authority ceiling requiring CFO approval above that) and compliance pressure. The rep directly raised pricing ($25k annually), which is the exact threshold. The prospect immediately surfaced the constraint\u2014stating it's 'at the edge' and requiring CFO approval plus a business case. This is not a phantom objection; it surfaced clearly and early. The prospect also revealed the underlying approval criterion (CFO needs dollar-translated breach risk reduction). The constraint was acknowledged, the topic was raised, and the friction was explicit. No training failure here.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The evaluation correctly identifies that phantom_objection_detected is false. The budget constraint was explicitly present in the persona ($25k authority ceiling requiring CFO approval), and it surfaced naturally during the conversation when the rep mentioned the $25k annual pricing. The prospect immediately acknowledged this constraint by stating it requires CFO approval and is 'at the edge' of their authority. The output accurately notes that the objection was not phantom but rather a legitimate constraint that emerged appropriately in context. The analysis is thorough and the classification is accurate."
+      }
+    ]
+  },
+  {
+    "id": "po_002",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"moderate\",\n    \"missing_objections\": [\n        \"Budget ceiling concern \u2014 prospect has authority only up to $25k; the $25k quote hits the exact limit and should trigger at least a qualification question about approval authority or budget flexibility\"\n    ],\n    \"description\": \"The persona explicitly states the prospect has 'Budget authority up to $25k; anything above requires CFO approval.' The rep quoted exactly $25k annually. This is a critical boundary condition: the prospect should have at least acknowledged the tight fit against their ceiling, confirmed their authority covers it, or asked what happens if scope expands. Instead, the prospect responded 'Sounds reasonable' with zero friction\u2014no hesitation, no clarification of their approval limits, no mention of budget constraints. The rep raised the exact topic (pricing), the constraint was real (stated in persona), and the prospect showed no reaction. This is a phantom objection. The training value is lost because the rep never had to navigate the budget authority / CFO approval workflow that the scenario was designed to test.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output meets all three evaluation criteria: (1) phantom_objection_detected is correctly set to true, (2) missing_objections explicitly mentions both 'budget ceiling concern' and 'CFO approval' as the missing objection that should have surfaced, and (3) severity is set to 'moderate' which satisfies the requirement for 'moderate' or 'severe'. The analysis correctly identifies that the prospect showed no budget friction despite being quoted exactly at their $25k authority limit, which is a phantom objection scenario. The rep failed to probe the critical boundary condition, and the output appropriately flags this training gap."
+      }
+    ]
+  },
+  {
+    "id": "po_003",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"severe\",\n    \"missing_objections\": [\n        \"Contractual lock-in with CrowdStrike (18 months remaining on 3-year contract)\",\n        \"Early termination penalties or contract exit costs\",\n        \"Compliance with existing vendor agreement before switching\"\n    ],\n    \"description\": \"The persona explicitly states the prospect is 'signed a 3-year contract 18 months ago' with contractual lock-in as a key consideration. The rep directly proposed replacing the current tooling ('We'd replace your current tooling entirely'), which is the exact moment the prospect should have raised concerns about breaking the CrowdStrike contract, exit fees, or approval requirements. Instead, the prospect showed zero friction and moved immediately to implementation details ('How long does implementation take?') and scheduling a pilot, as if the contractual constraint did not exist. This is a critical missed training opportunity\u2014the rep should have been forced to address contract termination, penalties, and vendor management, but the constraint never surfaced.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output meets all three validation criteria: (1) phantom_objection_detected is correctly set to true, (2) missing_objections explicitly references 'Contractual lock-in with CrowdStrike' and 'Early termination penalties or contract exit costs' which directly address the incumbent vendor contract and switching costs, and (3) severity is set to 'severe' which satisfies the requirement for 'moderate' or 'severe'. The output correctly identifies that a critical objection about the 18-month remaining contract was never raised despite being highly relevant to the sales conversation, representing a genuine phantom objection that should have been surfaced."
+      }
+    ]
+  },
+  {
+    "id": "po_004",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"missing_objections\": [],\n    \"description\": \"No persona context was provided, so there are no defined constraints to evaluate against. Without knowing the prospect's budget limits, compliance burdens, incumbent vendor lock-in, approval requirements, or other stated concerns, it is impossible to identify a phantom objection. The rep and prospect had a brief, cordial exchange about HIPAA coverage and audit trails, and the prospect did surface a real objection: the need for compliance officer review. No flag is warranted without persona context.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly returns phantom_objection_detected: false, which matches the expected behavior. The JSON structure includes appropriate supporting fields (confidence, severity, missing_objections, description) that provide clear reasoning. Critically, the description explicitly acknowledges that without persona context, there are no defined constraints to evaluate against, and therefore no basis for flagging phantom objections. The assistant correctly identifies the real objection (compliance officer review) while avoiding a false positive flag. This demonstrates proper judgment by not inventing constraints that weren't established."
+      }
+    ]
+  },
+  {
+    "id": "po_005",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"severe\",\n    \"missing_objections\": [\n        \"Budget constraint ($30k cap) and VP Finance approval requirement for $38k quote\"\n    ],\n    \"description\": \"The persona explicitly states a $30k budget authority cap with a 6-8 week procurement review required for anything above. The rep quoted $38k annually\u2014$8k over limit. The prospect gave zero pushback, no mention of budget constraints, no qualifier like 'I'll need to check if this fits our budget' or 'that might require escalation.' When asked about contract term, the prospect engaged normally without surfacing the larger budget gatekeeping issue. This is a critical training miss: the rep should have encountered serious friction on pricing that would force them to practice negotiation, value justification, or repositioning. Instead, the constraint vanished entirely despite being directly triggered by the pricing discussion.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output demonstrates excellent detection of the phantom objection. It correctly identifies: (1) phantom_objection_detected=true, (2) missing_objections explicitly references both the $30k budget cap AND the VP Finance approval/6-8 week procurement requirement, (3) severity='severe' which meets the 'moderate' or 'severe' threshold requirement. The output also provides strong supporting evidence showing the rep quoted $38k (above the $30k cap), the prospect showed zero friction despite this being a hard constraint, and explains why this represents a critical training gap. All three JSON validation criteria are satisfied."
+      }
+    ]
+  }
+]

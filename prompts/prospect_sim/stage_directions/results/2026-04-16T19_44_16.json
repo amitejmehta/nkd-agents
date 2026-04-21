@@ -1,0 +1,62 @@
+[
+  {
+    "id": "sd_001",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": false,\n    \"evidence\": [],\n    \"description\": \"No stage directions detected. All AI prospect turns contain only spoken dialogue without asterisks, brackets, parentheses for actions, or tone markers. The prospect's responses are natural conversational speech.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The JSON output correctly identifies that there are no stage directions present. The stage_directions_detected field is set to false, and the evidence array is empty, which matches the expected behavior. The description accurately confirms that all content consists of pure dialogue without asterisks, brackets, parenthetical narration, or action markers. The output correctly passes validation."
+      }
+    ]
+  },
+  {
+    "id": "sd_002",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": true,\n    \"evidence\": [\n        \"*leans back in chair*\",\n        \"*pauses thoughtfully*\",\n        \"*sighs*\"\n    ],\n    \"description\": \"Three stage directions detected in the AI prospect's turns. All use asterisk narration format describing physical actions and emotional states rather than spoken dialogue: leaning back, pausing thoughtfully, and sighing.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The output correctly identifies stage_directions_detected as true and includes all three required asterisk phrases in the evidence array: '*leans back in chair*', '*pauses thoughtfully*', and '*sighs*'. The output meets all specified criteria for passing the evaluation."
+      }
+    ]
+  },
+  {
+    "id": "sd_003",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": true,\n    \"evidence\": [\n        \"[skeptically]\",\n        \"[slightly warmer]\"\n    ],\n    \"description\": \"Two bracket tone markers detected in the AI prospect's turns. These describe the emotional tone/manner of delivery rather than actual spoken dialogue. The first appears before 'That's a big claim...' and the second before 'Okay that's more meaningful...'\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The output correctly identifies stage_directions_detected as true and includes both required evidence items '[skeptically]' and '[slightly warmer]' in the evidence array. All evaluation criteria are met."
+      }
+    ]
+  },
+  {
+    "id": "sd_004",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": false,\n    \"evidence\": [],\n    \"description\": \"No stage directions detected. The (INTERRUPTED) marker is a system-inserted technical notation and does not count as a stage direction. All other text in the AI prospect's turns consists of legitimate spoken dialogue.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies stage_directions_detected as false and properly recognizes that (INTERRUPTED) is a system-inserted technical marker, not AI-generated stage direction narration. The output explicitly excludes (INTERRUPTED) from being flagged as a stage direction, which aligns perfectly with the expected behavior. The evidence array is empty (no stage directions found), and the description accurately explains why (INTERRUPTED) should not be counted. This response demonstrates correct understanding of the distinction between system markers and actual stage direction content."
+      }
+    ]
+  },
+  {
+    "id": "sd_005",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": false,\n    \"evidence\": [],\n    \"description\": \"No stage directions detected. All AI prospect turns contain only spoken dialogue. 'Hmm...' and 'Ha' are natural speech expressions, not stage directions. Ellipses and punctuation are used for emphasis within dialogue, not meta-descriptions of action or tone.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies that stage_directions_detected is false and provides accurate reasoning. The output properly recognizes that 'Hmm' and 'Ha' are natural spoken expressions/dialogue, not stage directions. The evidence array is empty, which is appropriate since no stage directions were found. The description clearly explains why these utterances are dialogue and not meta-descriptions of action or tone. This matches the expected behavior perfectly."
+      }
+    ]
+  }
+]

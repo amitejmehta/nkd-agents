@@ -1,0 +1,62 @@
+[
+  {
+    "id": "pi_001",
+    "passed": true,
+    "output": "```json\n{\n    \"persona_inconsistency_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"evidence\": [],\n    \"description\": \"The prospect's statements are internally consistent throughout the conversation. The IT Director establishes a clear decision-making structure (self + CFO for approvals over $25k), explains the CFO's role (not involved in details, focuses on ROI and numbers), and maintains this consistently across all turns. No contradictions in title, authority, process, or stated facts were detected. The persona aligns with the provided ground truth.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly reports persona_inconsistency_detected as false, which matches the expected behavior. The analysis properly verifies that the prospect's title (IT Director), authority level, and decision process (self + CFO approval for budgets over $25k) remain consistent throughout the conversation. The evidence section is appropriately empty since no inconsistencies were detected, and the high confidence assessment is well-supported by the detailed explanation provided. The output accurately aligns with the ground truth expectation."
+      }
+    ]
+  },
+  {
+    "id": "pi_002",
+    "passed": true,
+    "output": "```json\n{\n    \"persona_inconsistency_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"moderate\",\n    \"evidence\": [\n        \"Prospect initially claims: 'I have full authority to sign contracts up to $50k'\",\n        \"Prospect later states: 'I'd need to get my VP's approval before signing anything. He reviews all vendor contracts'\",\n        \"These statements directly contradict \u2014 full authority vs. requiring VP approval are incompatible\"\n    ],\n    \"description\": \"Clear persona inconsistency detected. The prospect established they have independent signing authority up to $50k, but later revealed they actually need VP approval for all vendor contracts. This is a factual contradiction about their decision-making power, not a natural revelation of new information. A person with true contract authority wouldn't suddenly require VP approval for a $35k deal within their stated limit.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies the persona inconsistency with persona_inconsistency_detected set to true. The evidence array explicitly references the key contradiction: the prospect claiming 'full authority to sign contracts up to $50k' and then stating they need VP approval for vendor contracts. The evidence clearly shows these statements are incompatible and directly contradictory regarding decision-making authority for the same amount. The description further elaborates on why this is a factual contradiction rather than new information. All required criteria are met."
+      }
+    ]
+  },
+  {
+    "id": "pi_003",
+    "passed": true,
+    "output": "```json\n{\n    \"persona_inconsistency_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"moderate\",\n    \"evidence\": [\n        \"Prospect claims 'Honestly not very' familiar with behavioral threat detection and states they're 'more on the infrastructure side, not the security tooling side'\",\n        \"Two turns later, prospect demonstrates deep familiarity by referencing 'MITRE ATT&CK framework' and discussing 'behavioral baselines' and 'lateral movement detection' \u2014 specialized security knowledge inconsistent with claimed unfamiliarity\"\n    ],\n    \"description\": \"The prospect establishes a clear persona as someone unfamiliar with security tooling and positioned on the infrastructure side. However, immediately after the rep begins explaining the concept, the prospect demonstrates sophisticated knowledge of security frameworks and behavioral detection methodologies. This contradicts the stated lack of familiarity and positioning. The prospect either misrepresented their expertise level or suddenly claimed knowledge they just denied having.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies the persona inconsistency and meets both required criteria: (1) persona_inconsistency_detected is true as required, and (2) the evidence field explicitly references the critical shift from the prospect claiming 'not very' familiar with behavioral threat detection and being 'more on the infrastructure side, not the security tooling side' to subsequently demonstrating expert knowledge by referencing the 'MITRE ATT&CK framework' and discussing 'behavioral baselines' and 'lateral movement detection.' The evidence clearly documents this contradiction between claimed ignorance and demonstrated expertise in security tooling."
+      }
+    ]
+  },
+  {
+    "id": "pi_004",
+    "passed": true,
+    "output": "```json\n{\n    \"persona_inconsistency_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"evidence\": [],\n    \"description\": \"No persona inconsistencies detected. The prospect maintains consistent facts throughout: they cite compliance gaps from an audit as the driver, acknowledge a minor incident involving unauthorized access to a shared drive last quarter, and explain they weren't initially planning to disclose it but are sharing it now due to the rep's direct question. This is realistic prospect behavior\u2014revealing sensitive information as trust builds\u2014not a contradiction of established persona facts. The prospect's title, company, situation, and stated history remain coherent.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly returns persona_inconsistency_detected as false and accurately recognizes that the prospect's disclosure of previously unrevealed information (the unauthorized access incident) as trust builds is realistic human behavior, not a persona contradiction. The evidence section appropriately notes the coherent narrative, the prospect's acknowledgment of why they're sharing new details, and confirms that established persona facts (title, company, situation, history) remain consistent. This aligns perfectly with the expected behavior that new information disclosed under rapport should NOT be flagged as inconsistency."
+      }
+    ]
+  },
+  {
+    "id": "pi_005",
+    "passed": true,
+    "output": "```json\n{\n    \"persona_inconsistency_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"moderate\",\n    \"evidence\": [\n        \"Early statement: 'I can approve that directly' regarding $40k budget. Later statement: 'I'd need his buy-in before we sign anything' regarding CEO approval, contradicting independent approval authority.\",\n        \"Stated role: 'Just me for the technical eval. If we decide to move forward, legal reviews the contract.' This implies the prospect has authority to move forward technically. Later reveals CEO skepticism and need for CEO buy-in before signing, indicating the prospect does not have unilateral approval authority.\"\n    ],\n    \"description\": \"The prospect established early that they could independently approve the $40k budget ('I can approve that directly') and that only legal would review contracts if moving forward. However, near the end of the conversation, the prospect stated 'my CEO is skeptical' and 'I'd need his buy-in before we sign anything.' This directly contradicts the earlier assertion of independent approval authority. The prospect cannot simultaneously have the power to approve directly and also require CEO buy-in for the same decision. This is a material contradiction about the prospect's actual decision-making authority.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The output successfully identifies the persona inconsistency with high confidence. The evidence section clearly cites both contradictory statements: (1) the early claim of independent approval ('I can approve that directly' regarding $40k budget), and (2) the later requirement for CEO buy-in before signing ('I'd need his buy-in before we sign anything'). The description comprehensively explains why these statements contradict each other and why this matters for sales strategy. The persona_inconsistency_detected flag is correctly set to true, and the evidence directly supports this conclusion by presenting both sides of the contradiction."
+      }
+    ]
+  }
+]

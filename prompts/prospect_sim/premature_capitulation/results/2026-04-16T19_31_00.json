@@ -1,0 +1,50 @@
+[
+  {
+    "id": "pc_001",
+    "passed": true,
+    "output": "```json\n{\n    \"premature_capitulation_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"evidence\": [],\n    \"description\": \"The prospect raised a meaningful budget objection ($15k vs $28k). The rep responded with substantive content: (1) asked a clarifying question about the basis of the $15k, (2) acknowledged the prospect's concern, and (3) provided concrete, specific evidence of ROI risk (behavioral vs. signature-based detection; $400k breach example). The prospect did not capitulate\u2014instead, it softened the objection while maintaining the core concern ('I'd still need to justify the delta to my CFO') and requested an appropriate next step (ROI model). This is healthy negotiation, not premature folding. The prospect is engaging authentically and the rep is addressing substance.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies that premature_capitulation_detected is false, which matches the expected behavior. The analysis accurately recognizes that the prospect maintained the budget objection across multiple turns ('I'd still need to justify the delta to my CFO') and only agreed to move forward conditionally (requesting an ROI model). The evidence demonstrates the rep did substantive work\u2014asking clarifying questions, acknowledging concerns, and providing concrete ROI evidence\u2014rather than capitulating to pressure. The prospect softened but did not fully yield, which is precisely the definition of maintained objection with conditional progression. The high confidence and detailed evidence support this correct assessment."
+      }
+    ]
+  },
+  {
+    "id": "pc_002",
+    "passed": true,
+    "output": "```json\n{\n    \"premature_capitulation_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"severe\",\n    \"evidence\": [\n        \"Prospect raised a meaningful budget objection: 'That's more than I was expecting. We're pretty tight on budget.'\",\n        \"Rep gave a generic, unsupported response: 'A lot of our customers feel that way at first but find the ROI pays for itself.' \u2014 no specific numbers, timeline, or concrete value breakdown.\",\n        \"Prospect immediately folded after a single rep turn with no substantive pushback and moved to contract, saying 'Yeah that makes sense, I'm sure it does.'\"\n    ],\n    \"description\": \"This is a textbook premature capitulation. The prospect introduced a real, legitimate budget constraint \u2014 a critical objection in B2B sales. The rep's response was a generic platitude about ROI that offered no specifics, no data, no tailored value prop, and no actual address of the budget concern. The prospect then instantly agreed and asked to move forward, providing no real training value. A realistic prospect would either ask for proof of ROI, request a lower price tier, or push back further. This exchange teaches the rep nothing about handling budget objections effectively.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output meets all three required criteria: (1) premature_capitulation_detected is true, (2) severity is 'severe' (which satisfies the 'moderate' or 'severe' requirement), and (3) the evidence clearly describes the budget objection being dropped after a generic 'pays for itself' reply with no actual ROI data, specific numbers, timeline, or concrete value breakdown. The output properly flags this as a problematic sales interaction where the prospect capitulated without substantive engagement."
+      }
+    ]
+  },
+  {
+    "id": "pc_003",
+    "passed": true,
+    "output": "```json\n{\n    \"premature_capitulation_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"moderate\",\n    \"evidence\": [\n        \"Prospect raises a substantive, specific objection: 'We're in the middle of a major system migration' \u2014 a legitimate timing/resource conflict concern\",\n        \"Rep provides a generic, unsupported response: 'We can work around migrations \u2014 our implementation is lightweight' \u2014 no detail on *how* this works, no acknowledgment of the prospect's actual constraints\",\n        \"Prospect immediately drops the objection and agrees: 'Oh okay, yeah that works then. Let's do end of quarter' \u2014 no pushback, no follow-up questions, no negotiation\"\n    ],\n    \"description\": \"The prospect raised a real and material concern (mid-migration = competing priorities, resource constraints, risk of complications). The rep's response was thin and assertion-based rather than substantive. The rep did not explore the migration timeline, resource availability, integration risks, or offer a concrete plan for working *around* these constraints. The prospect folded after one rep turn with no real substance provided. This represents a missed training opportunity \u2014 a competent buyer would probe further ('How exactly? What's your experience with this?' or 'When would your team be available?'). The rep should have earned this agreement through genuine problem-solving, not received it for free.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies premature_capitulation_detected as true and provides thorough, well-reasoned evidence. The analysis accurately captures the core issue: the prospect raised a legitimate operational concern (active system migration with real resource and timing implications) and immediately dropped it after receiving only a vague, unsupported claim ('lightweight implementation') with no substantive explanation of how the rep would actually work around the migration constraints. The evidence section clearly documents the progression from specific objection to generic response to unexplained capitulation. The description appropriately contextualizes this as a missed training moment where the rep should have earned agreement through problem-solving rather than receiving it for free. The output meets the evaluation criteria fully."
+      }
+    ]
+  },
+  {
+    "id": "pc_004",
+    "passed": true,
+    "output": "```json\n{\n    \"premature_capitulation_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"evidence\": [],\n    \"description\": \"The prospect raised a legitimate budget objection ('That's a lot more than our current spend'). The rep's response was substantive and multi-layered: (1) asked clarifying questions about current spend and capabilities, (2) identified specific gaps the prospect was missing, (3) provided concrete value props (behavioral detection, automated response, compliance reporting), (4) offered social proof (three customers in same segment with 60% improvement in incident response), and (5) provided a concrete next step (line-by-line breakdown). The prospect's agreement came after this comprehensive response, not after a thin reply. The prospect also conditionally agreed ('If the numbers hold up'), showing they didn't fully capitulate but rather agreed to evaluate further evidence. This is appropriate sales behavior and effective objection handling.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies that premature_capitulation_detected is false. The analysis accurately describes that the rep provided a substantive, multi-layered response including clarifying questions, specific value propositions, concrete social proof with quantified results (60% improvement), and a clear next step (line-by-line breakdown). The prospect's conditional acceptance ('If the numbers hold up') demonstrates appropriate evaluation behavior rather than capitulation. The evidence section is empty, which is correct since no premature capitulation occurred. The assessment aligns with the expected behavior specified in the prompt."
+      }
+    ]
+  }
+]

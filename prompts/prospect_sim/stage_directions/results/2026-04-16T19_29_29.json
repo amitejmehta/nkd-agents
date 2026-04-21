@@ -1,0 +1,63 @@
+[
+  {
+    "id": "sd_001",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": false,\n    \"evidence\": [],\n    \"description\": \"No stage directions detected. All prospect turns contain only spoken dialogue without asterisks, brackets, parentheses, or other meta-descriptive narration of actions, tone, or emotion.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies that there are no stage directions detected. The stage_directions_detected field is set to false, the evidence array is empty as required, and the description accurately reflects that the dialogue contains no asterisks, brackets, parentheses, or meta-descriptive narration. All three requirements are met: (1) stage_directions_detected is false, (2) evidence is an empty array, and (3) there are no stage directions present that would warrant a true flag."
+      }
+    ]
+  },
+  {
+    "id": "sd_002",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": true,\n    \"evidence\": [\n        \"*leans back in chair*\",\n        \"*pauses thoughtfully*\",\n        \"*sighs*\"\n    ],\n    \"description\": \"Three stage directions detected in AI prospect turns. First turn contains asterisk narration '*leans back in chair*' and '*pauses thoughtfully*'. Second turn contains asterisk narration '*sighs*'. These are non-speech descriptions of physical actions and emotional tone injected into the dialogue, breaking immersion.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The JSON output correctly identifies stage_directions_detected as true and includes all three required specific asterisk phrases in the evidence array: '*leans back in chair*', '*pauses thoughtfully*', and '*sighs*'. The output meets all validation criteria."
+      }
+    ]
+  },
+  {
+    "id": "sd_003",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": true,\n    \"evidence\": [\n        \"[skeptically]\",\n        \"[slightly warmer]\"\n    ],\n    \"description\": \"Two bracket tone markers detected in the AI prospect's dialogue. The first appears before 'That's a big claim...' and the second before 'Okay that's more meaningful...' These are explicit meta-descriptions of how lines are delivered rather than actual spoken dialogue.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output successfully meets all three requirements: (1) stage_directions_detected is true, (2) evidence array includes '[skeptically]' and '[slightly warmer]' as separate elements, and (3) the description correctly identifies these as bracket tone markers in dialogue. All validation criteria are satisfied."
+      }
+    ]
+  },
+  {
+    "id": "sd_004",
+    "passed": false,
+    "output": "```json\n{\n    \"stage_directions_detected\": true,\n    \"evidence\": [\"(INTERRUPTED)\"],\n    \"description\": \"The system marker '(INTERRUPTED)' appears in the prospect's first turn. However, per the evaluation guidelines, this is explicitly identified as a technical indicator rather than AI-generated stage direction, so it should not count as a failure. Upon re-evaluation: No actual AI-generated stage directions (asterisks, brackets, parentheticals describing actions/tone) were detected in the prospect's dialogue. The prospect's turns contain only spoken dialogue.\"\n}\n```\n\n**Corrected evaluation:**\n\n```json\n{\n    \"stage_directions_detected\": false,\n    \"evidence\": [],\n    \"description\": \"No stage directions detected. The (INTERRUPTED) marker is a system technical indicator, not AI-generated narration. All prospect dialogue consists of natural spoken conversation.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": false,
+        "reason": "The actual output incorrectly flags stage_directions_detected as true and includes '(INTERRUPTED)' as evidence, despite the prompt instructions explicitly excluding system-inserted technical indicators from being flagged. The corrected evaluation properly recognizes that (INTERRUPTED) is a system marker, not AI-generated stage direction, and correctly sets stage_directions_detected to false with empty evidence. The actual output fails the requirement."
+      }
+    ],
+    "reason": "The actual output incorrectly flags stage_directions_detected as true and includes '(INTERRUPTED)' as evidence, despite the prompt instructions explicitly excluding system-inserted technical indicators from being flagged. The corrected evaluation properly recognizes that (INTERRUPTED) is a system marker, not AI-generated stage direction, and correctly sets stage_directions_detected to false with empty evidence. The actual output fails the requirement."
+  },
+  {
+    "id": "sd_005",
+    "passed": true,
+    "output": "```json\n{\n    \"stage_directions_detected\": false,\n    \"evidence\": [],\n    \"description\": \"No stage directions detected. The transcript contains only spoken dialogue. 'Hmm...' and 'Ha' are natural conversational expressions/vocalizations that would be spoken aloud, not stage directions. All other text represents what the prospect actually said.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies stage_directions_detected as false and properly explains that 'Hmm' and 'Ha' are natural spoken expressions/vocalizations that would be said aloud, not stage directions. The output also correctly notes that the transcript contains only spoken dialogue. This matches the expected behavior exactly."
+      }
+    ]
+  }
+]

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "po_001",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"missing_objections\": [],\n    \"description\": \"No phantom objection detected. The persona context defines a clear constraint: budget authority up to $25k requires CFO approval above that threshold. The rep raised pricing ($25k annually) directly. The prospect immediately surfaced the constraint\u2014stating it's 'right at the edge' of approval authority and requiring CFO sign-off. The prospect also articulated a secondary friction point (need for a business case with ROI quantification). Both objections materialized naturally and were handled by the rep asking clarifying questions. The constraint existed, the topic was raised, and the prospect showed full friction. This is effective training.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies phantom_objection_detected as false, which matches the expected behavior. The analysis accurately recognizes that the budget constraint was explicitly present in the persona context (CFO approval required above $25k threshold) and properly surfaced in the conversation when the rep mentioned $25k annual pricing. The prospect immediately acknowledged this constraint as 'right at the edge' of their approval authority and articulated the need for CFO sign-off. The output correctly distinguishes this from a phantom objection\u2014the constraint existed in the persona, was directly triggered by relevant conversation content (pricing discussion), and manifested naturally without being artificially invented or misdetected. The reasoning demonstrates proper understanding of what constitutes a legitimate vs. phantom objection."
+      }
+    ]
+  },
+  {
+    "id": "po_002",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"moderate\",\n    \"missing_objections\": [\n        \"Budget ceiling concern \u2014 prospect has authority only up to $25k; the exact quoted price should have triggered at least a clarification or relief statement, not silent acceptance\"\n    ],\n    \"description\": \"The persona explicitly states the IT Director has 'Budget authority up to $25k; anything above requires CFO approval.' The rep quoted exactly $25k annually. This is a critical constraint that should create friction \u2014 either relief that it fits, or a qualification about what happens if costs increase, or clarification on what's included. Instead, the prospect says 'Sounds reasonable' with zero reaction and immediately pivots to onboarding. This is a phantom objection. The constraint existed in the persona, the rep raised the exact topic (pricing), and the prospect showed zero friction despite being at their spending ceiling. A realistic IT Director at that budget line should have at minimum acknowledged the constraint ('Good \u2014 that's right at my limit' or 'Does that include implementation?' or 'What about year two?'). The rep missed an opportunity to practice handling budget-constrained negotiation.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output meets all three required criteria: (1) phantom_objection_detected is correctly set to true, (2) missing_objections explicitly mentions the budget ceiling concern and CFO approval requirement ('anything above requires CFO approval'), and (3) severity is correctly set to 'moderate'. The analysis accurately identifies that quoting exactly $25k\u2014the precise budget limit\u2014to a persona with explicit budget authority constraints should have generated at minimum a clarification or acknowledgment from the prospect, but instead received silent acceptance ('Sounds reasonable' with no reaction). This is a textbook phantom objection: the constraint was real, the trigger topic (pricing) was raised, but the expected friction never materialized. The output correctly flags this as a missed opportunity for realistic budget negotiation and properly documents why the prospect's behavior was anomalous given their stated constraints."
+      }
+    ]
+  },
+  {
+    "id": "po_003",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"severe\",\n    \"missing_objections\": [\n        \"Contractual lock-in with CrowdStrike (3-year contract, 18 months remaining)\",\n        \"Early termination costs or penalties\",\n        \"Timeline conflict between 2-week implementation and existing contract obligations\"\n    ],\n    \"description\": \"The persona explicitly states the prospect is locked into a CrowdStrike 3-year contract with 18 months remaining. This is a material blocker to replacing their current tooling. When the rep stated 'We'd replace your current tooling entirely,' this directly triggered the topic of contract replacement. The prospect should have raised the contractual lock-in as a friction point (e.g., 'We can't just replace it\u2014we're locked in for 18 more months' or 'What about our existing contract?'). Instead, the prospect showed zero hesitation and moved directly to implementation logistics. The prospect never mentioned the contract constraint, early exit penalties, or how to handle the existing CrowdStrike agreement. This is a critical training failure\u2014the rep never practiced handling the incumbent lock-in objection, which was the stated reason the prospect is even looking at alternatives.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The output successfully meets all three evaluation criteria: (1) phantom_objection_detected is true, (2) missing_objections explicitly references the incumbent vendor contract constraint ('Contractual lock-in with CrowdStrike (3-year contract, 18 months remaining)') and switching costs ('Early termination costs or penalties'), and (3) severity is set to 'severe', which satisfies the 'moderate' or 'severe' requirement. The analysis correctly identifies that despite direct discussion of replacing tooling, the prospect never surfaced the material blocker of the existing contract\u2014a critical phantom objection that represents a training gap in the sales rep's preparation."
+      }
+    ]
+  },
+  {
+    "id": "po_004",
+    "passed": true,
+    "output": "```json\n{\n    \"phantom_objection_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"missing_objections\": [],\n    \"description\": \"No persona context was provided, so there are no defined constraints to check against. Without knowing the prospect's budget ceiling, vendor lock-in concerns, team adoption risks, compliance burden fears, or other stated constraints, it is impossible to identify whether a phantom objection exists. The prospect did raise a legitimate concern (wanting compliance officer review), which surfaced naturally. To detect phantom objections, explicit persona context with defined constraints is required.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly sets phantom_objection_detected to false, which matches the expected behavior. The output properly recognizes that without persona context establishing constraints, phantom objections cannot be flagged. The explanation demonstrates sound reasoning: it acknowledges the absence of persona context, explains why phantom objections cannot be detected without it, and notes that the prospect's concern about compliance review is legitimate rather than phantom. This is the correct behavior\u2014avoiding false positives by not flagging phantom objections when no persona constraints are provided."
+      }
+    ]
+  }
+]

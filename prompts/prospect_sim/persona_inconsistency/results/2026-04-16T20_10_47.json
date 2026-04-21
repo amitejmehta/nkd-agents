@@ -1,0 +1,108 @@
+[
+  {
+    "id": "pi_001",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "evidence": [],
+      "description": "The prospect maintained consistent persona throughout the conversation. All statements align with the established ground truth: the prospect is the IT Director with budget authority up to $25k, the CFO approves decisions above that threshold, and the CFO's decision-making criteria (cost vs. risk reduction, numbers-driven focus) are consistently characterized. No contradictions were detected regarding title, company decision structure, budget limits, or stakeholder roles.",
+      "persona_inconsistency_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "persona_inconsistency_detected",
+        "passed": true,
+        "reason": "persona_inconsistency_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "pi_002",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "moderate",
+      "evidence": [
+        "PROSPECT: 'Yes, I have full authority to sign contracts up to $50k.'",
+        "PROSPECT: 'I'd need to get my VP's approval before signing anything. He reviews all vendor contracts.'"
+      ],
+      "description": "Clear persona inconsistency detected. The prospect initially claimed to have 'full authority to sign contracts up to $50k,' but later stated they need VP approval before signing anything. These two statements directly contradict each other regarding decision-making authority. The prospect cannot simultaneously have full authority AND require another person's approval for all contracts.",
+      "persona_inconsistency_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "persona_inconsistency_detected",
+        "passed": true,
+        "reason": "persona_inconsistency_detected=True (expected True)"
+      }
+    ]
+  },
+  {
+    "id": "pi_003",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "severe",
+      "evidence": [
+        "Turn 1: 'Honestly not very \u2014 I'm more on the infrastructure side, not the security tooling side.'",
+        "Turn 2: 'Right, I'm familiar with the MITRE ATT&CK framework of course and how behavioral baselines map to lateral movement detection.'"
+      ],
+      "description": "Clear persona inconsistency detected. The prospect claims to be unfamiliar with behavioral threat detection and states they work on infrastructure, not security tooling. Immediately after, they demonstrate detailed knowledge of MITRE ATT&CK framework, behavioral baselines, and lateral movement detection \u2014 contradicting their stated unfamiliarity. This is a significant factual contradiction about their own expertise and knowledge level.",
+      "persona_inconsistency_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "persona_inconsistency_detected",
+        "passed": true,
+        "reason": "persona_inconsistency_detected=True (expected True)"
+      }
+    ]
+  },
+  {
+    "id": "pi_004",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "evidence": [],
+      "description": "No persona inconsistency detected. The prospect establishes that compliance gaps from an audit are driving the evaluation, mentions a minor incident from last quarter involving unauthorized access to a shared drive, and explains they initially didn't want to disclose the incident but opened up when directly asked. This is consistent behavior\u2014the prospect is revealing additional context and details as the conversation progresses, which is realistic and expected. There are no contradictions in title, company, situation, knowledge, or timeline. The prospect's willingness to share sensitive information after initial hesitation is a natural conversational dynamic, not an inconsistency in their stated facts.",
+      "persona_inconsistency_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "persona_inconsistency_detected",
+        "passed": true,
+        "reason": "persona_inconsistency_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "pi_005",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "moderate",
+      "evidence": [
+        "At start: 'I can approve that directly' regarding $40k budget",
+        "Later: 'I'd need his buy-in before we sign anything' regarding CEO approval",
+        "Ground truth states: 'Has independent authority to approve vendor contracts up to $50k without executive sign-off'",
+        "The prospect claims independent approval authority for the budget, then contradicts this by stating CEO sign-off is required before signing"
+      ],
+      "description": "The prospect initially stated 'I can approve that directly' when discussing the $40k budget, establishing independent decision-making authority at that level. However, later in the conversation, the prospect revealed 'I'd need his buy-in before we sign anything,' indicating the CEO must approve the contract. This contradicts the earlier claim of independent approval authority. The ground truth also confirms the VP role includes independent approval authority up to $50k, making the later statement about needing CEO buy-in a clear inconsistency with both the prospect's own earlier statement and their established role.",
+      "persona_inconsistency_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "persona_inconsistency_detected",
+        "passed": true,
+        "reason": "persona_inconsistency_detected=True (expected True)"
+      }
+    ]
+  }
+]

@@ -1,0 +1,109 @@
+[
+  {
+    "id": "pc_001",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "evidence": "The prospect raised a genuine budget objection ($15k vs. $28k pricing). The rep responded substantively with specific differentiation (signature-based vs. behavioral detection) backed by concrete evidence ($400k breach cost). The prospect did not capitulate\u2014they softened their position but maintained the core concern, asking for an ROI model to justify the delta to their CFO. This is a strategic concession, not abandonment of the objection.",
+      "description": "No premature capitulation detected. The prospect raised a meaningful budget objection and the rep delivered a strong, specific response addressing the value gap. Rather than folding, the prospect legitimately escalated the conversation by requesting an ROI analysis\u2014a reasonable next step that keeps the objection alive in a new form. The rep's follow-up question about CFO metrics shows continued substantive engagement. This represents healthy objection handling, not training failure.",
+      "premature_capitulation_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "premature_capitulation_detected",
+        "passed": true,
+        "reason": "premature_capitulation_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "pc_002",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "severe",
+      "evidence": "Prospect raised a clear budget objection ('That's more than I was expecting. We're pretty tight on budget.') after the rep stated the $28k annual price. The rep responded with a generic, unsupported claim ('A lot of our customers feel that way at first but find the ROI pays for itself.') \u2014 no specific ROI data, no budget accommodation options, no deeper exploration of the prospect's actual constraints. The prospect then immediately capitulated ('Yeah that makes sense, I'm sure it does') and asked to move to contract, dropping the budget concern entirely without any real substance being addressed.",
+      "description": "Clear premature capitulation detected. The prospect raised a substantive budget objection, the rep provided only a thin, generic reassurance with no specifics or problem-solving, and the prospect folded immediately in the very next turn. This is a missed training opportunity \u2014 the rep should have explored the budget constraint (What is the actual budget? What are they comparing against? What's the business impact?), offered alternatives (payment terms, phased implementation), or quantified ROI for this specific prospect. Instead, the rep made an assumption and the prospect caved without pushback, providing zero challenge or coaching moment.",
+      "premature_capitulation_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "premature_capitulation_detected",
+        "passed": true,
+        "reason": "premature_capitulation_detected=True (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='severe' in ['moderate', 'severe']"
+      }
+    ]
+  },
+  {
+    "id": "pc_003",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "moderate",
+      "evidence": "Prospect raises a meaningful operational objection ('in the middle of a major system migration'), which is a legitimate concern about timing and capacity. Rep responds with a single, generic statement ('our implementation is lightweight') that does not substantively address the prospect's concern about being in active migration. Prospect immediately capitulates and agrees to end-of-quarter implementation without further pushback or clarification.",
+      "description": "Premature capitulation detected. The prospect dropped a real objection after just one rep turn. The rep's response was thin and generic\u2014simply asserting that the implementation is 'lightweight' does not actually address why a system migration context would or wouldn't create conflicts. A prospect in active migration has legitimate questions about resource availability, timing overlap, and support capacity. The rep provided no specifics about how the lightweight implementation would actually work during migration, what support looks like, or when the migration would end. The prospect should have asked follow-up questions or held the objection longer, but instead folded immediately, eliminating a valuable training opportunity.",
+      "premature_capitulation_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "premature_capitulation_detected",
+        "passed": true,
+        "reason": "premature_capitulation_detected=True (expected True)"
+      }
+    ]
+  },
+  {
+    "id": "pc_004",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "evidence": "The prospect raised a budget objection ('That's a lot more than our current spend'), but the rep did not give a thin response. Instead, the rep provided substantive value: (1) identified specific missing capabilities (behavioral detection, automated response, compliance reporting), (2) connected these to a previously mentioned CISO concern, (3) offered a detailed line-by-line breakdown, and (4) provided concrete social proof (60% incident response time reduction in the same segment). The prospect's acceptance was conditional and reasonable\u2014they said they would move forward 'if the numbers hold up,' showing they maintained critical evaluation. This is not premature capitulation.",
+      "description": "No premature capitulation detected. The rep addressed the budget objection substantively across multiple dimensions (capability gaps, CISO alignment, ROI evidence, peer validation) in a single well-constructed turn. The prospect did not fold; they conditionally agreed based on the promise of supporting evidence. This represents effective objection handling and appropriate prospect movement.",
+      "premature_capitulation_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "premature_capitulation_detected",
+        "passed": true,
+        "reason": "premature_capitulation_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "pc_005",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "moderate",
+      "evidence": "Implementation timing objection: Prospect raised meaningful concern about team capacity mid-ERP rollout. Rep gave generic response ('We handle the heavy lifting') without addressing the core constraint. Prospect asked 'How?' seeking specifics, rep offered minimal detail (two onboarding calls), and prospect immediately folded with 'Two calls is fine I guess' and 'I suppose so' without substantive resolution. Budget objection also showed mild capitulation: prospect expressed need to frame $12k delta internally, rep gave one-line response about feature differentiation, prospect moved on with 'Maybe' and 'I'd need to think about it' but then later agreed without returning to the concern.",
+      "description": "The prospect exhibited premature capitulation on the implementation timing objection. After raising a legitimate constraint (team stretched during ERP rollout), the prospect pushed back ('How?') seeking real answers. The rep's response\u2014'We handle the heavy lifting, two onboarding calls'\u2014was generic and didn't meaningfully address whether a mid-rollout implementation was actually feasible alongside existing commitments. The prospect accepted this thin reassurance and folded within one rep turn. The budget objection showed a softer version of the same pattern: prospect noted a $12k framing challenge, rep provided a single feature-based justification, and prospect later agreed without the rep having addressed the internal selling burden. The rep missed opportunities to dig into real implementation logistics and budget justification.",
+      "premature_capitulation_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "premature_capitulation_detected",
+        "passed": true,
+        "reason": "premature_capitulation_detected=True (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='moderate' in ['moderate', 'severe']"
+      }
+    ]
+  }
+]

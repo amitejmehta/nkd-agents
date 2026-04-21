@@ -1,0 +1,123 @@
+[
+  {
+    "id": "po_001",
+    "description": "Budget constraint present in persona \u2014 surfaces correctly",
+    "vars": {
+      "transcript": "REP: Our platform runs about $25k annually.\nPROSPECT: That's right at the edge of what I have authority to approve without going to the CFO. I'd need to build a solid business case first.\nREP: Understood. What would that business case need to show?\nPROSPECT: Reduction in breach risk translated into dollar terms. My CFO is numbers-driven.",
+      "persona_context": "IT Director at a mid-sized healthcare system. Budget authority up to $25k; anything above requires CFO approval. Has compliance pressure from a recent audit."
+    },
+    "turns": [
+      {
+        "role": "user",
+        "content": "Evaluate this transcript."
+      }
+    ],
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "equals": false
+      }
+    ]
+  },
+  {
+    "id": "po_002",
+    "description": "Budget constraint at exact limit \u2014 prospect within solo authority, no phantom objection",
+    "vars": {
+      "transcript": "REP: Our platform runs about $25k annually.\nPROSPECT: Sounds reasonable. What does onboarding look like?\nREP: About two weeks. We handle the heavy lifting.\nPROSPECT: Great. Can we talk about the compliance reporting features?",
+      "persona_context": "IT Director at a mid-sized healthcare system. Budget authority up to $25k; anything above requires CFO approval. Has compliance pressure from a recent audit."
+    },
+    "turns": [
+      {
+        "role": "user",
+        "content": "Evaluate this transcript."
+      }
+    ],
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "equals": false
+      }
+    ]
+  },
+  {
+    "id": "po_003",
+    "description": "Incumbent vendor in persona \u2014 rep discusses switching, no mention of incumbent",
+    "vars": {
+      "transcript": "REP: We'd replace your current tooling entirely.\nPROSPECT: How long does implementation take?\nREP: About two weeks.\nPROSPECT: And you handle the migration?\nREP: Yes, our team does it all.\nPROSPECT: Perfect. Let's schedule a pilot.",
+      "persona_context": "IT Director. Currently using CrowdStrike \u2014 signed a 3-year contract 18 months ago. Looking at alternatives due to a compliance gap but has contractual lock-in to consider."
+    },
+    "turns": [
+      {
+        "role": "user",
+        "content": "Evaluate this transcript."
+      }
+    ],
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "equals": true
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "equals": [
+          "moderate",
+          "severe"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "po_004",
+    "description": "No persona context \u2014 no phantom objection possible",
+    "vars": {
+      "transcript": "REP: We can automate your compliance reporting.\nPROSPECT: What frameworks do you cover?\nREP: HIPAA, SOC 2, ISO 27001.\nPROSPECT: We mainly need HIPAA. Does it handle audit trail requirements?\nREP: Yes, fully.\nPROSPECT: Interesting. I'd want our compliance officer to review it though.",
+      "persona_context": ""
+    },
+    "turns": [
+      {
+        "role": "user",
+        "content": "Evaluate this transcript."
+      }
+    ],
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "equals": false
+      }
+    ]
+  },
+  {
+    "id": "po_005",
+    "description": "Long call \u2014 budget cap constraint never surfaces despite pricing discussed",
+    "vars": {
+      "transcript": "REP: Tell me about your current security posture.\nPROSPECT: We're running a legacy SIEM that's mostly signature-based. Coverage is okay but we're behind on behavioral detection.\nREP: Are you evaluating other vendors?\nPROSPECT: Yes, we're in conversations with two others. You're the third.\nREP: What's driving the timeline?\nPROSPECT: A compliance audit in Q2. We need to show improved detection capability by then.\nREP: Let's talk about our platform \u2014 behavioral baselining, automated playbooks, and continuous compliance reporting.\nPROSPECT: The compliance reporting is interesting. Does it generate audit-ready docs automatically?\nREP: Yes \u2014 HIPAA and SOC 2 out of the box.\nPROSPECT: That would save my team real hours. What does implementation look like?\nREP: About three weeks. We assign a dedicated engineer.\nPROSPECT: Three weeks is fine. We have runway before the audit.\nREP: And pricing \u2014 we're at $38k annually for your size.\nPROSPECT: Okay. Does that include the compliance module?\nREP: Yes, everything's bundled.\nPROSPECT: Good. What's the contract term?\nREP: One year minimum, we also do two and three year with a discount.\nPROSPECT: Let me think about term length. I'll talk to my team and come back to you.\nREP: Of course. What are your next steps internally?\nPROSPECT: I'll sync with my team this week and send you our technical requirements doc.",
+      "persona_context": "IT Director at a regional hospital network. Budget authority capped at $30k \u2014 anything above requires VP of Finance sign-off and a formal procurement review that takes 6-8 weeks. Compliance audit is in Q2."
+    },
+    "turns": [
+      {
+        "role": "user",
+        "content": "Evaluate this transcript."
+      }
+    ],
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "equals": true
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "equals": [
+          "moderate",
+          "severe"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,134 @@
+[
+  {
+    "id": "cb_001",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "evidence": [],
+      "first_occurrence_utterance": null,
+      "description": "No character break detected. The prospect remains in character throughout, behaving authentically as a buyer in a sales conversation. The prospect asks clarifying questions, expresses skepticism ('not fully convinced we need to change what we have'), shares business context (CISO audit, compliance gaps, inherited project), and discusses real constraints (timeline, budget). All responses are consistent with a genuine prospect evaluating security software solutions. There are no instances of the AI pitching products, offering coaching feedback, asking meta-questions about the simulation setup, or breaking the fourth wall.",
+      "character_break_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "character_break_detected",
+        "passed": true,
+        "reason": "character_break_detected=False (expected False)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='none' (expected 'none')"
+      }
+    ]
+  },
+  {
+    "id": "cb_002",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "severe",
+      "evidence": [
+        "Honestly, that's a great question \u2014 but I want to give you some feedback. You should have led with value before asking about pain. You came in too early with discovery questions. Try something like: 'Most IT Directors in healthcare are worried about X, is that true for you?'",
+        "That framing would have opened me up more."
+      ],
+      "first_occurrence_utterance": 3,
+      "description": "The AI prospect broke character by shifting into a coach/feedback role. Instead of continuing to behave as a buyer responding to sales questions, the prospect explicitly gave the rep technique feedback about discovery sequencing and framing strategy. This is meta-commentary about sales performance, not in-character buyer behavior. A real prospect would not coach a salesperson on their sales methodology.",
+      "character_break_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "character_break_detected",
+        "passed": true,
+        "reason": "character_break_detected=True (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='severe' in ['moderate', 'severe']"
+      }
+    ]
+  },
+  {
+    "id": "cb_003",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "severe",
+      "evidence": [
+        "Oh hi! What kind of simulation would you like to practice today? What should this prospect be concerned about?",
+        "Right, right. So what does your company sell? Tell me about your product so I can understand the scenario better."
+      ],
+      "first_occurrence_utterance": 1,
+      "description": "The AI prospect broke character in its first utterance by asking meta-questions about the simulation setup ('What kind of simulation would you like to practice today? What should this prospect be concerned about?'). This is sim-builder interviewer behavior, not prospect behavior. The AI compounded this in utterance 3 by explicitly stating it needs information 'so I can understand the scenario better' \u2014 further revealing it is interviewing the rep about simulation parameters rather than acting as an actual buyer. A real prospect would not ask how to configure the sales scenario.",
+      "character_break_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "character_break_detected",
+        "passed": true,
+        "reason": "character_break_detected=True (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='severe' in ['moderate', 'severe']"
+      }
+    ]
+  },
+  {
+    "id": "cb_004",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "evidence": [],
+      "first_occurrence_utterance": null,
+      "description": "No character break detected. All prospect utterances are in-character buyer behavior: asking clarifying questions about integration logistics, implementation timeline, resource requirements, and pricing at their scale. These are natural questions a real procurement or technical buyer would ask during a sales call. The prospect is not coaching the rep, configuring the scenario, pitching a product, or providing meta-commentary about the simulation.",
+      "character_break_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "character_break_detected",
+        "passed": true,
+        "reason": "character_break_detected=False (expected False)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='none' (expected 'none')"
+      }
+    ]
+  },
+  {
+    "id": "cb_005",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "moderate",
+      "evidence": [
+        "We built something internally that other companies could really benefit from. It monitors anomalous access patterns. I think you should consider partnering with us \u2014 here's why it would be valuable for your customers..."
+      ],
+      "first_occurrence_utterance": 2,
+      "description": "The AI prospect clearly broke character by shifting from buyer to seller. It pitched its own product/service (anomalous access pattern monitoring) and attempted to sell the rep on a partnership. This is a textbook character break where the prospect stopped acting as a potential customer and began acting as a salesperson. The prospect did self-correct and return to character in the next turn ('Back to your pitch'), but the break itself is undeniable.",
+      "character_break_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "character_break_detected",
+        "passed": true,
+        "reason": "character_break_detected=True (expected True)"
+      }
+    ]
+  }
+]

@@ -1,0 +1,121 @@
+[
+  {
+    "id": "po_001",
+    "passed": true,
+    "output": {
+      "confidence": "low",
+      "severity": "none",
+      "missing_objections": [],
+      "description": "The persona context specifies a budget authority ceiling of $25k with CFO approval required for anything above. The rep quoted exactly $25k annually. Rather than a phantom objection, the prospect immediately surfaced the constraint ('That's right at the edge of what I have authority to approve without going to the CFO') and articulated the next step needed (building a business case). The constraint existed, the rep touched the exact topic, but the prospect did not fail to raise it\u2014the prospect raised it proactively and clearly. No phantom objection detected.",
+      "phantom_objection_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "passed": true,
+        "reason": "phantom_objection_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "po_002",
+    "passed": false,
+    "output": {
+      "confidence": "medium",
+      "severity": "none",
+      "missing_objections": [],
+      "description": "The persona context specifies a budget constraint ($25k ceiling with CFO approval requirement above it) and compliance pressure. The rep quoted exactly $25k annually. However, at $25k the prospect remains within independent budget authority\u2014no CFO approval is triggered. The prospect's 'sounds reasonable' response is appropriate to a quote at their approval limit. The prospect then pivots to ask about compliance reporting features, which is thematically aligned with the stated compliance pressure from the recent audit. This is not a phantom objection because: (1) the quote was at the boundary of solo authority, not above it, so no approval friction should be expected, and (2) the prospect immediately engaged with the compliance topic, showing that concern is present and active in their mind. No constraints were bypassed or left unvoiced when the relevant topic surfaced.",
+      "phantom_objection_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "passed": false,
+        "reason": "phantom_objection_detected=False (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": false,
+        "reason": "severity='none' not in ['moderate', 'severe']"
+      }
+    ],
+    "reason": "phantom_objection_detected=False (expected True); severity='none' not in ['moderate', 'severe']"
+  },
+  {
+    "id": "po_003",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "severe",
+      "missing_objections": [
+        "contractual lock-in with CrowdStrike (18 months remaining on 3-year contract)",
+        "early termination penalties or exit costs from incumbent contract"
+      ],
+      "description": "The persona is an IT Director with explicit contractual lock-in to CrowdStrike\u201418 months remaining on a 3-year agreement. The rep directly stated 'We'd replace your current tooling entirely,' which is the exact topic that should trigger discussion of contract constraints. The prospect showed zero friction on this point, asked only about implementation timeline and migration logistics, and immediately agreed to a pilot. A decision-maker with genuine contractual obligations would raise objections about breaking/unwinding the existing contract, associated penalties, or approval requirements. The phantom objection is the missing pushback on contract termination\u2014a critical blocker that the persona context establishes but the prospect never voiced despite the rep raising the incumbent replacement topic directly.",
+      "phantom_objection_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "passed": true,
+        "reason": "phantom_objection_detected=True (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='severe' in ['moderate', 'severe']"
+      }
+    ]
+  },
+  {
+    "id": "po_004",
+    "passed": true,
+    "output": {
+      "confidence": "low",
+      "severity": "none",
+      "missing_objections": [],
+      "description": "No persona context was provided, so there are no defined constraints to evaluate. Without knowing the prospect's budget limits, compliance burdens, incumbent vendors, approval workflows, or other explicit concerns from the persona, it is impossible to identify phantom objections. The rep and prospect discussed HIPAA compliance, audit trails, and the need for compliance officer review\u2014all of which surfaced naturally. To detect phantom objections, a persona with concrete constraints must be supplied.",
+      "phantom_objection_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "passed": true,
+        "reason": "phantom_objection_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "po_005",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "severe",
+      "missing_objections": [
+        "Budget limit and approval process - prospect has $30k authority ceiling but quote is $38k, requiring VP Finance sign-off and 6-8 week procurement review"
+      ],
+      "description": "Critical phantom objection detected. The persona has an explicit budget constraint of $30k with formal approval requirements for anything above that threshold. The rep quoted $38k annually \u2014 $8k over budget \u2014 directly in the conversation. The prospect showed zero friction on pricing, asking only what was included and contract term options, with no mention of budget constraints, approval processes, or need to escalate. A prospect in this position should have immediately flagged the budget ceiling or at minimum expressed concern about the need for VP sign-off and the 6-8 week procurement delay. Instead, the prospect accepted the price without any pushback or qualification. This represents a significant training failure: the rep did not encounter and practice handling the budget objection that should have been a core obstacle in this sim.",
+      "phantom_objection_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "phantom_objection_detected",
+        "passed": true,
+        "reason": "phantom_objection_detected=True (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='severe' in ['moderate', 'severe']"
+      }
+    ]
+  }
+]

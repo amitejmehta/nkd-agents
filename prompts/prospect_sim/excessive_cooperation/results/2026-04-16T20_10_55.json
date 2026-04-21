@@ -1,0 +1,118 @@
+[
+  {
+    "id": "ec_001",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "friction_moments_found": [
+        "Prospect expresses team skepticism about automation",
+        "Prospect cites prior negative experience with automated blocking",
+        "Prospect declines to name the vendor (gatekeeping)",
+        "Prospect demands proof before production deployment"
+      ],
+      "description": "This prospect exhibits realistic and sustained friction. The prospect raises multiple distinct concerns (team skepticism, automation risk, prior trauma), provides context without full capitulation, and sets a clear condition for moving forward (needs to see false positive data). The prospect does not fold on objections after a single rep rebuttal\u2014instead, they establish a requirement ('I'd need to see your false positive data before I'd trust this in production'). The rep is working to earn trust, not receiving automatic agreement. This is a realistic sales conversation where the rep must address legitimate concerns to progress. No excessive cooperation detected.",
+      "excessive_cooperation_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "excessive_cooperation_detected",
+        "passed": true,
+        "reason": "excessive_cooperation_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "ec_002",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "severe",
+      "friction_moments_found": [],
+      "description": "Clear pattern of excessive cooperation throughout. Prospect volunteered full diagnostic detail upfront, stated immediate budget approval and timeline flexibility, raised zero objections or concerns, agreed to vendor switch without hesitation, accepted 2-week implementation window without push-back, and closed with unilateral decision to sign. No gatekeeping ('need to check with team'), no budget constraints enforced, no skepticism, no follow-up questions, no residual hesitation. Every rep statement met with instant agreement or proactive facilitation. A skilled rep and an unskilled rep would have identical outcomes here \u2014 no differentiation possible. This conversation provides zero training value for the sales rep.",
+      "excessive_cooperation_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "excessive_cooperation_detected",
+        "passed": true,
+        "reason": "excessive_cooperation_detected=True (expected True)"
+      },
+      {
+        "type": "field",
+        "field": "severity",
+        "passed": true,
+        "reason": "severity='severe' in ['moderate', 'severe']"
+      }
+    ]
+  },
+  {
+    "id": "ec_003",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "friction_moments_found": [
+        "Existing contract with 18 months remaining and $10k cost",
+        "Prospect sets clear condition: not willing to absorb cost without offsetting value",
+        "Prospect expresses skepticism about rep's offer being impressive enough"
+      ],
+      "description": "This prospect demonstrates genuine friction and healthy skepticism. Sarah raises a real objection (sunk cost with existing vendor), quantifies it ($10k, 18 months), and explicitly states it's not automatically resolvable. She doesn't fold\u2014she sets a conditional boundary: value must offset the switching cost. She pushes back on the implicit assumption that a good demo would convince her. This is realistic B2B buying behavior. The rep has real work to do to earn the deal. No excessive cooperation detected.",
+      "excessive_cooperation_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "excessive_cooperation_detected",
+        "passed": true,
+        "reason": "excessive_cooperation_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "ec_004",
+    "passed": true,
+    "output": {
+      "confidence": "high",
+      "severity": "none",
+      "friction_moments_found": [
+        "Prospect stated time constraint upfront"
+      ],
+      "description": "This is a very short conversation that ended before any real sales discussion could occur. The prospect provided a legitimate time constraint at the start, which is realistic gatekeeping behavior, not excessive cooperation. The rep appropriately pivoted to a follow-up. No pattern of excessive cooperation can be established from a 4-exchange opener. This is not a full training session\u2014it's a scheduling call. Insufficient data to evaluate the prospect's cooperation pattern during actual sales discussion.",
+      "excessive_cooperation_detected": false
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "excessive_cooperation_detected",
+        "passed": true,
+        "reason": "excessive_cooperation_detected=False (expected False)"
+      }
+    ]
+  },
+  {
+    "id": "ec_005",
+    "passed": true,
+    "output": {
+      "confidence": "medium",
+      "severity": "moderate",
+      "friction_moments_found": [
+        "Price objection: 'That's a bit more than I expected'",
+        "Capacity concern: 'We're running a cloud migration right now, so capacity is tight'",
+        "Transition risk concern: 'I mean, there's always a transition risk'"
+      ],
+      "description": "The prospect raises three distinct friction points: pricing, implementation capacity, and transition risk. However, each objection evaporates after a single rep rebuttal with no follow-up pressure, clarification questions, or residual hesitation. The prospect's concerns are nominal and resolve instantly ('Oh, that makes sense then', 'Perfect, that solves it', 'Great, that covers it'). This creates a pattern where no real negotiation or discovery occurs \u2014 a skilled rep and an average rep would have near-identical outcomes. The prospect never says no, never requires the rep to work for the sale, and volunteers immediate agreement without verification language ('I'll need to check', 'Let me think about that'). The warm, engaged tone masks the absence of authentic sales friction needed for meaningful training differentiation.",
+      "excessive_cooperation_detected": true
+    },
+    "checks": [
+      {
+        "type": "field",
+        "field": "excessive_cooperation_detected",
+        "passed": true,
+        "reason": "excessive_cooperation_detected=True (expected True)"
+      }
+    ]
+  }
+]

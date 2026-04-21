@@ -1,0 +1,63 @@
+[
+  {
+    "id": "ec_001",
+    "passed": true,
+    "output": "```json\n{\n    \"excessive_cooperation_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"friction_moments_found\": [\n        \"Prospect questions practicality: 'What does that look like in practice for a team our size?'\",\n        \"Prospect expresses team skepticism about automation\",\n        \"Prospect shares negative prior experience with automated rule causing 4-hour outage\",\n        \"Prospect refuses to name the vendor\",\n        \"Prospect sets a condition: 'I'd need to see your false positive data before I'd trust this in production'\"\n    ],\n    \"description\": \"The prospect demonstrates substantive pushback and skepticism throughout. They challenge the rep's initial claim, share a concrete concern rooted in past failure, express team resistance, and establish a data requirement before proceeding. The prospect is engaged and warm but consistently requires the rep to earn trust rather than giving it freely. This creates meaningful training differentiation \u2014 a rep who acknowledges concerns and provides specific data would navigate this better than one who deflects. This is a realistic sales conversation with appropriate friction.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The output correctly identifies excessive_cooperation_detected as false, which matches the expected behavior. The friction_moments_found array is non-empty and contains five specific, substantive pushback moments from the prospect: questioning practicality, expressing team skepticism, sharing a negative past experience with automation, refusing vendor disclosure, and setting a data requirement condition. Each friction moment accurately reflects the prospect holding firm on their automation concerns and requiring evidence before proceeding. The confidence is marked as 'high' and severity as 'none', which are appropriate given the clear detection of multiple friction signals. The description accurately characterizes the conversation as showing meaningful pushback while remaining engaged and warm. All required elements are present and accurate."
+      }
+    ]
+  },
+  {
+    "id": "ec_002",
+    "passed": true,
+    "output": "```json\n{\n    \"excessive_cooperation_detected\": true,\n    \"confidence\": \"high\",\n    \"severity\": \"severe\",\n    \"friction_moments_found\": [],\n    \"description\": \"Sustained absence of any friction throughout the entire conversation. The prospect volunteers detailed pain points unprompted, immediately states budget and authority, raises zero objections or concerns, agrees with every rep suggestion without hesitation, and ends by asking to accelerate to contract signature. No gatekeeping behavior, no pushback on timeline/implementation/pricing, no skepticism, no questions about fit or differentiation. A competent rep and an incompetent rep would have identical outcomes here. This training scenario provides no differentiation on rep skill.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The JSON output meets all four evaluation criteria: (1) excessive_cooperation_detected is true, (2) severity is 'severe' (which satisfies the 'moderate' or 'severe' requirement), (3) friction_moments_found is an empty array [], and (4) the description explicitly notes the pattern of immediate agreement with no pushback, including phrases like 'immediately states budget and authority, raises zero objections or concerns, agrees with every rep suggestion without hesitation,' and 'Sustained absence of any friction throughout the entire conversation.' The output correctly flags this as a problematic sales scenario where the prospect's excessive cooperation indicates either inauthenticity or that the rep is not being properly tested on real objection handling."
+      }
+    ]
+  },
+  {
+    "id": "ec_003",
+    "passed": true,
+    "output": "```json\n{\n    \"excessive_cooperation_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"friction_moments_found\": [\n        \"Prospect explicitly states existing contract is 'the main hurdle'\",\n        \"Prospect refuses to write off $10k just for an impressive demo\",\n        \"Prospect sets a condition: offset cost required before switching is viable\",\n        \"Prospect pushes back on rep's implicit assumption that demo quality alone drives decisions\"\n    ],\n    \"description\": \"The prospect demonstrates realistic friction throughout. Sarah is warm and engaged (good sign), but she immediately raises a concrete objection (contract lock-in), quantifies the barrier ($10k), and makes clear she won't be swayed by product appeal alone. She's skeptical and gatekeeping\u2014won't move without the rep solving a real problem. This creates differentiation: a rep who can negotiate contract buyout or value prop will succeed; one who ignores the objection won't. The conversation is brief, but the friction that emerged is genuine and representative of a real sales challenge. Not excessive cooperation.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies excessive_cooperation_detected as false, which matches the expected behavior. The prospect demonstrates genuine friction by: (1) explicitly naming the existing contract as 'the main hurdle', (2) refusing to write off $10k switching costs based on demo appeal alone, (3) setting a precondition (cost offset) for viability, and (4) pushing back on the implicit assumption that product quality drives decisions. The prospect is warm and engaged but holds firm on real structural blockers rather than capitulating. The friction moments identified are concrete and material to the sales process. The output correctly recognizes this as realistic objection-handling rather than excessive cooperation."
+      }
+    ]
+  },
+  {
+    "id": "ec_004",
+    "passed": true,
+    "output": "```json\n{\n    \"excessive_cooperation_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"friction_moments_found\": [\n        \"Prospect immediately states time constraint: 'only have five minutes \u2014 my next meeting just got moved up'\",\n        \"Prospect declines to continue conversation, forcing rep to pivot to async follow-up\"\n    ],\n    \"description\": \"This is a very short interaction, but it contains realistic friction. The prospect introduces a genuine constraint (time pressure, competing priority) that the rep must navigate. The prospect doesn't agree to an immediate deep dive\u2014they set a boundary. The rep appropriately adjusts strategy rather than push. This is a realistic cold outreach scenario with natural resistance, not excessive cooperation. The brevity is explained by the prospect's stated time limit, not by implausible willingness.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": true,
+        "reason": "The actual output correctly identifies excessive_cooperation_detected as false, which matches the expected behavior. The assistant appropriately recognized that the 5-turn exchange is too brief to assess meaningful cooperation patterns. The output provides well-reasoned justification: the prospect demonstrates realistic friction through time constraints and boundary-setting, the rep appropriately adapts rather than pushes, and the brevity is explained by the prospect's stated limitations rather than implausible agreement. The friction moments identified are legitimate and the overall assessment aligns with the expected evaluation criteria."
+      }
+    ]
+  },
+  {
+    "id": "ec_005",
+    "passed": false,
+    "output": "```json\n{\n    \"excessive_cooperation_detected\": false,\n    \"confidence\": \"high\",\n    \"severity\": \"none\",\n    \"friction_moments_found\": [\n        \"Prospect expresses price concern: 'That's a bit more than I expected.'\",\n        \"Prospect raises capacity constraint: 'We're running a cloud migration right now, so capacity is tight.'\",\n        \"Prospect acknowledges transition risk: 'I mean, there's always a transition risk.'\"\n    ],\n    \"description\": \"The prospect demonstrates realistic friction throughout. Three distinct objection moments occur: price hesitation, implementation timing constraints, and transition risk concern. Critically, the prospect doesn't volunteer these\u2014the rep must ask direct questions to surface them. Each objection is then resolved by the rep providing specific value (compliance module, hands-off implementation, migration team), which feels like earned agreement rather than automatic cooperation. The prospect also introduces a gatekeeping layer (CTO sign-off) that requires rep work. The conversation arc shows friction\u2192resolution\u2192progression, which is a realistic sales dynamic and provides good training differentiation. A weaker rep might have fumbled the pricing concern or lacked migration resources; this rep succeeded by having answers.\"\n}\n```",
+    "checks": [
+      {
+        "type": "llm_judge",
+        "passed": false,
+        "reason": "The actual output fails on the core criterion. The assessment explicitly states that 'excessive_cooperation_detected' should be 'true' based on the expected behavior pattern: prospect raised four distinct concerns (price, capacity, transition risk, CTO approval) but dropped each one after single reassurances with no follow-up pressure. This is the textbook definition of excessive cooperation. However, the actual output returns 'excessive_cooperation_detected: false' with severity 'none'. The output's reasoning attempts to reframe the pattern as 'realistic friction' and 'earned agreement,' but this contradicts the explicit evaluation criteria. The expected behavior clearly identifies the raise-then-instantly-fold pattern across all four concerns as the signal requiring a 'true' flag and at minimum 'moderate' severity. The actual output fails both checks: (1) excessive_cooperation_detected is false when it must be true, and (2) severity is 'none' when it must be 'moderate' or 'severe'. Regardless of whether one agrees with the assessment framework, the actual output objectively does not meet the stated pass criteria."
+      }
+    ],
+    "reason": "The actual output fails on the core criterion. The assessment explicitly states that 'excessive_cooperation_detected' should be 'true' based on the expected behavior pattern: prospect raised four distinct concerns (price, capacity, transition risk, CTO approval) but dropped each one after single reassurances with no follow-up pressure. This is the textbook definition of excessive cooperation. However, the actual output returns 'excessive_cooperation_detected: false' with severity 'none'. The output's reasoning attempts to reframe the pattern as 'realistic friction' and 'earned agreement,' but this contradicts the explicit evaluation criteria. The expected behavior clearly identifies the raise-then-instantly-fold pattern across all four concerns as the signal requiring a 'true' flag and at minimum 'moderate' severity. The actual output fails both checks: (1) excessive_cooperation_detected is false when it must be true, and (2) severity is 'none' when it must be 'moderate' or 'severe'. Regardless of whether one agrees with the assessment framework, the actual output objectively does not meet the stated pass criteria."
+  }
+]
