@@ -1,19 +1,6 @@
 # Backlog
 
-Source of truth for nightly autonomous work. The orchestrator consumes the top `status: ready` items top-down (list order = priority). Only the orchestrator and humans edit this file.
-
-## Schema
-
-Each item is an H2 with a bullet list. Fields:
-
-- `status`: `ready` | `in-progress` | `done`
-- `loc-ceiling`: integer — hard cap on net (adds − dels); worker refuses to exceed
-- `acceptance`: bullet list of observable behaviors — the contract
-- `non-goals`: (optional) bullet list — what this item explicitly is **not**
-- `pr`: (added by orchestrator) PR URL once opened
-- `last-attempt`: (added by orchestrator on failure) date + reason
-
-Add new items under `## Ready` in priority order. Humans move items to `## Done` on merge.
+Nightly orchestrator picks the top `status: ready` items in order. Only the orchestrator and humans edit this file.
 
 ---
 
