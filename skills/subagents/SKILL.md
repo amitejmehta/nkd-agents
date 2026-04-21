@@ -1,37 +1,18 @@
-# Skill: Agent Patterns
+# Skill: Subagents
 
-Spawn agents via `bash`. Each is a full `nkd` instance with the same tools as you.
+Spawn agents via `bash`. Each is a full `nkd` instance.
 
-## Subagents (parallel)
-Fan out across tasks — `&` handles parallelisation inside the command:
 ```bash
+# parallel
 nkd -p "analyze auth.py" 2>/dev/null > /tmp/auth.txt &
 nkd -p "analyze db.py" 2>/dev/null > /tmp/db.txt &
 wait && cat /tmp/auth.txt /tmp/db.txt
+
+# background
+nkd -p "run audit" > /tmp/audit.txt 2>/dev/null &
+
+# scheduled (cron strips PATH — use full path)
+echo "0 2 * * * $(which nkd) -p 'run audit'" | crontab -
 ```
 
-## Long-running tasks (Ralph Wiggum loop)
-Wrap in a `while` loop. Each iteration is a fresh context; state lives in files or git:
-```bash
-while true; do
-  nkd -p "read docs/todo.md, implement the next task, commit, update todo.md"
-  [[ $(grep -c "^- \[ \]" docs/todo.md) -eq 0 ]] && break
-done
-```
-
-## Background & scheduled agents
-Because it's just a process, run it anywhere. Use `&` in the command to background it:
-```bash
-nkd -p "run nightly audit" > /tmp/audit.txt 2>/dev/null &  # background
-echo "0 2 * * * nkd -p 'run nightly audit'" | crontab -    # scheduled
-```
-
-> **Note:** `cron` runs with a stripped `PATH` — always use the full path to `nkd` (`which nkd`). The `ANTHROPIC_API_KEY` is inherited from the user environment on macOS.
-
-## Advanced
-- **Multi-agent teams with a shared channel** — see `multi_agent.md`
-
-## Best practices
-- Always silence stderr: `2>/dev/null`
-- Always redirect stdout to a file per agent
-- Give each agent full context in its prompt — it has no shared state
+Give each agent full context in its prompt — no shared state.
