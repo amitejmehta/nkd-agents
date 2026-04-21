@@ -144,7 +144,7 @@ class CLI:
         self.mode = list(MODE_PREFIXES)[0]
         self.model_idx = 0
         self.kwargs = {
-            "model": MODELS[0],
+            "model": os.environ.get("NKD_MODEL", MODELS[0]),
             "max_tokens": MAX_TOKENS,
             "cache_control": {"type": "ephemeral"},
         }
