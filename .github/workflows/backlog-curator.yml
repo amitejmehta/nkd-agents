@@ -2,7 +2,7 @@ name: Backlog Curator
 
 on:
   schedule:
-    - cron: "0 10 * * 1"  # 05:00 CT Mondays
+    - cron: "0 6 * * 0"  # 00:00 CT Sundays (06:00 UTC)
   workflow_dispatch:
 
 concurrency:
