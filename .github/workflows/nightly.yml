@@ -28,24 +28,23 @@ jobs:
       - name: Build image
         run: docker build -t nkd-agents:nightly .
 
-      - name: Configure git identity (used inside the container via bind mount)
-        run: |
-          git config --global user.name  "nkd-agents-bot"
-          git config --global user.email "nkd-agents-bot@users.noreply.github.com"
-
       - name: Run orchestrator
         run: |
           docker run --rm \
             -v "$PWD:/workspace" \
             -w /workspace \
-            -v "$HOME/.gitconfig:/home/pwuser/.gitconfig:ro" \
             -e ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}" \
             -e GH_TOKEN="${{ secrets.NKD_GH_TOKEN }}" \
             -e GITHUB_TOKEN="${{ secrets.NKD_GH_TOKEN }}" \
             -e NKD_MODEL="claude-opus-4-7" \
             -e NKD_LOG_LEVEL=20 \
             nkd-agents:nightly \
-            bash -lc 'nkd -p "$(cat .github/nkd/orchestrator.md)"'
+            bash -lc '
+              git config --global user.name  "nkd-agents-bot"
+              git config --global user.email "nkd-agents-bot@users.noreply.github.com"
+              gh auth setup-git
+              nkd -p "$(cat .github/nkd/orchestrator.md)"
+            '
 
       - name: Upload worker logs
         if: always()
