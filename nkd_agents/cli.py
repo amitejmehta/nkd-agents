@@ -3,6 +3,8 @@ import asyncio
 import json
 import logging
 import os
+import re
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -88,6 +90,47 @@ SUMMARY_PROMPT = (
     "file paths/branch names/PR numbers/URLs, current task state, errors and resolutions, "
     "pending work. Be direct, use bullet points, no preamble."
 )
+
+
+def _run(cmd: list[str], timeout: int = 2) -> str:
+    """Run a subprocess, return stripped stdout or '' on any failure."""
+    try:
+        return (
+            subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=timeout)
+            .decode()
+            .strip()
+        )
+    except Exception:
+        return ""
+
+
+def _git_context() -> str | None:
+    """Return a ## Git Context block for the system prompt, or None if not a git repo."""
+    if not _run(["git", "rev-parse", "--is-inside-work-tree"]):
+        return None
+
+    lines: list[str] = []
+
+    remote = _run(["git", "remote", "get-url", "origin"])
+    if remote:
+        m = re.search(r"[:/]([^/:]+/[^/.]+?)(?:\.git)?$", remote)
+        lines.append(f"Repo: {m.group(1) if m else remote}")
+
+    branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    if branch == "HEAD":
+        lines.append(
+            f"Branch: detached HEAD @ {_run(['git', 'rev-parse', '--short', 'HEAD'])}"
+        )
+    elif branch:
+        lines.append(f"Branch: {branch}")
+
+    pr_raw = _run(
+        ["gh", "pr", "view", "--json", "number", "--jq", ".number"], timeout=4
+    )
+    if pr_raw:
+        lines.append(f"PR: #{pr_raw}")
+
+    return ("## Git Context\n" + "\n".join(lines)) if lines else None
 
 
 async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> None:
@@ -181,6 +224,8 @@ class CLI:
         if not parts:
             return None
         parts.append(f"CWD: {Path.cwd()}\nHOME: {Path.home()}")
+        if git := _git_context():
+            parts.append(git)
         return "\n\n".join(parts).strip()
 
     def build_message(self, text: str) -> str:
