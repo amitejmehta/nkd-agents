@@ -4,8 +4,29 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
-## Sync docs/cli.md auto-compact + env vars with code
+Preserve referenced document paths in auto-compact summary
+- status: ready
+- loc-ceiling: 3
+- acceptance:
+  - `SUMMARY_PROMPT` in `nkd_agents/cli.py` instructs the summarizer to preserve paths to referenced documents (images, PDFs, PPTX, etc.) alongside the existing list of things to retain
+  - No other behavior changes
+- non-goals:
+  - Do not restructure `SUMMARY_PROMPT` into a multi-line template
+  - Do not add new compaction logic or thresholds
 
+Add Agent Skills frontmatter to pre-existing SKILL.md files
+- status: ready
+- loc-ceiling: 30
+- acceptance:
+  - `skills/ai_research/SKILL.md`, `skills/parallel_worktrees/SKILL.md`, `skills/pptx/SKILL.md`, `skills/prompt_eval/SKILL.md`, `skills/subagents/SKILL.md` each start with a YAML frontmatter block containing `name` (kebab-case, matches directory) and `description` (1 sentence: what + when to use)
+  - `description` fields are derived from the existing skill body, not invented
+  - No other content in those files changes
+- non-goals:
+  - Do not touch `skills/code_review`, `skills/backlog_item`, `skills/pr_watch` (already have frontmatter)
+  - Do not rewrite skill bodies
+  - Do not add `license`, `compatibility`, or `allowed-tools` fields
+
+Sync docs/cli.md auto-compact + env vars with code
 - status: ready
 - loc-ceiling: 40
 - Auto-compact is LLM-summarization now (`agent()` call with `NKD_COMPACT_MODEL`, target 15); docs still describe bulk-dropping `tool_use`→`tool_result` pairs with target 30. Rewrite the "Auto-Compact" section to match `auto_compact()` in `nkd_agents/cli.py`.
@@ -13,8 +34,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - Remove the `ctrl+k` keybinding row and the trailing "The `ctrl+k` keybinding still exists…" sentence — no such binding exists in `CLI.__init__`.
 - Remove the `NKD_COMPACT` row — the env var is not read anywhere in `nkd_agents/`.
 
-## Sync docs/framework.md structured output + caching with code
-
+Sync docs/framework.md structured output + caching with code
 - status: ready
 - loc-ceiling: 40
 - OpenAI section currently claims `response_format=Weather` is the kwarg; actual `nkd_agents.openai.agent` has no such translation and the working example uses `text={"format": output_format(Weather)}`. Rewrite the OpenAI "Structured Output" subsection to match the example in `examples/openai/test_structured_output.py`.
@@ -22,16 +42,14 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - Keep the Anthropic structured-output example as-is (`output_config={"format": output_format(Weather)}`) — it matches `examples/anthropic/test_structured_output.py`.
 - non-goals: do not change any runtime behavior; docs-only PR.
 
-## Fix docs/tools.md bash timeout return value
-
+Fix docs/tools.md bash timeout return value
 - status: ready
 - loc-ceiling: 10
 - `docs/tools.md` states `bash()` returns `"Error: Command timed out after {timeout} seconds"` on timeout. The code in `nkd_agents/tools.py` raises `TimeoutError(f"Command timed out after {timeout} seconds: {command}")` instead.
 - Replace the "Or `"Error: Command timed out after {timeout} seconds"`." line with an explicit note that `bash` raises `TimeoutError` on timeout (after `SIGKILL`-ing the process group), and that the framework's tool dispatcher surfaces the exception as an error string to the model.
 - Also remove the stale `"Error executing command: {str(e)}"` line in the docstring snippet — `bash()` does not catch generic exceptions, only `asyncio.TimeoutError`.
 
-## Simplify `_block_type` / `_has_tool_content` in cli.py
-
+Simplify `_block_type` / `_has_tool_content` in cli.py
 - status: ready
 - loc-ceiling: 25
 - `_has_tool_content` is called from exactly one site (`auto_compact`) with a hard-coded `"tool_result"`. Drop the `block_type` parameter and inline the constant.
