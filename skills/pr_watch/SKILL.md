@@ -23,29 +23,29 @@ gh pr checks <N> --watch
 
 ## 3. Copilot review
 
-After CI is green, check if Copilot review is enabled for this repo:
+After CI is green, check if Copilot review is enabled:
 
 ```bash
-sleep 300  # Copilot review takes ~5 min; sleep more if checks are still running
+sleep 300  # Copilot takes ~5 min; sleep more if CI is still running
 gh api repos/OWNER/REPO/pulls/<N>/reviews \
-  --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer")]'
+  --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")]'
 ```
 
 - **Empty array** → Copilot review not enabled; stop here.
-- **Non-empty** → review exists. Fetch inline comments:
+- **Non-empty** → fetch inline comments:
 
 ```bash
 gh api repos/OWNER/REPO/pulls/<N>/comments \
-  --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer") | {id, path, line, body}]'
+  --jq '[.[] | select(.user.login == "Copilot") | {id, path, line, body}]'
 ```
 
 For each comment, decide: **valid** (real bug / clear improvement) or **noise** (style opinion, false positive).
 
-- **Valid** → fix, push, then restart from step 1.
+- **Valid** → fix, push, restart from step 1.
 - **Noise** → reply explaining the disagreement:
   ```bash
-  gh api repos/OWNER/REPO/pulls/comments/<comment-id>/replies \
-    -X POST -f body="<your reasoning>"
+  gh api repos/OWNER/REPO/pulls/<N>/comments \
+    -X POST -f body="<reasoning>" -F in_reply_to=<comment-id>
   ```
 
 Loop: after each push, re-sleep 5 min and re-check for new Copilot comments. Stop when no new valid comments remain.
