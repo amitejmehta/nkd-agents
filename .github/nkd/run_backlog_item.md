@@ -8,6 +8,7 @@ You are a worker subprocess. One backlog item. One branch. One PR. Then stop.
 - The backlog item is appended below this prompt after `--- ITEM ---`, verbatim from `BACKLOG.md`.
 - You are Sonnet. Match the style of existing files.
 - Read `CLAUDE.md` before writing code. It is the source of truth for verification commands.
+- Read `skills/backlog_item/SKILL.md` first — it governs how you implement.
 
 ## Steps
 
