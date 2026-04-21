@@ -13,11 +13,7 @@ One item. One branch. One PR. The item is appended below after `--- ITEM ---`.
    git add -A && git commit -m "<conventional-commit>" && git push -u origin HEAD
    ```
 6. **Open PR.** Title = commit title. Body = acceptance checklist + LOC delta.
-7. **Watch CI until green.** Fix and push until all checks pass.
-   ```bash
-   gh pr checks <N> --watch
-   # if any failed: gh run view <run-id> --log-failed, fix, push, repeat
-   ```
+7. **Watch CI until green.** Follow `skills/pr_watch/SKILL.md`.
 8. **Stop.** Do not merge. Do not touch `BACKLOG.md`.
 
 If the item is ambiguous or can't fit under `loc-ceiling`: print `SKIP: <reason>` and exit without opening a PR.
