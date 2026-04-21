@@ -37,6 +37,7 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD:/workspace" \
+            -w /workspace \
             -v "$HOME/.gitconfig:/home/pwuser/.gitconfig:ro" \
             -e ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}" \
             -e GH_TOKEN="${{ secrets.NKD_GH_TOKEN }}" \
