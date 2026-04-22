@@ -29,7 +29,6 @@ caffeinate -u -t 3600 &  # keep awake for 1 hour
 | `esc esc` | **Interrupt** — cancel the running LLM call or tool execution |
 | `ctrl+l` | **Cycle model**: sonnet → opus → haiku → sonnet (logged on switch, applies to next message) |
 | `ctrl+u` | Clear input line |
-| `ctrl+k` | **Compact history** — strip all tool call/result messages from context; appends a notification message (see `NKD_COMPACT` in [Configuration](#configuration)) |
 | `ctrl+c` / `ctrl+d` | Exit — session auto-saved to `~/.nkd-agents/sessions/{YYYYMMDDHHMMSS}.json` |
 
 **Message queuing:** you can type and submit a new message while the LLM is still responding — it queues and runs as soon as the current turn completes.
@@ -109,13 +108,13 @@ Each warm costs 0.1× (a cache read). Break-even vs a fresh write is 12 warms (1
 
 ## Auto-Compact
 
-Before every user message is sent, `nkd` checks if the message history exceeds `NKD_AUTO_COMPACT_AFTER` (default: **50**). When it does, it bulk-drops `tool_use`→`tool_result` **pairs** from the oldest messages down toward `NKD_AUTO_COMPACT_TARGET` (default: **30**). No summarization, no LLM call — just eviction of stale tool noise.
+Before every user message is sent, `nkd` checks if the message history exceeds `NKD_AUTO_COMPACT_THRESHOLD` (default: **50**). When it does, it calls `agent()` with `NKD_COMPACT_MODEL` (default: **`claude-haiku-4-5`**) to summarize the oldest messages, replacing them with a single `<conversation_summary>` user message. The most recent `NKD_AUTO_COMPACT_TARGET` messages (default: **15**) are preserved verbatim.
 
-**Pair safety:** tool_use (assistant) and tool_result (user) messages are always dropped together. Orphaning either side would break the Anthropic API contract.
+**Boundary safety:** the compaction boundary walks back past any trailing `assistant` turn or orphaned `tool_result` so a `tool_use`/`tool_result` pair is never split — that would break the Anthropic API contract. If `messages[0]` is already a `<conversation_summary>`, it's fed back into the summarization LLM so the new summary naturally incorporates it.
 
-**Cache economics:** The key design choice is the gap between trigger (50) and target (30). Old behavior dropped ~4 messages per turn, meaning the cache prefix changed every turn — you paid full write cost (1.25×) on every call instead of cache-read cost (0.1×). With a 20-message gap, you get ~3 human turns of cache stability between compactions. The math: removing 5k tokens to go from 20k→15k and paying 1.25×15k is far worse than reading 20k at 0.1×.
+**Why summarize instead of drop?** Bulk-dropping tool pairs loses signal (decisions, file paths, errors) that the model needs later. A cheap Haiku call (~2k output tokens) preserves that signal while still shrinking context dramatically.
 
-**Why 50/30?** The right thresholds depend on your session patterns. To find yours:
+**Why 50/15?** The right thresholds depend on your session patterns. To find yours:
 
 ```bash
 nkd -p "
@@ -127,9 +126,7 @@ threshold would preserve 3–4 full human turns of context? Give a single recomm
 "
 ```
 
-For this repo's session data: a typical human turn spans **6–12 messages** including tool round-trips. A trigger of 50 with target 30 preserves 4–8 full user turns before eviction, with enough headroom between compactions to amortize the cache write cost.
-
-The `ctrl+k` keybinding still exists for manual full compaction when you want it.
+For this repo's session data: a typical human turn spans **6–12 messages** including tool round-trips. A trigger of 50 with target 15 preserves 1–2 recent user turns verbatim, with the rest summarized.
 
 ## Configuration
 
@@ -139,6 +136,7 @@ All config via environment variables. Set in `~/.nkd-agents/.env` (loaded at sta
 |----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | *(required)* | Anthropic API key |
 | `NKD_LOG_LEVEL` | `20` (INFO) | Python logging level integer |
+| `NKD_MODEL` | `claude-sonnet-4-6` | Initial model (cycle at runtime via `ctrl+l`) |
 | `NKD_THINKING` | `{"type": "adaptive"}` | JSON thinking config passed to API |
 | `NKD_MAX_TOKENS` | `20000` | Max tokens per response |
 | `NKD_MAX_CACHE_WARMS` | `2` | Max cache warm-ups per turn |
@@ -146,6 +144,6 @@ All config via environment variables. Set in `~/.nkd-agents/.env` (loaded at sta
 | `NKD_PLAN_MODE` | `"READ ONLY!"` | Prefix appended in Plan mode |
 | `NKD_SOCRATIC_MODE` | `"ASK, DON'T TELL!"` | Prefix appended in Socratic mode |
 | `NKD_CACHE_WARM_MSG` | `"Sending msg to warm cache. Just respond: \"okay\""` | Message sent during cache warm |
-| `NKD_COMPACT` | `"FYI: removed tool calls/results to reduce context size."` | Message appended after compact |
-| `NKD_AUTO_COMPACT_AFTER` | `50` | Auto-compact trigger — when total messages exceed this, bulk-drop old tool pairs (see [Auto-Compact](#auto-compact)) |
-| `NKD_AUTO_COMPACT_TARGET` | `30` | After compaction, protect the most recent N messages — the gap (50→30) determines how many turns of cache stability you get |
+| `NKD_AUTO_COMPACT_THRESHOLD` | `50` | Auto-compact trigger — when total messages exceed this, summarize old messages (see [Auto-Compact](#auto-compact)) |
+| `NKD_AUTO_COMPACT_TARGET` | `15` | After compaction, preserve this many most-recent messages verbatim |
+| `NKD_COMPACT_MODEL` | `claude-haiku-4-5` | Model used to summarize old messages during auto-compact |
