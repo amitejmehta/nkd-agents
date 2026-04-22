@@ -85,7 +85,8 @@ def _has_tool_content(msg: MessageParam, block_type: str) -> bool:
 
 SUMMARY_PROMPT = (
     "Summarize the conversation above concisely. Preserve: key decisions and rationale, "
-    "file paths/branch names/PR numbers/URLs, current task state, errors and resolutions, "
+    "file paths/branch names/PR numbers/URLs, paths to referenced documents (images, PDFs, PPTX, etc.), "
+    "current task state, errors and resolutions, "
     "pending work. Be direct, use bullet points, no preamble."
 )
 
