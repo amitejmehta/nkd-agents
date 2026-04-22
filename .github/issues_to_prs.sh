@@ -96,7 +96,7 @@ EOF
     -e PROMPT="$PROMPT" \
     "$NKD_IMAGE" \
     bash -lc '
-      git config --global user.name  "nkd-agents-bot"
+      git config --global user.name  "nkd-agent"
       git config --global user.email "nkd-agents-bot@users.noreply.github.com"
       gh auth setup-git
       nkd -p "$PROMPT"
