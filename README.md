@@ -31,3 +31,5 @@ To update later: `nkd-update`
 ```bash
 pip install git+https://github.com/amitejmehta/nkd-agents.git
 ```
+
+<!-- PR for #69 -->
