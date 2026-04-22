@@ -60,7 +60,7 @@ run_issue() {
     return 0
   fi
 
-  local TITLE SLUG LOG PROMPT
+  local TITLE SLUG LOG PROMPT WORKDIR
   TITLE=$(gh issue view "$N" --repo "$REPO" --json title --jq .title)
   SLUG=$(
     echo "$TITLE" \
@@ -70,8 +70,13 @@ run_issue() {
   )
   SLUG="${SLUG:-issue-$N}-$N"
   LOG="/tmp/worker-$SLUG.log"
+  WORKDIR="/tmp/nkd-work-$SLUG"
 
   echo "issue #$N: dispatching (slug=$SLUG)"
+
+  # Isolated clone per issue so parallel workers don't stomp each other.
+  rm -rf "$WORKDIR"
+  git clone --no-local "$PWD" "$WORKDIR"
 
   PROMPT=$(
     cat <<EOF
@@ -86,7 +91,7 @@ EOF
 
   # One container per issue. Don't let one failure take down the batch.
   timeout "$PER_ISSUE_TIMEOUT" docker run --rm \
-    -v "$PWD:/workspace" \
+    -v "$WORKDIR:/workspace" \
     -w /workspace \
     -e ANTHROPIC_API_KEY \
     -e GH_TOKEN \
@@ -97,11 +102,14 @@ EOF
     "$NKD_IMAGE" \
     bash -lc '
       git config --global user.name  "nkd-agent"
-      git config --global user.email "nkd-agents-bot@users.noreply.github.com"
+      git config --global user.email "nkd-agent@users.noreply.github.com"
+      git remote set-url origin "https://github.com/'"$REPO"'.git"
       gh auth setup-git
       nkd -p "$PROMPT"
     ' > "$LOG" 2>&1 \
     || echo "issue #$N: worker exited non-zero (see $LOG)"
+
+  rm -rf "$WORKDIR"
 }
 
 # Dispatch all issues in parallel; wait for all to finish.
