@@ -1,3 +1,7 @@
+---
+name: pptx
+description: Generate PowerPoint (.pptx) files with pptxgenjs and convert to PDF via LibreOffice; use when creating slide decks programmatically with per-batch visual verification.
+---
 # Skill: Create PowerPoint Presentations
 
 Use `pptxgenjs` (Node.js) to generate `.pptx` files, then convert to PDF with LibreOffice.
