@@ -34,5 +34,5 @@ jobs:
           GH_TOKEN: ${{ secrets.NKD_GH_TOKEN }}
           REPO: ${{ github.repository }}
           NKD_IMAGE: nkd-agents:issues
-          NKD_MODEL: claude-opus-4-7
+          NKD_MODEL: claude-sonnet-4-6
         run: bash .github/issues_to_prs.sh
