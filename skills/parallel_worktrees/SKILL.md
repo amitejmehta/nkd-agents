@@ -1,3 +1,7 @@
+---
+name: parallel-worktrees
+description: Use git worktrees to implement multiple features or N alternative approaches to the same task sequentially in a single context; use when you need full context retained across several branches without subtasks.
+---
 # Skill: Multiple Worktrees (Sequential)
 
 Use git worktrees to implement multiple features or N alternative approaches to the same task — one at a time in a single context.
