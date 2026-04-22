@@ -5,7 +5,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 ## Ready
 
 Preserve referenced document paths in auto-compact summary
-- status: ready
+- status: in-progress
 - loc-ceiling: 3
 - acceptance:
   - `SUMMARY_PROMPT` in `nkd_agents/cli.py` instructs the summarizer to preserve paths to referenced documents (images, PDFs, PPTX, etc.) alongside the existing list of things to retain
@@ -15,7 +15,7 @@ Preserve referenced document paths in auto-compact summary
   - Do not add new compaction logic or thresholds
 
 Add Agent Skills frontmatter to pre-existing SKILL.md files
-- status: ready
+- status: in-progress
 - loc-ceiling: 30
 - acceptance:
   - `skills/ai_research/SKILL.md`, `skills/parallel_worktrees/SKILL.md`, `skills/pptx/SKILL.md`, `skills/prompt_eval/SKILL.md`, `skills/subagents/SKILL.md` each start with a YAML frontmatter block containing `name` (kebab-case, matches directory) and `description` (1 sentence: what + when to use)
@@ -27,7 +27,7 @@ Add Agent Skills frontmatter to pre-existing SKILL.md files
   - Do not add `license`, `compatibility`, or `allowed-tools` fields
 
 Sync docs/cli.md auto-compact + env vars with code
-- status: ready
+- status: in-progress
 - loc-ceiling: 40
 - Auto-compact is LLM-summarization now (`agent()` call with `NKD_COMPACT_MODEL`, target 15); docs still describe bulk-dropping `tool_use`→`tool_result` pairs with target 30. Rewrite the "Auto-Compact" section to match `auto_compact()` in `nkd_agents/cli.py`.
 - Rename `NKD_AUTO_COMPACT_AFTER` → `NKD_AUTO_COMPACT_THRESHOLD` in the config table; update default target from 30 → 15; add a `NKD_COMPACT_MODEL` row (default `claude-haiku-4-5`); add the already-supported `NKD_MODEL` row.
