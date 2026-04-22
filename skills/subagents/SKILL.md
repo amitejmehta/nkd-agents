@@ -1,3 +1,7 @@
+---
+name: subagents
+description: Spawn full nkd agent instances via bash for parallel, background, or scheduled work with no shared state; use when fanning out isolated tasks that each need their own context.
+---
 # Skill: Subagents
 
 Spawn agents via `bash`. Each is a full `nkd` instance.

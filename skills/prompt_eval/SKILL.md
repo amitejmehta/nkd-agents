@@ -1,3 +1,7 @@
+---
+name: prompt-eval
+description: Iterate on a prompt via test cases, failure analysis, and programmatic or llm-judge verification in a runnable directory layout; use when systematically improving a prompt rather than ad-hoc tweaking.
+---
 # Skill: Prompt Eval
 
 Iterate on a prompt via test cases, failure analysis, and verification. Everything lives in a directory that's runnable by human, CI, or agent.

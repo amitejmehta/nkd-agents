@@ -1,3 +1,7 @@
+---
+name: ai-research
+description: Map an AI research area by surveying papers and lab posts to produce a taxonomy and landscape overview; use when scoping a new topic rather than reading exhaustively.
+---
 # Skill: AI Research Landscape Mapping
 
 Map a research area by surveying papers and lab posts. Goal: taxonomy + landscape overview, not exhaustive reading.
