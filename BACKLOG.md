@@ -13,6 +13,7 @@ Preserve referenced document paths in auto-compact summary
 - non-goals:
   - Do not restructure `SUMMARY_PROMPT` into a multi-line template
   - Do not add new compaction logic or thresholds
+- pr: https://github.com/amitejmehta/nkd-agents/pull/66
 
 Add Agent Skills frontmatter to pre-existing SKILL.md files
 - status: in-progress
@@ -25,6 +26,7 @@ Add Agent Skills frontmatter to pre-existing SKILL.md files
   - Do not touch `skills/code_review`, `skills/backlog_item`, `skills/pr_watch` (already have frontmatter)
   - Do not rewrite skill bodies
   - Do not add `license`, `compatibility`, or `allowed-tools` fields
+- pr: https://github.com/amitejmehta/nkd-agents/pull/68
 
 Sync docs/cli.md auto-compact + env vars with code
 - status: in-progress
@@ -33,6 +35,7 @@ Sync docs/cli.md auto-compact + env vars with code
 - Rename `NKD_AUTO_COMPACT_AFTER` → `NKD_AUTO_COMPACT_THRESHOLD` in the config table; update default target from 30 → 15; add a `NKD_COMPACT_MODEL` row (default `claude-haiku-4-5`); add the already-supported `NKD_MODEL` row.
 - Remove the `ctrl+k` keybinding row and the trailing "The `ctrl+k` keybinding still exists…" sentence — no such binding exists in `CLI.__init__`.
 - Remove the `NKD_COMPACT` row — the env var is not read anywhere in `nkd_agents/`.
+- pr: https://github.com/amitejmehta/nkd-agents/pull/67
 
 Sync docs/framework.md structured output + caching with code
 - status: ready
