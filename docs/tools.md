@@ -95,11 +95,10 @@ STDERR:
 EXIT CODE: {returncode}
 ```
 
-Or `"Error: Command timed out after {timeout} seconds"`.
+Or raises `TimeoutError("Command timed out after {timeout} seconds: {command}")` after `SIGKILL`-ing the process group. The framework's tool dispatcher surfaces the exception as an error string to the model.
 
 - Runs in `cwd_ctx` directory.
 - Default timeout: 30 seconds. Override per-call.
-- The process is killed on timeout (`SIGKILL` sent to the entire process group).
 
 ---
 

@@ -116,9 +116,8 @@ async def bash(command: str, timeout: int = 30) -> str:
     """Execute a bash command and return the results.
     STDOUT is truncated to 50,000 characters.
 
-    Returns one of the following strings:
-    - "STDOUT:\n{stdout}\nSTDERR:\n{stderr}\nEXIT CODE: {returncode}"
-    - "Error executing command: {str(e)}"
+    Returns "STDOUT:\n{stdout}\nSTDERR:\n{stderr}\nEXIT CODE: {returncode}".
+    Raises TimeoutError if the command exceeds `timeout` seconds (process group is SIGKILLed).
     """
     logger.info(f"Executing Bash: {GREEN}{command}{RESET}")
     process: asyncio.subprocess.Process = await asyncio.create_subprocess_exec(
