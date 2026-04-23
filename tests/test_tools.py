@@ -258,7 +258,7 @@ class TestEditFileCheckOrder:
 
         This is the critical invariant. If reversed, an LLM passing old_str == new_str
         gets "must be different" even when the string isn't present — a false signal
-        that caused a production Lambda timeout (62 loop iterations, 900s killed).
+        of existence that causes the LLM to spiral trying to fix its replacement.
         """
         file_path = tmp_path / "test.txt"
         file_path.write_text("hello world")
