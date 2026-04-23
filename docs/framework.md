@@ -205,7 +205,7 @@ One built-in context var in `nkd_agents.ctx`:
 
 **Anthropic** ([docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching))
 
-Anthropic prompt caching has a default TTL of 5 minutes and supports a maximum of four cache breakpoints. This framework uses a single breakpoint, always updated to be the most recent user message: when tools are present, `agent()` temporarily sets `cache_control: {type: ephemeral}` on the last content block of the last user message before each API call, then removes it immediately after in a `finally` block so the list is never left in a dirty state. This reduces costs and latency on long agentic loops.
+Anthropic prompt caching has a default TTL of 5 minutes and supports a maximum of four cache breakpoints. `agent()` does nothing special for caching — pass `cache_control={"type": "ephemeral"}` (or any other cache param) through `**kwargs` and it forwards verbatim to `client.messages.create()`. The CLI does exactly this to reduce costs and latency on long agentic loops.
 
 **OpenAI** ([docs](https://platform.openai.com/docs/guides/prompt-caching))
 
@@ -235,12 +235,16 @@ output_config={"format": output_format(Weather), "effort": "low"}
 
 **OpenAI**
 
-Pass the Pydantic model as the `response_format` kwarg:
+Build a `format` block with `output_format(model)` and pass it via the Responses API `text` kwarg:
 
 ```python
-response = await agent(client, messages=messages, response_format=Weather, **kwargs)
-weather = Weather.model_validate_json(response)
+from nkd_agents.openai import output_format
+
+json_str = await agent(client, input=messages, text={"format": output_format(Weather)}, **kwargs)
+weather = Weather.model_validate_json(json_str)
 ```
+
+`output_format(model)` returns the `format` dict (`{"type": "json_schema", ...}`) from the Pydantic model's JSON schema. `agent()` does no translation — `text` passes through verbatim to `client.responses.create()`.
 
 ## Thinking
 
