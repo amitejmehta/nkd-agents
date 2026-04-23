@@ -68,21 +68,6 @@ CACHE_WARM_MSG = os.environ.get(
 )
 
 
-def _block_type(b: object) -> str:
-    """Get the type field from a content block (dict or Pydantic object)."""
-    if isinstance(b, dict):
-        return str(b.get("type", ""))
-    return str(getattr(b, "type", ""))
-
-
-def _has_tool_content(msg: MessageParam, block_type: str) -> bool:
-    """Check if a message contains a specific tool block type."""
-    content = msg.get("content")
-    return isinstance(content, list) and any(
-        _block_type(b) == block_type for b in content
-    )
-
-
 SUMMARY_PROMPT = (
     "Summarize the conversation above concisely. Preserve: key decisions and rationale, "
     "file paths/branch names/PR numbers/URLs, paths to referenced documents (images, PDFs, PPTX, etc.), "
@@ -105,7 +90,11 @@ async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> 
     if boundary < len(messages) and messages[boundary].get("role") == "assistant":
         boundary = max(boundary - 1, 0)
     # Walk back past any orphaned tool_result at the boundary
-    while boundary > 0 and _has_tool_content(messages[boundary], "tool_result"):
+    while (
+        boundary > 0
+        and isinstance((content := messages[boundary].get("content")), list)
+        and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+    ):
         boundary -= 1
 
     old_messages = messages[:boundary]
