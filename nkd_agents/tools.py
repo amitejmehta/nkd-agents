@@ -4,7 +4,6 @@ import os
 import signal
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 from .ctx import cwd_ctx
 from .logging import GREEN, RESET
@@ -19,10 +18,6 @@ class FileContent:
 
     data: bytes
     ext: str  # lowercase, no leading dot; "" if no extension
-
-
-def _normalize(s: str) -> str:
-    return "\n".join(line.rstrip() for line in s.splitlines())
 
 
 def resolve_path(path: str | None = None) -> Path:
@@ -65,21 +60,18 @@ async def write_file(path: str, content: str) -> str:
 
 async def edit_file(
     path: str,
-    mode: Literal["insert", "replace"],
+    old_str: str,
     new_str: str,
-    old_str: str | None = None,
     count: int = 1,
-    position: int | None = None,
 ) -> str:
-    """Edit an existing file.
+    """Edit an existing file by replacing old_str with new_str.
 
     Args:
         path: Path to the file
-        mode: One of 'insert', 'replace'
-        new_str: Content to write or insert
-        old_str: (replace) String to search for and replace
-        count: (replace) Max occurrences to replace (default: 1, use -1 for all)
-        position: (insert) Character offset to insert at. 0 = beginning, omit or -1 = end.
+        old_str: String to search for and replace
+        new_str: String to replace with
+        count: Occurrences of old_str in the file to replace. Must be a positive integer or -1 (replace all).
+               count=1 (default) replaces only the first; count=2 the first two; count=-1 all.
 
     Returns "Success: Updated {path}" or raises ValueError.
     """
@@ -90,22 +82,13 @@ async def edit_file(
 
     content = file_path.read_text(encoding="utf-8")
 
-    if mode == "insert":
-        if position is None or position == -1:
-            edited_content = content + new_str
-        else:
-            edited_content = content[:position] + new_str + content[position:]
-    else:  # replace
-        if old_str is None:
-            raise ValueError("old_str is required for replace mode")
-        if old_str == new_str:
-            raise ValueError("old_str and new_str must be different")
-        content = _normalize(content)
-        old_str = _normalize(old_str)
-        new_str = _normalize(new_str)
-        if old_str not in content:
-            raise ValueError("old_str not found in file content")
-        edited_content = content.replace(old_str, new_str, count)
+    if count == 0 or count < -1:
+        raise ValueError("count must be a positive integer or -1 (replace all)")
+    if old_str not in content:
+        raise ValueError("old_str not found in file content")
+    if old_str == new_str:
+        raise ValueError("old_str and new_str must be different")
+    edited_content = content.replace(old_str, new_str, count)
 
     display_diff(content, edited_content, str(file_path))
     file_path.write_text(edited_content, encoding="utf-8")
