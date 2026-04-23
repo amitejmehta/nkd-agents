@@ -44,6 +44,7 @@ Sync docs/framework.md structured output + caching with code
 - Anthropic "Prompt Caching" subsection describes a `cache_control: {type: ephemeral}` injection/finally-cleanup on the last user message performed by `agent()`. No such code exists in `nkd_agents/anthropic.py`. Replace the description with what actually happens: the CLI passes `cache_control={"type": "ephemeral"}` via `**kwargs` to `client.messages.create()`; the framework itself does nothing special.
 - Keep the Anthropic structured-output example as-is (`output_config={"format": output_format(Weather)}`) — it matches `examples/anthropic/test_structured_output.py`.
 - non-goals: do not change any runtime behavior; docs-only PR.
+- pr: https://github.com/amitejmehta/nkd-agents/pull/76
 
 Fix docs/tools.md bash timeout return value
 - status: in-progress
@@ -51,6 +52,7 @@ Fix docs/tools.md bash timeout return value
 - `docs/tools.md` states `bash()` returns `"Error: Command timed out after {timeout} seconds"` on timeout. The code in `nkd_agents/tools.py` raises `TimeoutError(f"Command timed out after {timeout} seconds: {command}")` instead.
 - Replace the "Or `"Error: Command timed out after {timeout} seconds"`." line with an explicit note that `bash` raises `TimeoutError` on timeout (after `SIGKILL`-ing the process group), and that the framework's tool dispatcher surfaces the exception as an error string to the model.
 - Also remove the stale `"Error executing command: {str(e)}"` line in the docstring snippet — `bash()` does not catch generic exceptions, only `asyncio.TimeoutError`.
+- pr: https://github.com/amitejmehta/nkd-agents/pull/75
 
 Simplify `_block_type` / `_has_tool_content` in cli.py
 - status: in-progress
@@ -59,5 +61,6 @@ Simplify `_block_type` / `_has_tool_content` in cli.py
 - Messages in `self.messages` are always `dict` (loaded from JSON or built via dict literals); the Pydantic-object branch in `_block_type` is dead. Drop `_block_type` entirely and use `b.get("type") == "tool_result"` directly inside the single-call site.
 - Update/trim `tests/test_cli.py` to match — do not add new coverage for removed helpers.
 - non-goals: do not change `auto_compact`'s boundary-walking behavior; this is a pure simplification of the helper surface.
+- pr: https://github.com/amitejmehta/nkd-agents/pull/77
 
 ## Done
