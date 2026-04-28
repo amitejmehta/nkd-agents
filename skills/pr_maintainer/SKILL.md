@@ -1,3 +1,7 @@
+---
+name: pr-maintainer
+description: Maintain open PRs by updating stale branches and addressing CI failures and reviewer comments; use when keeping a batch of authored PRs healthy until merge.
+---
 Skill: PR Maintainer
 
 AUTHOR=amitejmehta  ORG=ramp-ai
