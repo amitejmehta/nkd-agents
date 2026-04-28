@@ -1,3 +1,7 @@
+---
+name: pr-watch
+description: Watch a single PR's CI run and Copilot review, fixing real issues and replying to noise; use after pushing to a PR until checks are green and no new valid review comments remain.
+---
 Skill: PR Watch
 
 1. Wait for CI to trigger.
