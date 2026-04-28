@@ -5,7 +5,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 ## Ready
 
 Fix grep total-match cap (currently per-file, not total)
-- status: ready
+- status: in-progress
 - loc-ceiling: 25
 - acceptance:
   - `grep()` in `nkd_agents/tools.py` no longer passes `--max-count=200` to ripgrep — that flag limits matches *per file*, not in total, contradicting `docs/tools.md`
@@ -16,7 +16,7 @@ Fix grep total-match cap (currently per-file, not total)
   - Do not switch away from ripgrep or add streaming
 
 Make interrupt keybinding match docs (esc esc, not single escape)
-- status: ready
+- status: in-progress
 - loc-ceiling: 15
 - acceptance:
   - `nkd_agents/cli.py` binds the interrupt action to a double-tap `escape escape` (prompt-toolkit supports passing two keys to `kb.add`) instead of a single `escape`, matching the row in `docs/cli.md` and avoiding collisions with prompt-toolkit's escape-prefix sequences
@@ -26,7 +26,7 @@ Make interrupt keybinding match docs (esc esc, not single escape)
   - Do not introduce any per-keystroke timing config
 
 Add YAML frontmatter to skills/pr_maintainer and skills/pr_watch SKILL.md
-- status: ready
+- status: in-progress
 - loc-ceiling: 20
 - acceptance:
   - `skills/pr_maintainer/SKILL.md` and `skills/pr_watch/SKILL.md` each begin with a YAML frontmatter block containing `name` (kebab-case, matches directory) and `description` (1 sentence: what + when to use)
