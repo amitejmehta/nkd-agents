@@ -189,7 +189,6 @@ async def grep(
         "--line-number",
         "--heading",
         f"--context={context}",
-        "--max-count=200",
     ]
     if include_hidden:
         cmd.append("--hidden")
@@ -205,4 +204,9 @@ async def grep(
         cwd=cwd_ctx.get(),
     )
     stdout, _ = await process.communicate()
-    return stdout.decode().strip() or f"No matches found for pattern: {pattern}"
+    out = stdout.decode().strip()
+    return (
+        "\n".join(out.splitlines()[:200])
+        if out
+        else f"No matches found for pattern: {pattern}"
+    )
