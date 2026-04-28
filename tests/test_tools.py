@@ -7,7 +7,6 @@ import pytest
 
 from nkd_agents.tools import (
     FileContent,
-    _normalize,
     bash,
     edit_file,
     glob,
@@ -145,109 +144,70 @@ class TestWriteFile:
 
 class TestEditFile:
     @pytest.mark.asyncio
-    async def test_insert_end(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("hello")
-        result = await edit_file(str(file_path), mode="insert", new_str=" world")
-        assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == "hello world"
-
-    @pytest.mark.asyncio
-    async def test_insert_beginning(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("world")
-        result = await edit_file(
-            str(file_path), mode="insert", new_str="hello ", position=0
-        )
-        assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == "hello world"
-
-    @pytest.mark.asyncio
-    async def test_insert_middle(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("helloworld")
-        result = await edit_file(str(file_path), mode="insert", new_str=" ", position=5)
-        assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == "hello world"
-
-    @pytest.mark.asyncio
-    async def test_insert_explicit_end(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("hello")
-        result = await edit_file(
-            str(file_path), mode="insert", new_str=" world", position=-1
-        )
-        assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == "hello world"
-
-    @pytest.mark.asyncio
-    async def test_insert_file_not_found(self):
-        with pytest.raises(ValueError, match="not found"):
-            await edit_file("/nonexistent/file.txt", mode="insert", new_str="x")
-
-    @pytest.mark.asyncio
-    async def test_replace_str_single(self, tmp_path):
+    async def test_replace_first_occurrence(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("foo bar foo bar")
-        result = await edit_file(
-            str(file_path), mode="replace", new_str="baz", old_str="foo", count=1
-        )
+        result = await edit_file(str(file_path), old_str="foo", new_str="baz")
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == "baz bar foo bar"
 
     @pytest.mark.asyncio
-    async def test_replace_str_all(self, tmp_path):
+    async def test_replace_all(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("foo bar foo bar foo")
-        result = await edit_file(
-            str(file_path), mode="replace", new_str="baz", old_str="foo", count=-1
-        )
+        result = await edit_file(str(file_path), old_str="foo", new_str="baz", count=-1)
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == "baz bar baz bar baz"
 
     @pytest.mark.asyncio
-    async def test_replace_str_not_found(self, tmp_path):
+    async def test_replace_count_n(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo foo foo")
+        result = await edit_file(str(file_path), old_str="foo", new_str="baz", count=2)
+        assert result == f"Success: Updated {file_path}"
+        assert file_path.read_text() == "baz baz foo"
+
+    @pytest.mark.asyncio
+    async def test_file_not_found(self):
+        with pytest.raises(ValueError, match="not found"):
+            await edit_file("/nonexistent/file.txt", old_str="old", new_str="new")
+
+    @pytest.mark.asyncio
+    async def test_old_str_not_found(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("existing content")
         with pytest.raises(ValueError, match="not found in file content"):
-            await edit_file(
-                str(file_path), mode="replace", new_str="new", old_str="nonexistent"
-            )
+            await edit_file(str(file_path), old_str="nonexistent", new_str="new")
         assert file_path.read_text() == "existing content"
 
     @pytest.mark.asyncio
-    async def test_replace_str_same_strings(self, tmp_path):
+    async def test_same_strings(self, tmp_path):
         file_path = tmp_path / "test.txt"
-        file_path.write_text("foo")
+        file_path.write_text("same")
         with pytest.raises(ValueError, match="must be different"):
-            await edit_file(
-                str(file_path), mode="replace", new_str="same", old_str="same"
-            )
+            await edit_file(str(file_path), old_str="same", new_str="same")
 
     @pytest.mark.asyncio
-    async def test_replace_str_no_old_str(self, tmp_path):
+    async def test_count_zero_raises(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("foo")
-        with pytest.raises(ValueError, match="old_str is required"):
-            await edit_file(str(file_path), mode="replace", new_str="bar")
+        with pytest.raises(ValueError, match="positive integer or -1"):
+            await edit_file(str(file_path), old_str="foo", new_str="bar", count=0)
 
     @pytest.mark.asyncio
-    async def test_replace_str_file_not_found(self):
-        with pytest.raises(ValueError, match="not found"):
-            await edit_file(
-                "/nonexistent/file.txt",
-                mode="replace",
-                new_str="new",
-                old_str="old",
-            )
+    async def test_count_minus_two_raises(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo")
+        with pytest.raises(ValueError, match="positive integer or -1"):
+            await edit_file(str(file_path), old_str="foo", new_str="bar", count=-2)
 
     @pytest.mark.asyncio
     async def test_multiple_sequential_edits(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("one two three")
-        await edit_file(str(file_path), mode="replace", new_str="1", old_str="one")
-        await edit_file(str(file_path), mode="replace", new_str="2", old_str="two")
-        await edit_file(str(file_path), mode="replace", new_str="3", old_str="three")
+        await edit_file(str(file_path), old_str="one", new_str="1")
+        await edit_file(str(file_path), old_str="two", new_str="2")
+        await edit_file(str(file_path), old_str="three", new_str="3")
         assert file_path.read_text() == "1 2 3"
 
     @pytest.mark.asyncio
@@ -258,65 +218,52 @@ class TestEditFile:
             "pathlib.Path.read_text", side_effect=PermissionError("Access denied")
         ):
             with pytest.raises(PermissionError, match="Access denied"):
-                await edit_file(
-                    str(file_path), mode="replace", new_str="new", old_str="old"
-                )
+                await edit_file(str(file_path), old_str="old", new_str="new")
 
 
-class TestNormalize:
-    def test_lf_unchanged(self):
-        assert _normalize("a\nb\nc") == "a\nb\nc"
+class TestEditFileCheckOrder:
+    """
+    The check order in edit_file is a load-bearing invariant.
 
-    def test_crlf_converted(self):
-        assert _normalize("a\r\nb\r\nc") == "a\nb\nc"
+    Wrong ordering causes LLM agentic loops to spiral: if old_str == new_str is checked
+    before existence, an LLM probing with identical strings gets "must be different" even
+    when the string isn't in the file — a false signal of existence. The LLM then can't
+    reconcile that with the subsequent "not found" error and loops indefinitely.
 
-    def test_trailing_spaces_stripped(self):
-        assert _normalize("a  \nb  \nc") == "a\nb\nc"
-
-    def test_mixed_crlf_and_trailing_spaces(self):
-        assert _normalize("a  \r\nb  \r\nc  ") == "a\nb\nc"
-
-    def test_empty_string(self):
-        assert _normalize("") == ""
-
-    def test_single_line_no_newline(self):
-        assert _normalize("hello  ") == "hello"
-
-
-class TestEditFileNormalize:
-    @pytest.mark.asyncio
-    async def test_replace_crlf_file(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_bytes(b"foo\r\nbar\r\nbaz")
-        await edit_file(
-            str(file_path), mode="replace", old_str="foo\nbar", new_str="qux"
-        )
-        assert file_path.read_text(encoding="utf-8") == "qux\nbaz"
+    Correct order:
+        1. file not found
+        2. invalid count
+        3. old_str not in file
+        4. old_str == new_str   ← only reachable when string IS present
+    """
 
     @pytest.mark.asyncio
-    async def test_replace_trailing_spaces_in_file(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("foo  \nbar  \nbaz")
-        await edit_file(
-            str(file_path), mode="replace", old_str="foo\nbar", new_str="qux"
-        )
-        assert file_path.read_text(encoding="utf-8") == "qux\nbaz"
+    async def test_file_not_found_beats_invalid_count(self, tmp_path):
+        """File not found is reported before count is validated."""
+        with pytest.raises(ValueError, match="not found"):
+            await edit_file("/nonexistent/file.txt", old_str="x", new_str="y", count=0)
 
     @pytest.mark.asyncio
-    async def test_replace_trailing_spaces_in_old_str(self, tmp_path):
+    async def test_invalid_count_beats_old_str_not_found(self, tmp_path):
+        """Invalid count is reported before old_str existence is checked."""
         file_path = tmp_path / "test.txt"
-        file_path.write_text("foo\nbar\nbaz")
-        await edit_file(
-            str(file_path), mode="replace", old_str="foo  \nbar  ", new_str="qux"
-        )
-        assert file_path.read_text(encoding="utf-8") == "qux\nbaz"
+        file_path.write_text("hello")
+        with pytest.raises(ValueError, match="positive integer or -1"):
+            await edit_file(str(file_path), old_str="nothere", new_str="y", count=0)
 
     @pytest.mark.asyncio
-    async def test_replace_new_str_trailing_spaces_stripped(self, tmp_path):
+    async def test_old_str_not_found_beats_same_strings(self, tmp_path):
+        """
+        old_str not in file is reported before old_str == new_str is checked.
+
+        This is the critical invariant. If reversed, an LLM passing old_str == new_str
+        gets "must be different" even when the string isn't present — a false signal
+        of existence that causes the LLM to spiral trying to fix its replacement.
+        """
         file_path = tmp_path / "test.txt"
-        file_path.write_text("foo\nbar")
-        await edit_file(str(file_path), mode="replace", old_str="foo", new_str="qux  ")
-        assert file_path.read_text(encoding="utf-8") == "qux\nbar"
+        file_path.write_text("hello world")
+        with pytest.raises(ValueError, match="not found in file content"):
+            await edit_file(str(file_path), old_str="nothere", new_str="nothere")
 
 
 class TestBash:
