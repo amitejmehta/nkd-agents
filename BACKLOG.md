@@ -14,6 +14,7 @@ Fix grep total-match cap (currently per-file, not total)
 - non-goals:
   - Do not change the `context`, `include`, `include_hidden`, or `path` parameters
   - Do not switch away from ripgrep or add streaming
+- pr: https://github.com/amitejmehta/nkd-agents/pull/81
 
 Make interrupt keybinding match docs (esc esc, not single escape)
 - status: in-progress
@@ -24,6 +25,7 @@ Make interrupt keybinding match docs (esc esc, not single escape)
 - non-goals:
   - Do not change docs; the docs are already correct
   - Do not introduce any per-keystroke timing config
+- pr: https://github.com/amitejmehta/nkd-agents/pull/82
 
 Add YAML frontmatter to skills/pr_maintainer and skills/pr_watch SKILL.md
 - status: in-progress
@@ -35,6 +37,7 @@ Add YAML frontmatter to skills/pr_maintainer and skills/pr_watch SKILL.md
 - non-goals:
   - Do not touch other skills (already covered by PR #68)
   - Do not add `license`, `compatibility`, or `allowed-tools` fields
+- pr: https://github.com/amitejmehta/nkd-agents/pull/80
 
 Make OpenAI agent() fns keyword-only for parity with Anthropic
 - status: ready
