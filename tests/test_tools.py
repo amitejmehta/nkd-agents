@@ -514,6 +514,16 @@ class TestGrep:
         assert ".venv" not in result
 
     @pytest.mark.asyncio
+    async def test_grep_total_output_capped_at_200_lines(self, tmp_path):
+        """Total output is capped at 200 lines, even across many files / many matches."""
+        # 10 files with 100 matches each = 1000 hits; far more than 200 lines.
+        for i in range(10):
+            (tmp_path / f"f{i}.txt").write_text("hit\n" * 100)
+
+        result = await grep("hit", path=str(tmp_path), context=0)
+        assert len(result.splitlines()) <= 200
+
+    @pytest.mark.asyncio
     async def test_grep_include_hidden(self, tmp_path):
         """Test grep searches hidden files when include_hidden=True."""
         (tmp_path / "visible.py").write_text("secret_token\n")
