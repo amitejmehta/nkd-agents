@@ -123,6 +123,14 @@ class TestCycleMode:
 
 
 class TestInterrupt:
+    def test_double_escape_binding(self, cli: CLI):
+        kb = cli.session.key_bindings
+        assert kb is not None
+        assert any(
+            tuple(getattr(k, "value", k) for k in b.keys) == ("escape", "escape")
+            for b in kb.bindings
+        )
+
     def test_no_task(self, cli: CLI):
         cli.interrupt()  # should not raise
 
