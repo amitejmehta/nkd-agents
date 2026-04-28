@@ -144,7 +144,7 @@ class CLI:
         # prompt
         kb = KeyBindings()
         kb.add("c-l")(lambda e: self.switch_model())
-        kb.add("escape")(lambda e: self.interrupt())
+        kb.add("escape", "escape")(lambda e: self.interrupt())
         kb.add("tab")(lambda e: self.toggle_thinking())
         kb.add("s-tab")(lambda e: self.cycle_mode())
         self.session = PromptSession[str](
