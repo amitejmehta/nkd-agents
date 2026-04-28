@@ -4,6 +4,60 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Sync CLI model_idx with NKD_MODEL on startup
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `CLI.__init__` (`nkd_agents/cli.py`), after resolving the initial model from `NKD_MODEL`, set `self.model_idx` to that model's index in `MODELS` (fallback to `0` if the env value isn't in the tuple)
+  - First `ctrl+l` press after launch advances to the *next* model in `MODELS` rather than re-selecting the current one (current bug: when `NKD_MODEL=claude-opus-4-7`, `model_idx` starts at `0` so the first cycle re-picks opus)
+  - `tests/test_cli.py` adds one case: set `NKD_MODEL=claude-opus-4-7` (or monkeypatch), instantiate `CLI()`, assert `cli.model_idx` matches `MODELS.index("claude-opus-4-7")`, then call `cli.switch_model()` and assert `cli.kwargs["model"] != "claude-opus-4-7"`
+- non-goals:
+  - Do not change the `MODELS` tuple, `switch_model()` body, or any keybinding
+  - Do not introduce a new env var
+
+## Reject *args / **kwargs in extract_function_params
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `extract_function_params` in `nkd_agents/utils.py` raises `ValueError` when the function signature contains a `VAR_POSITIONAL` (`*args`) or `VAR_KEYWORD` (`**kwargs`) parameter, naming the offending function and parameter
+  - Currently these are silently coerced to `{"type": "string"}` required params, producing a malformed schema the model can't satisfy — both `tool_schema` callers (Anthropic + OpenAI) inherit this fix automatically
+  - `tests/test_utils.py` adds two cases asserting `ValueError` is raised for an async function declared with `*args` and one declared with `**kwargs`
+- non-goals:
+  - Do not add support for variadic params
+  - Do not change handling of `KEYWORD_ONLY` or `POSITIONAL_OR_KEYWORD` params
+
+## Drop dead boundary guard in auto_compact
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - In `auto_compact` (`nkd_agents/cli.py`), remove the `boundary < len(messages) and ` clause from the `if messages[boundary].get("role") == "assistant":` line — it is always true when the function reaches that point (the early return guarantees `len(messages) > AUTO_COMPACT_THRESHOLD >= AUTO_COMPACT_TARGET`, so `boundary = len(messages) - AUTO_COMPACT_TARGET < len(messages)`)
+  - Existing `tests/test_cli.py` auto-compact cases continue to pass with no edits
+- non-goals:
+  - Do not touch the orphaned `tool_result` walk-back loop or any threshold/target defaults
+  - Do not refactor the function further
+
+## Cap cache_warmer max_tokens to avoid oversized budget on a one-word reply
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `cache_warmer` in `nkd_agents/cli.py` calls `client.messages.create` with `max_tokens` overridden to a small constant (e.g. 64) rather than inheriting `self.kwargs["max_tokens"]` (default 20000) — the cache-warm reply is a single word ("okay") so a 20k budget is wasteful and inflates the per-warm reservation
+  - Construction passes `**{**self.kwargs, "max_tokens": 64}` (or equivalent) so all other kwargs (model, system, cache_control, thinking) flow through unchanged
+  - `tests/test_cli.py` adds one case asserting the `messages.create` call inside `cache_warmer` is invoked with `max_tokens=64` regardless of `self.kwargs["max_tokens"]`
+- non-goals:
+  - Do not introduce a new env var for the warm budget; a hard-coded constant is fine
+  - Do not change the 30s poll, 270s idle, or `MAX_CACHE_WARMS` logic
+
+## Truncate STDERR in bash() the same way STDOUT is truncated
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `bash()` in `nkd_agents/tools.py` applies the same `[:50000]` slice to `stderr.decode().strip()` that it already applies to stdout — currently a noisy command (e.g. a verbose compiler error) can return an unbounded STDERR while STDOUT is capped, contradicting the "STDOUT is truncated to 50,000 characters" intent and risking blowing the model's context
+  - Update the `bash()` docstring + `docs/tools.md` to say "STDOUT and STDERR are each truncated to 50,000 characters"
+  - `tests/test_tools.py` adds one case running `bash` against a command that emits >50,000 chars on stderr (e.g. `python3 -c "import sys; sys.stderr.write('x'*60000)"`) and asserts the returned string's STDERR section is ≤ 50,000 chars
+- non-goals:
+  - Do not change the timeout behavior, exit-code handling, or the 50,000 constant
+  - Do not stream stderr separately
+
 Fix grep total-match cap (currently per-file, not total)
 - status: in-progress
 - loc-ceiling: 25
