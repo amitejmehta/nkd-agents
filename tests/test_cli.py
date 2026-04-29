@@ -94,6 +94,16 @@ class TestSwitchModel:
         assert cli.model_idx == 0
         assert cli.kwargs["model"] == MODELS[0]
 
+    def test_syncs_idx_with_nkd_model(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setenv("NKD_MODEL", "claude-opus-4-7")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        cli = CLI()
+        assert cli.model_idx == MODELS.index("claude-opus-4-7")
+        cli.switch_model()
+        assert cli.kwargs["model"] != "claude-opus-4-7"
+
 
 class TestToggleThinking:
     def test_enable(self, cli: CLI):
