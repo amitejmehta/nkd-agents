@@ -14,6 +14,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - non-goals:
   - Do not change the `MODELS` tuple, `switch_model()` body, or any keybinding
   - Do not introduce a new env var
+- pr: https://github.com/amitejmehta/nkd-agents/pull/86
 
 ## Reject *args / **kwargs in extract_function_params
 - status: in-progress
@@ -25,6 +26,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - non-goals:
   - Do not add support for variadic params
   - Do not change handling of `KEYWORD_ONLY` or `POSITIONAL_OR_KEYWORD` params
+- pr: https://github.com/amitejmehta/nkd-agents/pull/85
 
 ## Drop dead boundary guard in auto_compact
 - status: in-progress
@@ -35,6 +37,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - non-goals:
   - Do not touch the orphaned `tool_result` walk-back loop or any threshold/target defaults
   - Do not refactor the function further
+- pr: https://github.com/amitejmehta/nkd-agents/pull/84
 
 ## Cap cache_warmer max_tokens to avoid oversized budget on a one-word reply
 - status: ready
