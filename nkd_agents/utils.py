@@ -76,6 +76,10 @@ def extract_function_params(
     params, required_params = {}, []
 
     for param in inspect.signature(func).parameters.values():
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            raise ValueError(
+                f"Variadic parameters not supported: {func.__name__}.{param.name}"
+            )
         param_sig = f"{func.__name__}.{param.name}: {param.annotation}"
         params[param.name] = process_param_annotation(param.annotation, param_sig)
 
