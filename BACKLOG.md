@@ -4,6 +4,57 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Reject parameters with no type annotation in extract_function_params
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `extract_function_params` in `nkd_agents/utils.py` raises `ValueError` when a parameter has no annotation (i.e. `param.annotation is inspect.Parameter.empty`), naming the offending function and parameter — currently `_handle_primitive` silently returns `{"type": "string"}` for unannotated params (via `TYPE_MAP.get(annotation, "string")`), producing a schema the model believes is a string while the tool may expect anything
+  - The `_handle_primitive` branch for `inspect._empty` is removed so `process_param_annotation` only accepts the documented types
+  - `tests/test_utils.py` adds one case asserting `ValueError` is raised for an async function with at least one unannotated parameter; existing tool_schema tests continue to pass
+- non-goals:
+  - Do not change handling of `Literal`, `T | None`, or any documented primitive type
+  - Do not introduce a new "any" / untyped escape hatch
+
+## Decode bash() stdout/stderr with errors="replace"
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `bash()` (`nkd_agents/tools.py`), both `stdout.decode()` and `stderr.decode()` calls pass `errors="replace"` (or equivalent) so a single non-UTF8 byte in command output no longer raises `UnicodeDecodeError` — the dispatcher currently catches it and surfaces a generic `"Error calling tool 'bash': ..."` to the model, hiding the actual command output and exit code
+  - `tests/test_tools.py` adds one case running `bash` against a command that emits invalid UTF-8 bytes on stdout (e.g. `printf '\\xff\\xfe'`) and asserts the result string contains `STDOUT:`, `EXIT CODE: 0`, and does not raise
+- non-goals:
+  - Do not change the 50,000-char truncation, the timeout path, or the return format
+  - Do not switch to byte-mode return values
+
+## Surface ripgrep stderr when grep() returns no matches
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `grep()` in `nkd_agents/tools.py` captures stderr from the subprocess (currently discarded as `_`) and, when stdout is empty AND `process.returncode` is neither `0` (matches found) nor `1` (no matches), returns an error string that includes the stderr text — covers misuse cases like an invalid regex or a missing `rg` binary, which today silently return `"No matches found for pattern: ..."` and mislead the model
+  - The existing happy-path return (formatted matches) and the genuine "no matches" case (`returncode == 1`, empty stdout) are unchanged
+  - `tests/test_tools.py` adds one case asserting that an invalid regex (e.g. `grep("(")`) returns a string containing the ripgrep error text, not `"No matches found"`
+- non-goals:
+  - Do not change the 200-line cap, `--context`, `--hidden`, or `--glob` flags
+  - Do not raise; keep returning a string so the model can self-correct
+
+## Drop the [cli] extra from web_search install hint in docs/tools.md
+- status: ready
+- loc-ceiling: 3
+- acceptance:
+  - `docs/tools.md` line `Requires \`pip install nkd_agents[cli,web]\` (installs \`playwright\`).` becomes `Requires \`pip install nkd_agents[web]\` (installs \`playwright\`).` — the `cli` extra only adds `prompt-toolkit` for the interactive CLI and is not needed to call `web_search` from a script
+  - No code or other docs changes
+- non-goals:
+  - Do not restructure the tools.md section or rename extras in `pyproject.toml`
+
+## Fall back to bundled Chromium when Chrome channel is unavailable in web_search
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `web_search` in `nkd_agents/web.py` attempts `p.chromium.launch(headless=True, channel="chrome")` and on `playwright.async_api.Error` (raised when the Chrome channel isn't installed) retries with `p.chromium.launch(headless=True)` — matches the docs/tools.md claim that the tool "uses Chrome if available" but currently hard-fails on systems where only Chromium is installed
+  - `tests/test_web.py` adds one case mocking `p.chromium.launch` to raise on the first (channel="chrome") call and succeed on the second (no channel kwarg), asserting both calls happened and the function returned normally
+- non-goals:
+  - Do not add a new env var or arg to select the channel
+  - Do not change the User-Agent, selector, or `max_results` handling
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
