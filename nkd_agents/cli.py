@@ -87,7 +87,7 @@ async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> 
         return
 
     boundary = len(messages) - AUTO_COMPACT_TARGET
-    if boundary < len(messages) and messages[boundary].get("role") == "assistant":
+    if messages[boundary].get("role") == "assistant":
         boundary = max(boundary - 1, 0)
     # Walk back past any orphaned tool_result at the boundary
     while (
