@@ -139,6 +139,22 @@ class TestExtractFunctionParams:
         assert "Only T | None unions supported" in str(exc.value)
 
     @pytest.mark.asyncio
+    async def test_var_positional_rejected(self):
+        async def f(*args):
+            pass
+
+        with pytest.raises(ValueError, match="f.args"):
+            extract_function_params(f)
+
+    @pytest.mark.asyncio
+    async def test_var_keyword_rejected(self):
+        async def f(**kwargs):
+            pass
+
+        with pytest.raises(ValueError, match="f.kwargs"):
+            extract_function_params(f)
+
+    @pytest.mark.asyncio
     async def test_no_parameters(self):
         """Function with no parameters."""
 
