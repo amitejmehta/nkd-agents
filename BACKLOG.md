@@ -5,7 +5,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 ## Ready
 
 ## Sync CLI model_idx with NKD_MODEL on startup
-- status: ready
+- status: in-progress
 - loc-ceiling: 15
 - acceptance:
   - In `CLI.__init__` (`nkd_agents/cli.py`), after resolving the initial model from `NKD_MODEL`, set `self.model_idx` to that model's index in `MODELS` (fallback to `0` if the env value isn't in the tuple)
@@ -16,7 +16,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
   - Do not introduce a new env var
 
 ## Reject *args / **kwargs in extract_function_params
-- status: ready
+- status: in-progress
 - loc-ceiling: 20
 - acceptance:
   - `extract_function_params` in `nkd_agents/utils.py` raises `ValueError` when the function signature contains a `VAR_POSITIONAL` (`*args`) or `VAR_KEYWORD` (`**kwargs`) parameter, naming the offending function and parameter
@@ -27,7 +27,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
   - Do not change handling of `KEYWORD_ONLY` or `POSITIONAL_OR_KEYWORD` params
 
 ## Drop dead boundary guard in auto_compact
-- status: ready
+- status: in-progress
 - loc-ceiling: 5
 - acceptance:
   - In `auto_compact` (`nkd_agents/cli.py`), remove the `boundary < len(messages) and ` clause from the `if messages[boundary].get("role") == "assistant":` line — it is always true when the function reaches that point (the early return guarantees `len(messages) > AUTO_COMPACT_THRESHOLD >= AUTO_COMPACT_TARGET`, so `boundary = len(messages) - AUTO_COMPACT_TARGET < len(messages)`)
