@@ -223,7 +223,9 @@ class CLI:
                     messages = self.messages + [
                         {"role": "user", "content": CACHE_WARM_MSG}
                     ]
-                    await self.client.messages.create(messages=messages, **self.kwargs)
+                    await self.client.messages.create(
+                        messages=messages, **{**self.kwargs, "max_tokens": 64}
+                    )
                     self.last_message_at = time.monotonic()
                     self.warm_count += 1
                     logger.info(
