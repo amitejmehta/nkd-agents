@@ -49,9 +49,10 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - non-goals:
   - Do not introduce a new env var for the warm budget; a hard-coded constant is fine
   - Do not change the 30s poll, 270s idle, or `MAX_CACHE_WARMS` logic
+- pr: https://github.com/amitejmehta/nkd-agents/pull/88
 
 ## Truncate STDERR in bash() the same way STDOUT is truncated
-- status: in-progress
+- status: ready
 - loc-ceiling: 10
 - acceptance:
   - `bash()` in `nkd_agents/tools.py` applies the same `[:50000]` slice to `stderr.decode().strip()` that it already applies to stdout — currently a noisy command (e.g. a verbose compiler error) can return an unbounded STDERR while STDOUT is capped, contradicting the "STDOUT is truncated to 50,000 characters" intent and risking blowing the model's context
@@ -60,6 +61,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - non-goals:
   - Do not change the timeout behavior, exit-code handling, or the 50,000 constant
   - Do not stream stderr separately
+- last-attempt: 2026-04-30 worker implemented changes but skipped worktree step and never pushed/opened PR
 
 Fix grep total-match cap (currently per-file, not total)
 - status: in-progress
@@ -97,7 +99,7 @@ Add YAML frontmatter to skills/pr_maintainer and skills/pr_watch SKILL.md
 - pr: https://github.com/amitejmehta/nkd-agents/pull/80
 
 Make OpenAI agent() fns keyword-only for parity with Anthropic
-- status: in-progress
+- status: ready
 - loc-ceiling: 10
 - acceptance:
   - `agent()` in `nkd_agents/openai.py` accepts `fns` as a keyword-only argument (insert `*,` before `fns` in the signature), mirroring `nkd_agents/anthropic.py`
@@ -106,6 +108,7 @@ Make OpenAI agent() fns keyword-only for parity with Anthropic
 - non-goals:
   - Do not change the Anthropic signature or any other kwargs
   - Do not rename `fns` or alter its default
+- last-attempt: 2026-04-30 worker implemented changes but skipped worktree step and never pushed/opened PR
 
 Tighten load_env to strip whitespace and surrounding quotes
 - status: ready
