@@ -40,7 +40,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - pr: https://github.com/amitejmehta/nkd-agents/pull/84
 
 ## Cap cache_warmer max_tokens to avoid oversized budget on a one-word reply
-- status: ready
+- status: in-progress
 - loc-ceiling: 10
 - acceptance:
   - `cache_warmer` in `nkd_agents/cli.py` calls `client.messages.create` with `max_tokens` overridden to a small constant (e.g. 64) rather than inheriting `self.kwargs["max_tokens"]` (default 20000) — the cache-warm reply is a single word ("okay") so a 20k budget is wasteful and inflates the per-warm reservation
@@ -51,7 +51,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
   - Do not change the 30s poll, 270s idle, or `MAX_CACHE_WARMS` logic
 
 ## Truncate STDERR in bash() the same way STDOUT is truncated
-- status: ready
+- status: in-progress
 - loc-ceiling: 10
 - acceptance:
   - `bash()` in `nkd_agents/tools.py` applies the same `[:50000]` slice to `stderr.decode().strip()` that it already applies to stdout — currently a noisy command (e.g. a verbose compiler error) can return an unbounded STDERR while STDOUT is capped, contradicting the "STDOUT is truncated to 50,000 characters" intent and risking blowing the model's context
@@ -97,7 +97,7 @@ Add YAML frontmatter to skills/pr_maintainer and skills/pr_watch SKILL.md
 - pr: https://github.com/amitejmehta/nkd-agents/pull/80
 
 Make OpenAI agent() fns keyword-only for parity with Anthropic
-- status: ready
+- status: in-progress
 - loc-ceiling: 10
 - acceptance:
   - `agent()` in `nkd_agents/openai.py` accepts `fns` as a keyword-only argument (insert `*,` before `fns` in the signature), mirroring `nkd_agents/anthropic.py`
