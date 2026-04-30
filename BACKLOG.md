@@ -4,6 +4,48 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Stop stripping decoded text in bytes_to_content
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `bytes_to_content` in `nkd_agents/anthropic.py` (text branch) and in `nkd_agents/openai.py` (text branch) no longer call `.strip()` on the decoded UTF-8 text — currently they silently mangle file content the model sees via `read_file` (loss of leading/trailing whitespace and final newlines, which matters for diff/edit round-trips and for code where trailing newline is significant)
+  - `tests/test_anthropic.py` and `tests/test_openai.py` each add one case asserting that `bytes_to_content(b"  hello\n  world\n", "txt")` returns content whose text is exactly `"  hello\n  world\n"` (no strip)
+- non-goals:
+  - Do not change image/PDF branches
+  - Do not change the `>50000 bytes` guard in `read_file`
+
+## Reject duplicate tool names in agent()
+- status: ready
+- loc-ceiling: 25
+- acceptance:
+  - `agent()` in `nkd_agents/anthropic.py` and `nkd_agents/openai.py` raises `ValueError` when `fns` contains two callables with the same `__name__` — currently the second silently overwrites the first in `tool_dict` while both schemas are registered with the provider, producing dispatch ambiguity
+  - The error message names the duplicated function name
+  - `tests/test_anthropic.py` and `tests/test_openai.py` each add one case asserting `ValueError` is raised when two distinct async functions share `__name__` (e.g. via `functools.wraps` or `fn.__name__ = "x"`)
+- non-goals:
+  - Do not change behavior when the caller passes a custom `tools=` kwarg
+  - Do not deduplicate silently
+
+## Skip auto_compact when boundary walks back to 0
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `auto_compact` (`nkd_agents/cli.py`), after the orphaned-`tool_result` walk-back loop, return early if `boundary == 0` — there is nothing to summarize, but the current code still spends a Haiku call on a `SUMMARY_PROMPT` over zero prior messages and replaces `messages[:0]` (a no-op slice) with a vacuous summary, polluting history
+  - Existing `tests/test_cli.py` auto-compact cases continue to pass
+  - `tests/test_cli.py` adds one case constructing a message list where every message at/after `len(messages) - AUTO_COMPACT_TARGET` is a `tool_result`-bearing message so the walk-back hits 0, and asserts `client.messages.create` is not called and `messages` is unchanged
+- non-goals:
+  - Do not change the threshold/target defaults
+  - Do not refactor the walk-back loop
+
+## Drop redundant `text and` guard in CLI prompt_loop
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - In `CLI.prompt_loop` (`nkd_agents/cli.py`), replace `if text and text.strip():` with `if text.strip():` — `prompt_async` always returns a `str`, and `"".strip()` is already falsy, so the leading `text and` clause is dead
+  - Existing tests continue to pass; no new test required (pure simplification)
+- non-goals:
+  - Do not change the message-building or queueing behavior
+  - Do not touch the second `text.strip()` inside `build_message`
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
