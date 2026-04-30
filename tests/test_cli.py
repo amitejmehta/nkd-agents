@@ -157,6 +157,21 @@ class TestInterrupt:
         cli.llm_task.cancel.assert_called_once()
 
 
+class TestCacheWarmer:
+    async def test_caps_max_tokens(self, cli: CLI):
+        """Cache warm uses max_tokens=64, not the chat budget."""
+        cli.kwargs["max_tokens"] = 20000
+        cli.messages = [_user_text("hi")]
+        cli.last_message_at = 0.0  # force idle >> 270
+        cli.client.messages.create = AsyncMock(side_effect=asyncio.CancelledError)
+        with patch("nkd_agents.cli.asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(asyncio.CancelledError):
+                await cli.cache_warmer()
+        kw = cli.client.messages.create.await_args.kwargs
+        assert kw["max_tokens"] == 64
+        assert cli.kwargs["max_tokens"] == 20000  # chat budget untouched
+
+
 class TestLLMLoop:
     async def test_processes_queue(self, cli: CLI):
         with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm:
