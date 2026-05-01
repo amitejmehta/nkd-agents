@@ -97,7 +97,7 @@ async def edit_file(
 
 async def bash(command: str, timeout: int = 30) -> str:
     """Execute a bash command and return the results.
-    STDOUT is truncated to 50,000 characters.
+    STDOUT and STDERR are each truncated to 50,000 characters.
 
     Returns "STDOUT:\n{stdout}\nSTDERR:\n{stderr}\nEXIT CODE: {returncode}".
     Raises TimeoutError if the command exceeds `timeout` seconds (process group is SIGKILLed).
@@ -116,7 +116,7 @@ async def bash(command: str, timeout: int = 30) -> str:
 
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        result_str = f"STDOUT:\n{stdout.decode().strip()[:50000]}\nSTDERR:\n{stderr.decode().strip()}\nEXIT CODE: {process.returncode}"
+        result_str = f"STDOUT:\n{stdout.decode().strip()[:50000]}\nSTDERR:\n{stderr.decode().strip()[:50000]}\nEXIT CODE: {process.returncode}"
         logger.info(result_str)
         return result_str
     except asyncio.TimeoutError:

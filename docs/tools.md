@@ -99,6 +99,7 @@ Or raises `TimeoutError("Command timed out after {timeout} seconds: {command}")`
 
 - Runs in `cwd_ctx` directory.
 - Default timeout: 30 seconds. Override per-call.
+- STDOUT and STDERR are each truncated to 50,000 characters.
 
 ---
 
