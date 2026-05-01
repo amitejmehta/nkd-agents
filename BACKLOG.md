@@ -62,6 +62,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
   - Do not change the timeout behavior, exit-code handling, or the 50,000 constant
   - Do not stream stderr separately
 - last-attempt: 2026-04-30 worker implemented changes but skipped worktree step and never pushed/opened PR
+- pr: https://github.com/amitejmehta/nkd-agents/pull/92
 
 Fix grep total-match cap (currently per-file, not total)
 - status: in-progress
@@ -109,6 +110,7 @@ Make OpenAI agent() fns keyword-only for parity with Anthropic
   - Do not change the Anthropic signature or any other kwargs
   - Do not rename `fns` or alter its default
 - last-attempt: 2026-04-30 worker implemented changes but skipped worktree step and never pushed/opened PR
+- pr: https://github.com/amitejmehta/nkd-agents/pull/91
 
 Tighten load_env to strip whitespace and surrounding quotes
 - status: in-progress
@@ -120,6 +122,7 @@ Tighten load_env to strip whitespace and surrounding quotes
 - non-goals:
   - Do not add multi-line value support, variable interpolation, or `export ` prefix handling
   - Do not add a third-party dotenv dependency
+- pr: https://github.com/amitejmehta/nkd-agents/pull/90
 
 Preserve referenced document paths in auto-compact summary
 - status: in-progress
