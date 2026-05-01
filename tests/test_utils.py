@@ -206,6 +206,21 @@ class TestLoadEnv:
         del os.environ["VALID"]
         del os.environ["ANOTHER"]
 
+    def test_quotes_whitespace_and_comments(self, tmp_path):
+        """Strips whitespace, surrounding quotes, and ignores comment lines."""
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "# a comment\n  # indented comment\nDQ=\"v a l\"\nSQ='s q'\n"
+            "  SPACED  =  spaced_val  \n=novalue\n"
+        )
+        load_env(str(env_file))
+        assert os.environ.get("DQ") == "v a l"
+        assert os.environ.get("SQ") == "s q"
+        assert os.environ.get("SPACED") == "spaced_val"
+        assert "" not in os.environ
+        for k in ("DQ", "SQ", "SPACED"):
+            del os.environ[k]
+
 
 class TestHandleLiteralAnnotation:
     def test_valid_str_literal(self):
