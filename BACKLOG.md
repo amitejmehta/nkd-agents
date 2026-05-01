@@ -52,7 +52,7 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 - pr: https://github.com/amitejmehta/nkd-agents/pull/88
 
 ## Truncate STDERR in bash() the same way STDOUT is truncated
-- status: ready
+- status: in-progress
 - loc-ceiling: 10
 - acceptance:
   - `bash()` in `nkd_agents/tools.py` applies the same `[:50000]` slice to `stderr.decode().strip()` that it already applies to stdout — currently a noisy command (e.g. a verbose compiler error) can return an unbounded STDERR while STDOUT is capped, contradicting the "STDOUT is truncated to 50,000 characters" intent and risking blowing the model's context
@@ -99,7 +99,7 @@ Add YAML frontmatter to skills/pr_maintainer and skills/pr_watch SKILL.md
 - pr: https://github.com/amitejmehta/nkd-agents/pull/80
 
 Make OpenAI agent() fns keyword-only for parity with Anthropic
-- status: ready
+- status: in-progress
 - loc-ceiling: 10
 - acceptance:
   - `agent()` in `nkd_agents/openai.py` accepts `fns` as a keyword-only argument (insert `*,` before `fns` in the signature), mirroring `nkd_agents/anthropic.py`
@@ -111,7 +111,7 @@ Make OpenAI agent() fns keyword-only for parity with Anthropic
 - last-attempt: 2026-04-30 worker implemented changes but skipped worktree step and never pushed/opened PR
 
 Tighten load_env to strip whitespace and surrounding quotes
-- status: ready
+- status: in-progress
 - loc-ceiling: 20
 - acceptance:
   - `load_env()` in `nkd_agents/utils.py` strips leading/trailing whitespace from both key and value, ignores lines whose stripped form starts with `#`, and removes a single matching pair of surrounding `"` or `'` from the value
