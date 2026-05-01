@@ -132,6 +132,7 @@ async def tool(
 
 async def agent(
     client: AsyncOpenAI,
+    *,
     fns: Sequence[
         Callable[
             ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
