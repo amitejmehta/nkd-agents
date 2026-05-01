@@ -304,6 +304,13 @@ class TestBash:
         assert "err" in result
 
     @pytest.mark.asyncio
+    async def test_bash_stderr_truncated(self):
+        """STDERR section is capped at 50,000 chars like STDOUT."""
+        result = await bash("python3 -c \"import sys; sys.stderr.write('x'*60000)\"")
+        stderr_section = result.split("STDERR:\n", 1)[1].split("\nEXIT CODE:", 1)[0]
+        assert len(stderr_section) <= 50000
+
+    @pytest.mark.asyncio
     async def test_bash_command_not_found(self):
         """Test invalid command returns error in stderr."""
         result = await bash("nonexistentcommand12345")
