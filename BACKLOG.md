@@ -4,6 +4,60 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Drop hardcoded `channel="chrome"` in web_search
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - In `nkd_agents/web.py`, change `await p.chromium.launch(headless=True, channel="chrome")` to `await p.chromium.launch(headless=True)` so the bundled Chromium installed via `playwright install chromium` works out of the box (current code silently requires Google Chrome to be installed on the host, contradicting `docs/tools.md` which says "Requires `playwright install chromium`")
+  - `tests/test_web.py` adds one case asserting `chromium.launch` is called *without* a `channel` kwarg (mock playwright, inspect call args)
+- non-goals:
+  - Do not add a fallback / try-except chain across multiple channels
+  - Do not change the User-Agent, timeout, or `wait_for_selector` logic
+
+## Mark truncated bash STDOUT with an explicit suffix
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `bash()` in `nkd_agents/tools.py` checks if decoded stdout exceeds 50,000 chars before slicing; if so, appends `\n... [truncated, {N} chars total]` (or similar) to the sliced output so the model knows truncation occurred and can react (e.g. pipe through `head`/`grep` next time)
+  - When stdout is ≤ 50,000 chars, the result is byte-identical to today
+  - `tests/test_tools.py` adds one case running `python3 -c "print('x'*60000)"` (or equivalent fixture-based mock) and asserts the returned STDOUT section contains the truncation marker and reports the original length
+- non-goals:
+  - Do not change the 50,000 constant or apply the same treatment to STDERR (separate item)
+  - Do not introduce a new env var to tune the cap
+
+## Make read_file raise ValueError with a friendly message instead of leaking FileNotFoundError / IsADirectoryError
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `read_file` in `nkd_agents/tools.py` checks `file_path.exists()` and `file_path.is_file()` up front and raises `ValueError(f"File not found: {path}")` / `ValueError(f"'{path}' is a directory, not a file. Use glob() or grep() instead.")` rather than letting Python's raw exceptions surface to the model — these are what `tool()` reports back, and a `ValueError` body is more actionable than `[Errno 2] No such file or directory: '/abs/path'`
+  - Update the two existing cases in `tests/test_tools.py` (`test_read_file_not_found`, `test_read_file_directory`) to assert `ValueError` with the new messages
+  - All other `read_file` tests pass unchanged
+- non-goals:
+  - Do not catch arbitrary exceptions (permission errors, decode errors) — only the two well-defined missing/wrong-type cases
+  - Do not change the 50,000-byte size guard or the FileContent return path
+
+## Make auto_compact resilient to summarizer failures
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `auto_compact` in `nkd_agents/cli.py` wraps the inner `await agent(...)` summarization call in `try/except Exception` — on failure it logs at warning level (`Auto-compact failed; deferring: {e}`) and returns without mutating `messages`, so the next user turn proceeds uncompacted instead of the entire CLI being wedged by a transient API/network error
+  - On success, behavior is byte-identical to today (same boundary walk, same in-place replacement)
+  - `tests/test_cli.py` adds one case where the patched `agent` raises (e.g. `RuntimeError("boom")`); asserts `messages` is unchanged and `auto_compact` returns normally
+- non-goals:
+  - Do not add retry logic, backoff, or a failure counter
+  - Do not change the threshold/target defaults or the boundary-walking logic
+
+## Fix docs/cli.md CLAUDE.md substitution claim
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `docs/cli.md` line "If `CLAUDE.md` exists in the working directory, it's used as the system prompt (`{cwd}` and `{home}` are substituted)." is rewritten to match `build_system_prompt()` in `nkd_agents/cli.py`: CLAUDE.md is read verbatim from `~/.nkd-agents/CLAUDE.md` and/or `./CLAUDE.md`, concatenated, and a trailing `CWD: ... \nHOME: ...` line is appended — there is no `{cwd}`/`{home}` placeholder substitution
+  - Mention that both files are concatenated when both exist (home first, then cwd), since this is also undocumented today
+  - No code changes; pure docs PR
+- non-goals:
+  - Do not implement actual `{cwd}`/`{home}` placeholder substitution
+  - Do not touch other rows in the docs
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
