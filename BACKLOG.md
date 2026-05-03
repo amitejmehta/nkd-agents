@@ -4,6 +4,61 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Reject unannotated parameters in extract_function_params
+- status: ready
+- loc-ceiling: 25
+- acceptance:
+  - `extract_function_params` in `nkd_agents/utils.py` (via `_handle_primitive`) raises `ValueError` when a parameter has no annotation (`inspect._empty`) instead of silently coercing to `{"type": "string"}` and marking it required — the framework docs state "Parameters must be type-annotated", so this footgun (a typo'd `: str` becomes a string-typed required param the LLM can't satisfy correctly) should fail loudly at `tool_schema(...)` call time
+  - Error message names the offending function and parameter, mirroring the pattern already used for `*args`/`**kwargs` and unsupported types
+  - Update `tests/test_utils.py`: replace the existing `test_unannotated_defaults_to_string` (and the `unannotated` param in `test_basic_types`) with a case asserting `ValueError` is raised; both `tool_schema` callers (Anthropic + OpenAI) inherit the fix automatically
+- non-goals:
+  - Do not change handling of `Literal`, `T | None`, or any supported primitive type
+  - Do not introduce a "permissive" flag — the rule applies uniformly
+
+## Skip tool_schema build when caller passes a tools= kwarg
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In both `nkd_agents/anthropic.py` and `nkd_agents/openai.py`, replace `kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])` with a branch that only builds the schema list when `"tools"` is not already in `kwargs` — the current expression always evaluates the comprehension, which is wasted work and (worse) raises `ValueError` from `tool_schema` when an `fns` entry has no docstring even though the caller explicitly bypassed auto-generation by passing their own `tools`
+  - `tool_dict` (used for execution dispatch) continues to be built from `fns` regardless, preserving the documented "pass a custom `tools=` kwarg to bypass auto-generation" escape hatch in `docs/framework.md`
+  - `tests/test_anthropic.py` and `tests/test_openai.py` each add one case: pass `fns=[fn_without_docstring]` together with an explicit `tools=[{...}]` and assert `agent()` no longer raises during setup (mock `client.messages.create` / `client.responses.create` to return an empty turn)
+- non-goals:
+  - Do not change the behavior when `tools` is omitted
+  - Do not warn or error when both `fns` and `tools` are passed — that's the documented escape hatch
+
+## Make grep output paths relative to its base directory
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `grep()` in `nkd_agents/tools.py` runs ripgrep with `cwd=base` and passes `"."` (or omits the path arg) instead of `str(base)` so file paths in the output are relative to `base` rather than absolute — current absolute paths bloat output and leak the user's home directory into context every time a non-cwd `path=` is used
+  - The existing 200-line cap, `--heading`, `--context`, `--include`, and `--include-hidden` flags are unchanged
+  - `tests/test_tools.py` adds one case asserting that `grep("...", path=str(tmp_path))` output contains relative paths (e.g. `"file.py"`) and not `str(tmp_path)`
+- non-goals:
+  - Do not change the `cwd_ctx` fallback when `path` is `None`
+  - Do not switch off `--heading` or restructure the output format
+
+## Don't drop the user's turn when auto_compact fails
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `CLI.llm_loop` (`nkd_agents/cli.py`), wrap the `await auto_compact(self.messages, self.client)` call in a try/except that logs the exception at WARNING level and continues — currently a transient summarizer-API error (rate limit, network blip, Haiku 5xx) raises out of `llm_loop`'s iteration, swallowing the user message that was already pulled from the queue
+  - On failure, `self.messages` is left untouched (since the in-place replacement only happens after `agent()` returns inside `auto_compact`) and the user's message is still appended and sent to the main agent — i.e. compaction is best-effort, not load-bearing
+  - `tests/test_cli.py` adds one case: monkeypatch `nkd_agents.cli.auto_compact` to raise, push a message via `cli.queue`, run one iteration of `llm_loop`, assert the message reached `self.messages` and no exception propagated
+- non-goals:
+  - Do not change `auto_compact`'s own logic (boundary walk-back, summary prompt, threshold/target)
+  - Do not retry compaction; one failure per turn is fine
+
+## Catch HTTP errors in fetch_url and return a clean error string
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `fetch_url` in `nkd_agents/web.py` wraps the `httpx.AsyncClient.get(...)` + `raise_for_status()` block in a try/except that catches `httpx.HTTPError` (covers `HTTPStatusError`, `RequestError`, timeouts) and returns `f"Error fetching '{url}': {e}"` — same shape as the existing "No content extracted" branch — instead of letting the exception bubble through the tool dispatcher's generic handler
+  - The model sees a focused, actionable error (status code, host) rather than `Error calling tool 'fetch_url': ...` with a stringified exception type
+  - `tests/test_web.py` adds one case using `httpx.MockTransport` (or monkeypatching the client) to simulate a 404 and asserts the returned string starts with `"Error fetching '"` and contains `"404"`
+- non-goals:
+  - Do not catch `Exception` broadly — only `httpx.HTTPError`
+  - Do not change the trafilatura extraction or save-to-disk behavior
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
