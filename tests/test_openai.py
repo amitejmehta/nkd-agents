@@ -12,6 +12,7 @@ from openai.types.responses.response_reasoning_item import Summary
 from pydantic import BaseModel
 
 from nkd_agents.openai import (
+    agent,
     extract_text_and_tool_calls,
     output_format,
     tool,
@@ -234,3 +235,9 @@ async def test_tool_file_content_text():
         {"read_txt": read_txt}, _tool_call("c3", "read_txt", '{"path": "f.txt"}')
     )
     assert result["output"] == "hello world"
+
+
+async def test_agent_fns_keyword_only():
+    """fns must be passed by keyword (parity with anthropic.agent)."""
+    with pytest.raises(TypeError):
+        await agent(None, [], input=[])  # type: ignore[arg-type,misc]
