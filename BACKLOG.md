@@ -4,6 +4,61 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Skip session auto-save in headless `-p` mode
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally` block only calls `cli.save_session(...)` when `args.prompt` is `None` (interactive mode) — headless `-p` runs no longer litter `~/.nkd-agents/sessions/` with one-shot conversations, which matters for cron / subagent fan-outs that invoke `nkd -p` repeatedly
+  - When `-p` is combined with `-s <path>`, the loaded session is left untouched on disk (no overwrite) — resumed-then-printed runs are read-only by default
+  - `tests/test_cli.py` adds one case running `main()` with `args.prompt="hi"` (and `messages` non-empty after the call) and asserts no new file is created under `NKD_DIR / "sessions"`
+- non-goals:
+  - Do not add a new flag to opt back into headless saving — users who want it can pipe the printed result themselves
+  - Do not change interactive auto-save behavior or the `-s` resume path
+
+## Raise on missing parameter annotations in `extract_function_params`
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `_handle_primitive` (or `extract_function_params`) in `nkd_agents/utils.py` raises `ValueError` naming the function and parameter when a parameter's annotation is `inspect._empty` — currently it silently coerces to `{"type": "string"}`, contradicting `docs/framework.md` ("Parameters must be type-annotated") and producing a schema the model can't satisfy for non-string params
+  - The `TYPE_MAP.get(annotation, "string")` fallback is removed; a clean lookup is used instead
+  - `tests/test_utils.py` adds one case asserting `ValueError` is raised for an async function with one annotated and one unannotated parameter
+- non-goals:
+  - Do not change the supported type set (`str`, `int`, `float`, `bool`, `Literal`, `T | None`)
+  - Do not relax the docstring requirement or any other validation
+
+## Reject conflicting `fns=` and `tools=` in `agent()`
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `agent()` in both `nkd_agents/anthropic.py` and `nkd_agents/openai.py` raises `ValueError` when the caller passes a non-empty `fns=` *and* a `tools=` kwarg simultaneously — currently `kwargs["tools"] = kwargs.get("tools", [...])` silently drops auto-generated schemas while still dispatching `fns`, so the model can't see the tools it's apparently allowed to call
+  - The documented escape hatch (`fns=()` + custom `tools=`) continues to work unchanged
+  - `tests/test_anthropic.py` and `tests/test_openai.py` each add one case asserting the `ValueError` is raised when both are passed
+- non-goals:
+  - Do not merge user-supplied `tools=` with auto-generated schemas — explicit failure beats silent merge surprises
+  - Do not change the kwarg pass-through contract for any other parameter
+
+## Chain mutually-exclusive branches in `extract_text_and_tool_calls` (Anthropic)
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - In `nkd_agents/anthropic.py`, the loop in `extract_text_and_tool_calls` uses a single `if / elif / elif` chain across `block.type == "thinking" / "text" / "tool_use"` instead of the current `if / if / elif` — the three block types are mutually exclusive, so two top-level `if`s are wasteful and obscure intent
+  - Existing tests in `tests/test_anthropic.py` continue to pass with no edits
+- non-goals:
+  - Do not change logging format, return shape, or any other branch behavior
+  - Do not refactor the OpenAI counterpart (its branch structure is already correct)
+
+## Unify Anthropic `bytes_to_content` signature with OpenAI (take `FileContent`)
+- status: ready
+- loc-ceiling: 25
+- acceptance:
+  - `bytes_to_content` in `nkd_agents/anthropic.py` is changed from `(data: bytes, ext: str)` to `(fc: FileContent)`, matching the OpenAI counterpart — both providers now have a single, parallel surface for converting tool-returned bytes to provider content blocks
+  - The single call site in `tool()` is updated from `bytes_to_content(result.data, result.ext)` to `bytes_to_content(result)`
+  - The redundant `assert media_type in (...)` inside the image branch is removed — the surrounding `if ext in ("jpeg", "png", "gif", "webp")` already constrains the value
+  - `tests/test_anthropic.py` updates any direct `bytes_to_content` callers to the new signature; behavior coverage is preserved
+- non-goals:
+  - Do not change OpenAI's `bytes_to_content` or the `FileContent` dataclass
+  - Do not change how `read_file` returns bytes/extensions to the framework
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
