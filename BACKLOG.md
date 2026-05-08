@@ -4,6 +4,60 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Reject parameters without type annotations in extract_function_params
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `_handle_primitive` (`nkd_agents/utils.py`), raise `ValueError` when `annotation is inspect._empty`, naming the offending function/parameter via `param_sig` — currently untyped params silently fall through to `{"type": "string"}` and become required, producing a misleading schema (e.g. `async def f(x): ...` registers `x` as a required string).
+  - Both `tool_schema` callers (Anthropic + OpenAI) inherit the fix automatically — no provider changes needed.
+  - `tests/test_utils.py` adds one case asserting `extract_function_params` raises `ValueError` for an async function with at least one un-annotated parameter, and that the message mentions the parameter name.
+- non-goals:
+  - Do not change handling of `T | None`, `Literal`, or any supported primitive type.
+  - Do not infer types from defaults.
+
+## Skip session save in headless mode unless -s was provided
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally` block only calls `cli.save_session(path=args.session)` when `args.session` is truthy *or* `args.prompt` is falsy — i.e. headless one-shot runs (`nkd -p "..."`) no longer dump a fresh `~/.nkd-agents/sessions/{ts}.json` per invocation, which currently spams the directory under cron / subagent loops.
+  - When `-s` is passed alongside `-p`, the loaded session file is still updated (existing behavior preserved).
+  - `tests/test_cli.py` adds one case verifying that running `main()` with `args.prompt` set and `args.session=None` does not write a new file under `NKD_DIR / "sessions"` (use `tmp_path` + monkeypatched `NKD_DIR`).
+- non-goals:
+  - Do not change interactive-mode session-save behavior or the timestamp filename format.
+  - Do not add a new env var or CLI flag to control this.
+
+## Early-return in auto_compact when boundary walks back to 0
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `auto_compact` (`nkd_agents/cli.py`), after the `tool_result` walk-back loop, if `boundary == 0` return without calling `agent()` — currently the function happily summarizes an empty `old_messages` slice (the LLM is asked to summarize only the `SUMMARY_PROMPT`) and then *prepends* a junk `<conversation_summary>` to the message list, growing it instead of compacting.
+  - The early return is placed after the walk-back (so the threshold/orphan-pair logic is unchanged) and before the `agent()` call.
+  - `tests/test_cli.py` adds one case constructing a `messages` list whose only non-orphan boundary is 0 (every candidate boundary message contains a `tool_result`) and asserts `auto_compact` returns without invoking the client and leaves `messages` unchanged.
+- non-goals:
+  - Do not change `AUTO_COMPACT_THRESHOLD`, `AUTO_COMPACT_TARGET`, or `SUMMARY_PROMPT`.
+  - Do not refactor the walk-back loop further.
+
+## Reject duplicate function names in agent() fns
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In both `nkd_agents/anthropic.py` and `nkd_agents/openai.py`, `agent()` raises `ValueError` (naming the duplicate) when two callables in `fns` share a `__name__` — currently `tool_dict = {fn.__name__: fn for fn in fns}` silently keeps only the last one, so the model is shown two tool schemas but the first never executes.
+  - The check happens before the tool-schema list is built, so kwargs aren't mutated on the error path.
+  - `tests/test_anthropic.py` and `tests/test_openai.py` each add one case asserting `ValueError` when two distinct async functions share a `__name__` (e.g. assign `fn2.__name__ = fn1.__name__`).
+- non-goals:
+  - Do not deduplicate by identity, signature, or docstring — only by name.
+  - Do not change the existing pass-through of an explicit `tools=` kwarg.
+
+## Decode bash() stdout/stderr with errors="replace"
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - In `bash()` (`nkd_agents/tools.py`), both `stdout.decode()` and `stderr.decode()` calls pass `errors="replace"` so commands that emit non-UTF-8 bytes (e.g. binary tools, mis-encoded logs) no longer raise `UnicodeDecodeError` mid-formatting and surface as a generic tool error instead of the actual command output and exit code.
+  - `tests/test_tools.py` adds one case running a command that writes invalid UTF-8 to stdout (e.g. `bash -c "printf '\\xff\\xfe'"`) and asserts `bash()` returns a string containing `EXIT CODE: 0` rather than raising.
+- non-goals:
+  - Do not change the 50,000-char truncation, timeout behavior, or the `STDOUT/STDERR/EXIT CODE` format.
+  - Do not switch encodings away from UTF-8.
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
