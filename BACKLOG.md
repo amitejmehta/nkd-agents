@@ -4,6 +4,53 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Support typing.Union[T, None] (and Optional[T]) in extract_function_params
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `_handle_union` (or `process_param_annotation`) in `nkd_agents/utils.py` accepts both PEP 604 unions (`T | None`, origin `types.UnionType`) and legacy `typing.Union[T, None]` / `Optional[T]` (origin `typing.Union`); currently only `types.UnionType` is matched, so `Optional[str]` falls through to `_handle_primitive` and raises `Unsupported type`
+  - The `len(args) == 2 and args[1] is type(None)` constraint stays — only 2-arg unions with `None` as the second arg are supported
+  - `tests/test_utils.py` adds two cases under `TestExtractFunctionParams`: one async fn with `x: Optional[str] = None`, one with `x: Union[int, None] = None`; both produce the same schema as the existing `T | None` case
+
+## Skip session save in headless `-p` mode
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally` block no longer calls `cli.save_session(...)` when `args.prompt` is set — headless invocations (cron, backlog curator, subagents) currently write a fresh JSON to `~/.nkd-agents/sessions/` on every run, polluting the dir and inflating disk use
+  - Interactive sessions (no `-p`) and `-s <path>` resume flows still save exactly as today
+  - `tests/test_cli.py` adds one case asserting `save_session` is not invoked when `argparse.Namespace(prompt="hi", session=None)` is the parsed args (mock `agent` to return immediately)
+
+## Fix docs/cli.md CLAUDE.md substitution claim
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - The line in `docs/cli.md` that says "(`{cwd}` and `{home}` are substituted)" is rewritten to match what `CLI.build_system_prompt` actually does: it concatenates `~/.nkd-agents/CLAUDE.md` (if present) and `./CLAUDE.md` (if present), then appends a trailing `CWD: {Path.cwd()}\nHOME: {Path.home()}` line — no `{cwd}` / `{home}` placeholder substitution happens
+  - No code changes; docs-only sync
+- non-goals:
+  - Do not add placeholder substitution to `build_system_prompt`
+  - Do not touch the `~/.nkd-agents/CLAUDE.md` precedence behavior
+
+## Reject unannotated parameters in extract_function_params
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `_handle_primitive` (or its caller) in `nkd_agents/utils.py` raises `ValueError` when a parameter has no annotation (`inspect._empty`) instead of silently coercing it to `{"type": "string"}` — the silent fallback hides bugs in custom tools and produces a schema the model can't reliably satisfy
+  - Error message names the offending function and parameter (matches the `param_sig` style already used elsewhere)
+  - All built-in tools (`read_file`, `write_file`, `edit_file`, `bash`, `glob`, `grep`, `fetch_url`, `web_search`) are fully annotated and continue to work; the existing `test_basic_types` case in `tests/test_utils.py` is updated/replaced because it currently asserts an unannotated param maps to `string`
+  - `tests/test_utils.py` adds one case asserting `ValueError` is raised for an async fn declared as `async def f(x): ...`
+- non-goals:
+  - Do not change behavior for annotated params or `Literal` / union handling
+
+## Apply START_PHRASE + mode prefix to headless `-p` prompts
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the headless branch wraps `args.prompt` with `cli.build_message(args.prompt)` before appending it to `cli.messages`, matching what the interactive prompt loop already does — currently `-p` bypasses `START_PHRASE` and the active mode prefix, so cron/subagent runs get a different (more verbose) Claude than the same prompt typed interactively
+  - `tests/test_cli.py` adds one case asserting that running `main()` with `argparse.Namespace(prompt="hi", session=None)` results in `cli.messages[-1]["content"]` starting with `START_PHRASE` (mock `agent` to return immediately)
+- non-goals:
+  - Do not change `build_message` or the mode/prefix mechanism itself
+  - Do not introduce a flag to opt out
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
