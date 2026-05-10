@@ -4,6 +4,49 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Skip auto tool_schema generation when caller passes `tools=` kwarg
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - In both `nkd_agents/anthropic.py` and `nkd_agents/openai.py` `agent()`, replace `kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])` with an `if "tools" not in kwargs: kwargs["tools"] = [tool_schema(fn) for fn in fns]` guard — `dict.get(key, default)` always evaluates `default`, so today schemas are built (and validation errors raised) even when the caller has supplied a custom `tools` list to bypass auto-generation
+  - `tests/test_anthropic.py` and `tests/test_openai.py` each add one case: pass `fns=[fn_without_docstring]` together with an explicit `tools=[{...}]` kwarg and assert `agent()` runs without raising the "must have a docstring" `ValueError` (mock the API call)
+- non-goals:
+  - Do not change the `tool_dict` build (`{fn.__name__: fn for fn in fns}`) — `fns` still drives runtime dispatch even when `tools` is user-supplied
+  - Do not add a way to merge user-supplied `tools` with auto-generated ones
+
+## Don't auto-save session in headless `-p` mode
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally: if cli.messages: cli.save_session(...)` block runs only when `args.prompt` is falsy — headless invocations (`nkd -p "..."`) should print the result to stdout and exit cleanly without writing a session file
+  - When `-s` and `-p` are passed together, the input session is still loaded but not overwritten on exit (a headless run is a one-shot, not a session edit)
+  - `tests/test_cli.py` adds one case: run `main()` with `args.prompt` set (mock `agent()` to return a string), assert no file is written under `~/.nkd-agents/sessions/` and that the supplied `-s` file is not overwritten
+- non-goals:
+  - Do not change interactive-mode session-save behavior
+  - Do not add a new flag to opt back into headless saving
+
+## Print `save_session` resume hint to stderr, not stdout
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `save_session()` in `nkd_agents/cli.py` writes its `"Resume with: nkd -s {path}"` line to `sys.stderr` (e.g. `print(..., file=sys.stderr)`) so that piping `nkd -p "..."` output never mixes the resume hint into the model's response on stdout
+  - The `Exiting...` message in `main()`'s `except (KeyboardInterrupt, EOFError)` handler also goes to stderr for the same reason
+  - `tests/test_cli.py` adds one case capturing both streams via `capsys` and asserting the resume hint appears in `captured.err` and not in `captured.out`
+- non-goals:
+  - Do not switch to `logger.info` — the hint should appear regardless of `NKD_LOG_LEVEL`
+  - Do not change `BANNER` printing (interactive mode only)
+
+## Reject untyped tool parameters in `extract_function_params`
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `_handle_primitive` in `nkd_agents/utils.py` raises `ValueError(f"Missing type annotation: {param_sig}")` when `annotation is inspect._empty`, instead of silently returning `{"type": "string"}` — `docs/framework.md` already states "Parameters must be type-annotated", but today an unannotated param becomes a required string input with no error
+  - Both Anthropic and OpenAI `tool_schema` callers inherit the fix automatically; no provider-specific changes needed
+  - `tests/test_utils.py` adds one case asserting `extract_function_params` raises `ValueError` for an async function whose parameter has no annotation (e.g. `async def f(x): "doc"`)
+- non-goals:
+  - Do not change handling of typed parameters or supported-type list
+  - Do not allow opt-in untyped fallback via a kwarg
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
