@@ -4,6 +4,60 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Skip session auto-save and resume-print in headless (-p) mode
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally` block only calls `cli.save_session(...)` when `args.prompt` is falsy — headless one-shot runs (`nkd -p "..."`) should not write to `~/.nkd-agents/sessions/` nor print `"Resume with: nkd -s ..."` to stdout (this currently corrupts piped output for subagents and `nkd -p` callers)
+  - The print line inside `save_session()` is redirected to stderr (use `print(..., file=sys.stderr)` or `logger.info(...)`) so that even interactive sessions don't put the resume hint on stdout where downstream tooling would see it
+  - `tests/test_cli.py` adds one case: invoke `main()` (or refactor the save logic into a testable helper) with `args.prompt="hi"` and assert no file is written under a tmp `NKD_DIR/sessions/`
+- non-goals:
+  - Do not change the interactive (no `-p`) auto-save behavior or the timestamp format
+  - Do not add a new flag like `--no-save`; the rule is purely "headless ⇒ no session file"
+
+## Replace private inspect._empty with public inspect.Parameter.empty
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `nkd_agents/utils.py` no longer references `inspect._empty` (private API, two sites: `_handle_primitive` and `extract_function_params`); both use `inspect.Parameter.empty` instead
+  - Pyright + ruff + existing `tests/test_utils.py` all pass with no logic changes
+  - No new test cases needed — this is a pure rename
+- non-goals:
+  - Do not change the schema-extraction behavior, types accepted, or error messages
+  - Do not refactor `process_param_annotation` or its helpers
+
+## Raise clear ValueError when messages kwarg is missing in Anthropic agent()
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `agent()` in `nkd_agents/anthropic.py` currently does `if not isinstance(kwargs["messages"], list)` which raises a bare `KeyError: 'messages'` when the caller forgets the kwarg — replace with a `ValueError("messages kwarg is required and must be a list")` covering both the missing-key and wrong-type cases (use `kwargs.get("messages")` + explicit type check)
+  - Matches the spirit of the existing OpenAI check (`kwargs.get("input", [])`) but is stricter: empty/missing is rejected outright since the loop needs at least one user turn
+  - `tests/test_anthropic.py` adds one case asserting `ValueError` (not `KeyError`) when `agent(client)` is called with no `messages=`
+- non-goals:
+  - Do not add a similar guard to the OpenAI `agent()` (its current `kwargs.get("input", [])` default-to-empty-list behavior is intentional for that API)
+  - Do not change the in-place mutation contract
+
+## Early-return from auto_compact when boundary walk-back hits 0
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `auto_compact` (`nkd_agents/cli.py`), after the `while ... boundary -= 1` walk-back loop, add `if boundary == 0: return` so we don't (a) fire a wasted summarization `agent()` call on zero old messages and (b) prepend an empty `<conversation_summary>` stub that would then get re-summarized on subsequent compactions
+  - Existing auto-compact tests in `tests/test_cli.py` still pass; add one case where every message in `messages[:len-AUTO_COMPACT_TARGET]` contains a `tool_result` block (forcing walk-back to 0) and assert `agent()` is **not** awaited
+- non-goals:
+  - Do not change the walk-back logic itself or the `assistant`-role guard above it
+  - Do not change thresholds or the summary prompt
+
+## Pass max_results as JS argument in web_search (drop % formatting)
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `web_search()` (`nkd_agents/web.py`), the `page.eval_on_selector_all(...)` JS snippet stops using Python `%` string formatting to inject `max_results`; instead the function signature becomes `(els, n) => els.slice(0, n)...` and `max_results` is passed as the third `arg` parameter to `eval_on_selector_all`
+  - This removes a string-templating-into-JS pattern (currently safe only because `max_results: int`, but a footgun) and matches Playwright's documented API for parameterized DOM evaluation
+  - `tests/test_web.py` continues to pass; no new test needed — the existing behavior must be byte-identical for any given `max_results`
+- non-goals:
+  - Do not change the DuckDuckGo selectors, User-Agent, timeout, or the result-formatting block
+  - Do not switch search providers or browser channel
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
