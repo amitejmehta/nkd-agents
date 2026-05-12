@@ -4,6 +4,59 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Log model name when ctrl+l switches model
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `switch_model()` in `nkd_agents/cli.py` calls `logger.info(...)` with the newly selected model name after updating `self.kwargs["model"]` — `docs/cli.md` claims "logged on switch, applies to next message" but the code emits nothing
+  - The log uses the existing `DIM`/`RESET` styling so it visually matches `switch model` / `Warmed cache` / `Summarized N messages` lines
+  - `tests/test_cli.py` adds one case asserting that after calling `cli.switch_model()`, a log record at INFO level mentions the new `cli.kwargs["model"]` value (use `caplog` at `logging.INFO`)
+- non-goals:
+  - Do not change `MODELS`, the cycling order, or the `ctrl+l` binding
+  - Do not add a separate `NKD_MODEL_SWITCH_MSG` env var
+
+## Unify grep "No matches found" message with glob
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `grep()` in `nkd_agents/tools.py` returns the bare string `"No matches found"` (matching `glob()` and `docs/tools.md`) on empty ripgrep output, instead of `f"No matches found for pattern: {pattern}"`
+  - `tests/test_tools.py` updates the existing grep "no matches" case to assert exact-equality with `"No matches found"` (currently uses `in`), and verifies the `glob` no-match case still returns the same string — making the contract uniform across both tools
+- non-goals:
+  - Do not touch the `--max-count` / 200-line cap (handled separately in PR #81)
+  - Do not change `glob()`'s behavior or message
+
+## Reject duplicate function names in agent() fns
+- status: ready
+- loc-ceiling: 25
+- acceptance:
+  - Both `agent()` in `nkd_agents/anthropic.py` and `nkd_agents/openai.py` raise `ValueError` naming the colliding name when `fns` contains two callables with the same `__name__` — currently the `{fn.__name__: fn for fn in fns}` dict comprehension silently keeps the last one, but the schemas list still contains both entries, so the model sees two tools but one is unreachable
+  - The check runs before any API call (cheap, fail-fast)
+  - `tests/test_anthropic.py` and `tests/test_openai.py` each add one case asserting `ValueError` is raised when two async fns share a `__name__` (use `functools.wraps` or simple manual rename to construct the collision)
+- non-goals:
+  - Do not introduce a namespace/prefix scheme to allow duplicates
+  - Do not validate names against any provider regex; only check uniqueness
+
+## Drop false `{cwd}`/`{home}` substitution claim in docs/cli.md
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - `docs/cli.md` no longer states that `{cwd}` and `{home}` are substituted in `CLAUDE.md` — `build_system_prompt()` in `nkd_agents/cli.py` does no such substitution; it just appends a literal `CWD: {cwd}\nHOME: {home}` trailer to whatever text it loaded
+  - Replace the parenthetical with an accurate one: "If `CLAUDE.md` exists in the working directory, it's used as the system prompt (a `CWD:`/`HOME:` trailer is appended automatically)."
+- non-goals:
+  - Do not implement actual `{cwd}`/`{home}` template substitution — the trailer covers the use case
+  - Do not touch the `~/.nkd-agents/CLAUDE.md` load path
+
+## Fall back gracefully when Chrome channel is unavailable in web_search
+- status: ready
+- loc-ceiling: 20
+- acceptance:
+  - `web_search()` in `nkd_agents/web.py` attempts `p.chromium.launch(headless=True, channel="chrome")` first, and on `playwright._impl._errors.Error` (or any launch exception) retries `p.chromium.launch(headless=True)` without a channel — currently a fresh `playwright install chromium` (no Chrome) makes the tool unusable, contradicting the docs note "or `chrome` channel — uses Chrome if available"
+  - The fallback path is logged at INFO so users see why the channel-less launch was used
+  - `tests/test_web.py` adds one case patching `chromium.launch` so the `channel="chrome"` invocation raises and asserting the channel-less invocation is then called (use `unittest.mock`)
+- non-goals:
+  - Do not add a new env var to pick the channel
+  - Do not switch away from playwright or DuckDuckGo
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
