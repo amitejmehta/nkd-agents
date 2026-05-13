@@ -4,6 +4,68 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Require `input` kwarg in OpenAI agent() for parity with Anthropic
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `agent()` in `nkd_agents/openai.py` accesses `kwargs["input"]` directly (raising `KeyError` if absent) and validates it is a `list`, matching `nkd_agents/anthropic.py`'s handling of `messages`
+  - Replace the current `if not isinstance(kwargs.get("input", []), list):` line — which silently accepts a missing key and only crashes later at `kwargs["input"] += ...` — with an explicit check that raises `ValueError("input is mutated in-place as history and must be a list")` when `input` is missing or not a list
+  - `tests/test_openai.py` adds two cases: (1) calling `agent(client)` with no `input` kwarg raises `ValueError`; (2) calling `agent(client, input="hi")` raises `ValueError`
+- non-goals:
+  - Do not change the Anthropic provider or the message-mutation contract
+  - Do not add a default `input=[]` — the caller must own the list
+- pr:
+
+## Mark caught tool errors with `is_error=True` in Anthropic tool_result
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `tool()` in `nkd_agents/anthropic.py`, when the tool call raises an exception (current `except Exception as e:` branch), the returned `ToolResultBlockParam` includes `"is_error": True` alongside `tool_use_id` and `content`
+  - The success path is unchanged — no `is_error` key is added (Anthropic treats absent as false)
+  - Track whether an error was caught with a local flag inside `tool()` so the wrapping logic stays a single return statement
+  - `tests/test_anthropic.py` adds one case asserting that a tool whose function raises returns a `tool_result` block with `is_error=True` and the error string as text content
+- non-goals:
+  - Do not change OpenAI's `tool()` (the Responses API has no analogous flag)
+  - Do not change tool error formatting or stop logging warnings on tool failures
+- pr:
+
+## Skip session autosave on headless `nkd -p` runs
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally: if cli.messages: cli.save_session(...)` block does not run when `args.prompt` is set and `args.session` is `None` — currently every headless `nkd -p "..."` call pollutes `~/.nkd-agents/sessions/` with a tiny throwaway JSON
+  - When `args.prompt` is set *and* `args.session` is also provided, the session IS still saved (resume-and-extend flow remains supported)
+  - Interactive runs (no `-p`) behave exactly as today
+  - `tests/test_cli.py` adds one case asserting `save_session` is not invoked when `main()` is run with `args.prompt="hi"` and `args.session=None` (mock `agent` to return immediately)
+- non-goals:
+  - Do not change session file format or timestamped naming
+  - Do not add a `--no-save` flag
+- pr:
+
+## Bump warm_count on cache_warm failure to prevent hot-retry loop
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `cache_warmer()` (`nkd_agents/cli.py`), the `except Exception` branch increments `self.warm_count` and updates `self.last_message_at = time.monotonic()` before logging — currently a persistent API error (e.g. 401, transient outage) causes the warmer to retry every 30s indefinitely because neither counter advances on failure
+  - The combined effect: a failure consumes one of the `MAX_CACHE_WARMS` slots, so the warmer stops after at most `MAX_CACHE_WARMS` attempts per idle window — same upper bound as successful warms
+  - `tests/test_cli.py` adds one case patching `client.messages.create` to raise, calling one iteration of the warmer body, and asserting `warm_count == 1` after
+- non-goals:
+  - Do not add exponential backoff, jitter, or a separate failure counter
+  - Do not change the 30s poll or 270s idle threshold
+- pr:
+
+## Reuse module-level NKD_DIR in CLI.build_system_prompt
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - `build_system_prompt()` in `nkd_agents/cli.py` uses the module constant `NKD_DIR` instead of recomputing `nkd_dir = Path.home() / ".nkd-agents"` locally — drop the local assignment
+  - The two-path tuple becomes `(NKD_DIR / "CLAUDE.md", Path("CLAUDE.md"))`
+  - No behavior change; existing `tests/test_cli.py` system-prompt cases continue to pass with no edits
+- non-goals:
+  - Do not refactor the function further or change the path order
+  - Do not introduce a new constant for the CWD `CLAUDE.md` path
+- pr:
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
