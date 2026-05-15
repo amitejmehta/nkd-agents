@@ -4,6 +4,62 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Require `input` kwarg in OpenAI agent() and validate it is a list
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `agent()` in `nkd_agents/openai.py` validates that `input` is present in `kwargs` and is a `list`; raise `ValueError("input is required and must be a list — it is mutated in-place as history")` otherwise
+  - Replaces the current `if not isinstance(kwargs.get("input", []), list):` check, which silently accepts a missing `input` and then KeyErrors on `kwargs["input"] += ...` two lines later
+  - Mirrors the Anthropic contract in `nkd_agents/anthropic.py` which already does `kwargs["messages"]` (KeyError on missing) followed by an `isinstance` list check
+  - `tests/test_openai.py` adds two cases: (a) `await agent(client, fns=[])` raises `ValueError` (no `input`), (b) `await agent(client, input="hi")` raises `ValueError` (string, not list)
+- non-goals:
+  - Do not change the `fns` signature or any other kwarg handling
+  - Do not change the Anthropic provider
+
+## Replace `kwargs["input"] += ...` with `.extend(...)` to drop the type: ignore
+- status: ready
+- loc-ceiling: 5
+- acceptance:
+  - In `nkd_agents/openai.py`, change `kwargs["input"] += resp.output + results  # type: ignore[assignment]` to `kwargs["input"].extend([*resp.output, *results])` (or `kwargs["input"].extend(resp.output); kwargs["input"].extend(results)`)
+  - The `# type: ignore[assignment]` comment is removed; `pyright` passes with no new errors
+  - Existing `tests/test_openai.py` cases continue to pass without edits — behavior (in-place append of assistant output + tool results) is unchanged
+- non-goals:
+  - Do not change the order of appended items
+  - Do not refactor the surrounding `while True` loop
+
+## Skip session auto-save in headless (-p) mode
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally: if cli.messages: cli.save_session(...)` block does **not** fire when `args.prompt` was passed and `args.session` was not — headless one-shot invocations should not pollute `~/.nkd-agents/sessions/` with a new `{timestamp}.json` per call
+  - Interactive sessions and explicit `-s` resumes continue to save as before (the existing `path=args.session` flow is preserved when `-s` is passed, regardless of `-p`)
+  - `tests/test_cli.py` adds one case running `main()` with `argv=["-p", "hi"]` (mock `asyncio.run` + `agent`) and asserts no new file is created under `NKD_DIR / "sessions"`
+- non-goals:
+  - Do not change `save_session()` itself or the interactive save path
+  - Do not introduce a new flag — base the decision on `args.prompt` + `args.session`
+
+## Reuse `resolve_path` in `fetch_url` instead of reimplementing
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `fetch_url` in `nkd_agents/web.py` calls `resolve_path(save_path)` from `nkd_agents/tools.py` instead of re-implementing `p = Path(save_path); file_path = p if p.is_absolute() else cwd_ctx.get() / p`
+  - The local `cwd_ctx` import in `nkd_agents/web.py` is dropped if no other callsite remains; `resolve_path` is the only path-resolution path
+  - Existing `tests/test_web.py` cases continue to pass with no edits; behavior (absolute path used verbatim, relative resolves against `cwd_ctx`) is unchanged
+- non-goals:
+  - Do not change `resolve_path`'s signature or move it
+  - Do not touch `web_search` or the HTTP/trafilatura logic
+
+## Drop `_handle_primitive` indirection in utils.process_param_annotation
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - In `nkd_agents/utils.py`, inline `_handle_primitive` into `process_param_annotation` — it is a 3-line helper called from exactly one site and saving zero readability over `if annotation is not inspect._empty and annotation not in TYPE_MAP: raise ...; return {"type": TYPE_MAP.get(annotation, "string")}`
+  - The `_handle_primitive` symbol is removed entirely (not just made `_`-private — it is already private and still single-call)
+  - `tests/test_utils.py` continues to pass with no edits; coverage of primitive/unsupported/empty annotations is already exercised through `process_param_annotation` and `extract_function_params`
+- non-goals:
+  - Do not inline `_handle_literal_annotation` or `_handle_union` — both have non-trivial validation bodies worth keeping factored
+  - Do not change `TYPE_MAP` or any error messages
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
