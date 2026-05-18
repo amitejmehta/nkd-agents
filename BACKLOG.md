@@ -4,6 +4,63 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Reject unannotated params in extract_function_params
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `extract_function_params` in `nkd_agents/utils.py` raises `ValueError` (naming the offending function and parameter) when a parameter has no annotation (`param.annotation is inspect._empty`). Currently `_handle_primitive` silently coerces missing annotations to `{"type": "string"}` and adds the param to `required` — producing a schema the model can't satisfy and that disagrees with the function signature.
+  - Both `tool_schema` callers (`nkd_agents/anthropic.py`, `nkd_agents/openai.py`) inherit the fix automatically.
+  - `tests/test_utils.py` adds one case asserting `ValueError` is raised for an async function with at least one un-annotated parameter; the existing valid-tool tests continue to pass.
+- non-goals:
+  - Do not infer types from defaults
+  - Do not change handling of supported annotations or the `T | None` / `Literal[...]` paths
+
+## Skip session save on headless `-p` runs
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally` block that calls `cli.save_session(path=args.session)` is skipped when `args.prompt` is set **and** `args.session` is `None` — headless one-shot invocations should not litter `~/.nkd-agents/sessions/` with a fresh JSON every run.
+  - Headless runs that pass `-s some/path.json` still save back to that path (resume + overwrite remains intentional).
+  - Interactive runs (no `-p`) continue to save unconditionally.
+  - `tests/test_cli.py` adds one case invoking `main()` with `-p "hi"` (mocking `agent()`) and asserts no new file appears under `NKD_DIR / "sessions"`.
+- non-goals:
+  - Do not change the session file naming scheme or directory
+  - Do not add a new flag to opt out
+
+## Tighten extract_text_and_tool_calls block dispatch to elif chain
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `extract_text_and_tool_calls` in both `nkd_agents/anthropic.py` and `nkd_agents/openai.py`, replace the `if ... ; if ... ; elif ...` cascade with a single `if/elif/elif` chain. A response block has exactly one `type`, so the parallel `if`s are misleading — the second `if` is effectively an `elif` already, and a future block type added between will mis-dispatch.
+  - Behavior is identical for all current block types (`thinking`/`reasoning`, `text`/`message`, `tool_use`/`function_call`).
+  - Existing tests in `tests/test_anthropic.py` and `tests/test_openai.py` continue to pass without edits.
+- non-goals:
+  - Do not change log formatting, log level, or the returned tuple shape
+  - Do not introduce new block-type handling
+
+## Add a truncation marker to bash() STDOUT cap
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `bash()` in `nkd_agents/tools.py` appends an explicit `\n...[truncated, 50000/N chars shown]` (or similar) to the STDOUT section **only when** `len(stdout.decode()) > 50000`. Currently the slice is silent, so the model can't tell whether the command's real output ended at the cutoff or got cut.
+  - The 50,000-char limit itself is unchanged; only a marker is appended past the slice.
+  - Update `bash()`'s docstring and `docs/tools.md` to mention the marker.
+  - `tests/test_tools.py` adds one case running a command that emits >50,000 chars on stdout and asserts the result string contains the truncation marker; an existing short-output test continues to pass unchanged.
+- non-goals:
+  - Do not change the 50,000 constant or stderr handling (covered by another item)
+  - Do not stream stdout incrementally
+
+## Substitute {cwd} and {home} placeholders in CLAUDE.md system prompt
+- status: ready
+- loc-ceiling: 15
+- acceptance:
+  - `CLI.build_system_prompt` in `nkd_agents/cli.py` replaces `{cwd}` with `str(Path.cwd())` and `{home}` with `str(Path.home())` inside each loaded CLAUDE.md before joining. `docs/cli.md` already documents this contract ("`{cwd}` and `{home}` are substituted") but the code only appends a trailing `CWD: ... HOME: ...` line — meaning placeholders inside the body are passed through verbatim to the model.
+  - Drop the now-redundant trailing `CWD:`/`HOME:` append; the substitution covers the same need without polluting CLAUDE.md files that don't reference the placeholders (those files just use the prompt as-is).
+  - `tests/test_cli.py` adds one case writing a temporary `CLAUDE.md` containing `cwd={cwd} home={home}` and asserts `build_system_prompt()` returns a string with both substituted.
+- non-goals:
+  - Do not introduce a templating engine (no `str.format`; use plain `.replace()` so unknown braces in CLAUDE.md aren't interpreted)
+  - Do not change the lookup paths (`~/.nkd-agents/CLAUDE.md` then `./CLAUDE.md`)
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
