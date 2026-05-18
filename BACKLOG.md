@@ -4,6 +4,61 @@ Curated work items for `nkd-agents`. Highest priority first. Items under `## Rea
 
 ## Ready
 
+## Resolve cwd_ctx default lazily, not at import time
+- status: ready
+- loc-ceiling: 25
+- acceptance:
+  - `cwd_ctx` in `nkd_agents/ctx.py` is declared without a `default=Path.cwd()` argument (or with a sentinel) so it does not capture the working directory at module-import time
+  - `resolve_path()` in `nkd_agents/tools.py` (and any other reader) falls back to `Path.cwd()` at call time when the ContextVar has no value set, preserving the documented "default: `Path.cwd()`" behavior in `docs/framework.md`
+  - `tests/test_tools.py` adds one case: import the module, `os.chdir()` to a different directory, call a tool that relies on the default (e.g. `glob("*.py")`), and assert it resolves against the new cwd — currently it resolves against the import-time cwd
+- non-goals:
+  - Do not change the public `cwd_ctx` name or its type annotation (`ContextVar[Path]`)
+  - Do not introduce a separate "current working directory" helper module
+
+## Skip session save on headless -p runs
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `main()` (`nkd_agents/cli.py`), the `finally` block does not call `cli.save_session()` when `args.prompt` is set — headless `-p` invocations (used by cron curator/dev loops) currently dump a `~/.nkd-agents/sessions/{ts}.json` per run, cluttering the directory with single-prompt artifacts
+  - Interactive runs (no `-p`) and explicit `-s path` resumes still save on exit (existing behavior preserved)
+  - `tests/test_cli.py` adds one case: invoke `main()` (or its core logic) with `args.prompt` set and assert no new file is created under `NKD_DIR/sessions/`
+- non-goals:
+  - Do not add a new CLI flag to opt out — headless mode itself is the signal
+  - Do not change `save_session()`'s body or signature
+
+## Drop redundant media_type assert in Anthropic bytes_to_content
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `bytes_to_content()` (`nkd_agents/anthropic.py`), remove the `assert media_type in ("image/jpeg", "image/png", "image/gif", "image/webp")` line — the preceding `if ext in ("jpeg", "png", "gif", "webp")` guard already constrains `media_type` to that exact set, so the assert is dead-weight runtime overhead added only for the type checker
+  - Use a `cast` on `media_type` (or build the `Base64ImageSourceParam` with a `Literal`-narrowed value) so `pyright` still passes without the assert
+  - Existing tests in `tests/test_anthropic.py` (`test_bytes_to_content_*`) continue to pass with no edits
+- non-goals:
+  - Do not refactor the PDF branch or change the function's signature
+  - Do not introduce a shared image-extension constant module
+
+## Truncate bash() result logging to avoid 50KB log spam
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - `bash()` in `nkd_agents/tools.py` no longer passes the full `result_str` (which can now be up to ~100KB after the stderr truncation fix) to `logger.info` — instead it logs a compact summary (e.g. exit code plus the first ~2000 chars of stdout/stderr combined) so log files don't balloon on noisy commands
+  - The function still **returns** the full untruncated-up-to-50KB-each `result_str` to the model — only the log line is shortened
+  - `tests/test_tools.py` adds one case asserting the captured log record's message length is ≤ ~2200 chars even when stdout has 60,000 chars
+- non-goals:
+  - Do not change the 50,000-char return-value cap or the STDOUT/STDERR/EXIT CODE return format
+  - Do not introduce a new env var for the log cap; a hard-coded constant is fine
+
+## Collapse _BASE_TOOLS / TOOLS into a single conditional
+- status: ready
+- loc-ceiling: 10
+- acceptance:
+  - In `nkd_agents/cli.py`, replace the `_BASE_TOOLS = (...)` + `try/except ImportError` + `TOOLS = (*_BASE_TOOLS, ...)` block with a single assignment that imports `fetch_url, web_search` inside the `try` and builds `TOOLS` once, dropping the `_BASE_TOOLS` intermediate name
+  - Behavior is unchanged: when `nkd_agents[web]` is installed, `TOOLS` includes `fetch_url` and `web_search`; otherwise it does not, and the same `logger.warning` fires
+  - `tests/test_cli.py` (or a new minimal case) asserts `TOOLS` contains the six base tools always, and the two web tools only when importable
+- non-goals:
+  - Do not move the import to function scope or lazy-load on first use
+  - Do not change the warning message text
+
 ## Sync CLI model_idx with NKD_MODEL on startup
 - status: in-progress
 - loc-ceiling: 15
