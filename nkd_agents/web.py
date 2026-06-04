@@ -1,20 +1,108 @@
-"""Web tools requiring browser automation (playwright).
+"""Web tools.
 
-Only loaded when playwright is installed (pip install nkd_agents[web]).
+fetch_url and web_search require the [web] extra (trafilatura, httpx).
+web_search uses Chrome/Chromium via raw CDP over a hand-rolled WebSocket — no playwright.
 """
 
+import asyncio
+import base64
+import json
 import logging
+import secrets
+import shutil
+import struct
+import subprocess
+import tempfile
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import httpx
 import trafilatura
-from playwright.async_api import async_playwright
 
 from .ctx import cwd_ctx
 from .logging import GREEN, RESET
 
 logger = logging.getLogger(__name__)
+
+_CHROME_CANDIDATES = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+]
+
+
+def _find_chrome() -> str:
+    for candidate in _CHROME_CANDIDATES:
+        if Path(candidate).is_file():
+            return candidate
+        found = shutil.which(candidate)
+        if found:
+            return found
+    raise RuntimeError(
+        "Chrome not found. Install Google Chrome or Chromium to use web_search."
+    )
+
+
+async def _ws_connect(host: str, port: int, path: str):
+    """Open a raw WebSocket connection. Returns (reader, writer)."""
+    reader, writer = await asyncio.open_connection(host, port)
+
+    key = base64.b64encode(secrets.token_bytes(16)).decode()
+    writer.write(
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}:{port}\r\n"
+        f"Upgrade: websocket\r\n"
+        f"Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        f"Sec-WebSocket-Version: 13\r\n\r\n".encode()
+    )
+    await writer.drain()
+
+    # Drain HTTP upgrade response
+    while await reader.readline() not in (b"\r\n", b"\n", b""):
+        pass
+
+    return reader, writer
+
+
+async def _ws_send(writer: asyncio.StreamWriter, payload: dict) -> None:
+    data = json.dumps(payload).encode()
+    # Client frames must be masked
+    mask = secrets.token_bytes(4)
+    masked = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+    length = len(data)
+    if length < 126:
+        header = struct.pack("BB", 0x81, 0x80 | length)
+    else:
+        header = struct.pack("!BBH", 0x81, 0xFE, length)
+    writer.write(header + mask + masked)
+    await writer.drain()
+
+
+async def _ws_recv(reader: asyncio.StreamReader) -> dict:
+    header = await reader.readexactly(2)
+    length = header[1] & 0x7F
+    if length == 126:
+        length = struct.unpack("!H", await reader.readexactly(2))[0]
+    elif length == 127:
+        length = struct.unpack("!Q", await reader.readexactly(8))[0]
+    return json.loads(await reader.readexactly(length))
+
+
+async def _cdp(host: str, port: int, ws_path: str, cmd: dict) -> dict:
+    """Send a single CDP command and return the response."""
+    reader, writer = await _ws_connect(host, port, ws_path)
+    try:
+        await _ws_send(writer, cmd)
+        while True:
+            msg = await asyncio.wait_for(_ws_recv(reader), timeout=15)
+            if msg.get("id") == cmd["id"]:
+                return msg
+    finally:
+        writer.close()
 
 
 async def web_search(query: str, max_results: int = 5) -> str:
@@ -28,31 +116,74 @@ async def web_search(query: str, max_results: int = 5) -> str:
         Formatted string with titles, URLs, and snippets
     """
     logger.info(f"Searching: {GREEN}{query}{RESET}")
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, channel="chrome")
-        ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-        ctx = await browser.new_context(user_agent=ua)
-        try:
-            page = await ctx.new_page()
-            await page.goto(f"https://duckduckgo.com/?q={quote_plus(query)}&ia=web")
-            await page.wait_for_selector("article", timeout=10000)
+    port = 9222
+    url = f"https://duckduckgo.com/?q={quote_plus(query)}&ia=web"
+    ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
-            results = await page.eval_on_selector_all(
-                "article",
-                """els => els.slice(0, %d).map(el => {
+    with tempfile.TemporaryDirectory() as profile:
+        proc = subprocess.Popen(
+            [
+                _find_chrome(),
+                f"--remote-debugging-port={port}",
+                "--headless=new",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                f"--user-data-dir={profile}",
+                f"--user-agent={ua}",
+                url,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            # Wait for CDP endpoint to be ready
+            async with httpx.AsyncClient() as client:
+                for _ in range(20):
+                    try:
+                        tabs = (
+                            await client.get(f"http://localhost:{port}/json")
+                        ).json()
+                        break
+                    except Exception:
+                        await asyncio.sleep(0.3)
+                else:
+                    raise RuntimeError("Chrome CDP did not become ready")
+
+            tab = next(t for t in tabs if t.get("type") == "page")
+            ws_url = urlparse(tab["webSocketDebuggerUrl"])
+
+            await asyncio.sleep(3)  # allow JS results to render
+
+            JS = (
+                """
+            (() => {
+                const arts = Array.from(document.querySelectorAll('article')).slice(0, %d);
+                return arts.map(el => {
                     const a = el.querySelector('a[data-testid="result-title-a"]');
-                    const snippet = el.querySelector('div[data-result="snippet"]');
-                    return {
-                        title: a?.innerText || '',
-                        url: a?.href || '',
-                        snippet: snippet?.innerText || ''
-                    };
-                }).filter(r => r.url)"""
-                % max_results,
+                    const s = el.querySelector('div[data-result="snippet"]');
+                    return {title: a?.innerText||'', url: a?.href||'', snippet: s?.innerText||''};
+                }).filter(r => r.url);
+            })()
+            """
+                % max_results
             )
+
+            response = await _cdp(
+                ws_url.hostname,
+                ws_url.port,
+                ws_url.path,
+                {
+                    "id": 1,
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": JS, "returnByValue": True},
+                },
+            )
+            results = response.get("result", {}).get("result", {}).get("value", [])
         finally:
-            await ctx.close()
-            await browser.close()
+            proc.terminate()
+            proc.wait()
 
     if not results:
         return "No results found"
