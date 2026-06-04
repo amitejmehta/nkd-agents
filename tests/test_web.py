@@ -85,35 +85,33 @@ async def test_web_search_returns_results():
     ]
     cdp_response = {"id": 1, "result": {"result": {"value": cdp_value}}}
 
+    proc = AsyncMock()
+    proc.terminate = MagicMock()
+    proc.wait = AsyncMock()
+
+    client = AsyncMock()
+    client.get = AsyncMock(
+        return_value=MagicMock(
+            json=MagicMock(
+                return_value=[
+                    {
+                        "type": "page",
+                        "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/1",
+                    }
+                ]
+            )
+        )
+    )
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+
     with (
         patch("nkd_agents.web._find_chrome", return_value="/usr/bin/chrome"),
-        patch("nkd_agents.web.subprocess.Popen") as mock_popen,
-        patch("nkd_agents.web.httpx.AsyncClient") as mock_client,
+        patch("nkd_agents.web.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)),
+        patch("nkd_agents.web.httpx.AsyncClient", return_value=client),
         patch("nkd_agents.web._cdp", new=AsyncMock(return_value=cdp_response)),
         patch("nkd_agents.web.asyncio.sleep", new=AsyncMock()),
     ):
-        proc = MagicMock()
-        proc.terminate = MagicMock()
-        proc.wait = MagicMock()
-        mock_popen.return_value = proc
-
-        client = AsyncMock()
-        client.get = AsyncMock(
-            return_value=MagicMock(
-                json=MagicMock(
-                    return_value=[
-                        {
-                            "type": "page",
-                            "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/1",
-                        }
-                    ]
-                )
-            )
-        )
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.return_value = client
-
         result = await web_search("test query", max_results=2)
 
     assert "Result 1" in result
@@ -127,35 +125,33 @@ async def test_web_search_no_results():
     """web_search returns 'No results found' when CDP returns empty list."""
     cdp_response = {"id": 1, "result": {"result": {"value": []}}}
 
+    proc = AsyncMock()
+    proc.terminate = MagicMock()
+    proc.wait = AsyncMock()
+
+    client = AsyncMock()
+    client.get = AsyncMock(
+        return_value=MagicMock(
+            json=MagicMock(
+                return_value=[
+                    {
+                        "type": "page",
+                        "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/1",
+                    }
+                ]
+            )
+        )
+    )
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+
     with (
         patch("nkd_agents.web._find_chrome", return_value="/usr/bin/chrome"),
-        patch("nkd_agents.web.subprocess.Popen") as mock_popen,
-        patch("nkd_agents.web.httpx.AsyncClient") as mock_client,
+        patch("nkd_agents.web.asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)),
+        patch("nkd_agents.web.httpx.AsyncClient", return_value=client),
         patch("nkd_agents.web._cdp", new=AsyncMock(return_value=cdp_response)),
         patch("nkd_agents.web.asyncio.sleep", new=AsyncMock()),
     ):
-        proc = MagicMock()
-        proc.terminate = MagicMock()
-        proc.wait = MagicMock()
-        mock_popen.return_value = proc
-
-        client = AsyncMock()
-        client.get = AsyncMock(
-            return_value=MagicMock(
-                json=MagicMock(
-                    return_value=[
-                        {
-                            "type": "page",
-                            "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/1",
-                        }
-                    ]
-                )
-            )
-        )
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.return_value = client
-
         result = await web_search("test query")
 
     assert result == "No results found"
