@@ -18,7 +18,7 @@ def load_env(path: str = ".env") -> None:
     if not Path(path).exists():
         return
     for line in Path(path).read_text().splitlines():
-        if not line or "=" not in line:
+        if not line or line.lstrip().startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
         os.environ[k] = v

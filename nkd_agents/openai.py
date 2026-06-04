@@ -156,7 +156,8 @@ async def agent(
         raise ValueError("input is mutated in-place as history and must be a list")
 
     tool_dict = {fn.__name__: fn for fn in fns}
-    kwargs["tools"] = kwargs.get("tools", [tool_schema(fn) for fn in fns])
+    if "tools" not in kwargs:
+        kwargs["tools"] = [tool_schema(fn) for fn in fns]
 
     with tracer.start_as_current_span(
         f"invoke_agent {kwargs.get('model', '')}"

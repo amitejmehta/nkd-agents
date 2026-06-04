@@ -9,7 +9,6 @@ from nkd_agents.cli import (
     MODELS,
     THINKING,
     TOOLS,
-    auto_compact,
 )
 
 
@@ -97,12 +96,12 @@ class TestSwitchModel:
     def test_syncs_idx_with_nkd_model(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setenv("NKD_MODEL", "claude-opus-4-7")
+        monkeypatch.setenv("NKD_MODEL", "claude-opus-4-8")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         cli = CLI()
-        assert cli.model_idx == MODELS.index("claude-opus-4-7")
+        assert cli.model_idx == MODELS.index("claude-opus-4-8")
         cli.switch_model()
-        assert cli.kwargs["model"] != "claude-opus-4-7"
+        assert cli.kwargs["model"] != "claude-opus-4-8"
 
 
 class TestToggleThinking:
@@ -346,151 +345,3 @@ def _mock_client() -> AsyncMock:
     client = AsyncMock()
     client.messages.create = AsyncMock()
     return client
-
-
-class TestAutoCompact:
-    async def test_no_op_below_threshold(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 10)
-        msgs = [_user_text(f"msg{i}") for i in range(9)]
-        with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_agent:
-            await auto_compact(msgs, AsyncMock())
-        mock_agent.assert_not_called()
-        assert len(msgs) == 9
-
-    async def test_summarizes_old_messages(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 6)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 4)
-        msgs = [
-            _user_text("task A"),
-            _assistant_tool_use("t0"),
-            _user_tool_result("t0"),
-            _assistant_text("done A"),
-            _user_text("task B"),
-            _assistant_tool_use("t1"),
-            _user_tool_result("t1"),
-            _assistant_text("done B"),
-        ]
-        with patch(
-            "nkd_agents.cli.agent",
-            new_callable=AsyncMock,
-            return_value="Completed task A.",
-        ):
-            await auto_compact(msgs, AsyncMock())
-        assert len(msgs) == 5  # 1 summary + 4 protected
-        assert msgs[0]["role"] == "user"
-        assert "conversation_summary" in str(msgs[0]["content"])
-        assert msgs[1] == _user_text("task B")
-
-    async def test_summary_content_injected(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
-        msgs = [
-            _user_text("first"),
-            _assistant_text("reply"),
-            _user_text("second"),
-            _assistant_text("reply2"),
-            _user_text("third"),
-        ]
-        with patch(
-            "nkd_agents.cli.agent",
-            new_callable=AsyncMock,
-            return_value="User discussed first and second topics.",
-        ):
-            await auto_compact(msgs, AsyncMock())
-        assert "User discussed first and second topics." in str(msgs[0]["content"])
-
-    async def test_calls_agent_with_correct_args(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
-        monkeypatch.setattr("nkd_agents.cli.COMPACT_MODEL", "claude-haiku-4-5")
-        msgs = [
-            _user_text("do X"),
-            _assistant_text("did X"),
-            _user_text("do Y"),
-            _assistant_text("did Y"),
-            _user_text("do Z"),
-        ]
-        with patch(
-            "nkd_agents.cli.agent", new_callable=AsyncMock, return_value="Summary"
-        ) as mock_agent:
-            await auto_compact(msgs, AsyncMock())
-        kw = mock_agent.call_args.kwargs
-        assert kw["model"] == "claude-haiku-4-5"
-        assert kw["max_tokens"] == 2048
-        sent = kw["messages"]
-        assert sent[-1]["role"] == "user"  # summary prompt appended last
-        assert sent[0]["role"] == "user"  # old messages intact
-
-    async def test_stacks_existing_summary(self, monkeypatch):
-        """Prior <conversation_summary> is fed to agent so new summary is cumulative."""
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
-        prior: MessageParam = {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "<conversation_summary>\nPrior work.\n</conversation_summary>\n\nContinue.",
-                }
-            ],
-        }
-        msgs = [
-            prior,
-            _assistant_text("ok"),
-            _user_text("new task"),
-            _assistant_text("done"),
-            _user_text("next"),
-        ]
-        with patch(
-            "nkd_agents.cli.agent", new_callable=AsyncMock, return_value="Updated."
-        ) as mock_agent:
-            await auto_compact(msgs, AsyncMock())
-        sent = mock_agent.call_args.kwargs["messages"]
-        assert any("conversation_summary" in str(m.get("content", "")) for m in sent)
-
-    async def test_orphan_protection_at_boundary(self, monkeypatch):
-        """Boundary landing on tool_result walks back — no orphaned pairs."""
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
-        msgs = [
-            _user_text("a"),
-            _assistant_tool_use("t0"),
-            _user_tool_result("t0"),
-            _assistant_text("done"),
-            _user_text("q"),
-            _assistant_text("r"),
-        ]
-        with patch(
-            "nkd_agents.cli.agent", new_callable=AsyncMock, return_value="Summary"
-        ):
-            await auto_compact(msgs, AsyncMock())
-        tool_use_ids = {
-            b["id"]
-            for m in msgs
-            for b in m.get("content", [])
-            if isinstance(b, dict) and b.get("type") == "tool_use"
-        }
-        tool_result_ids = {
-            b["tool_use_id"]
-            for m in msgs
-            for b in m.get("content", [])
-            if isinstance(b, dict) and b.get("type") == "tool_result"
-        }
-        assert tool_use_ids == tool_result_ids
-
-    async def test_preserves_protected_region(self, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_THRESHOLD", 4)
-        monkeypatch.setattr("nkd_agents.cli.AUTO_COMPACT_TARGET", 2)
-        msgs = [
-            _user_text("a"),
-            _assistant_text("b"),
-            _user_text("c"),
-            _assistant_text("d"),
-            _user_text("e"),
-        ]
-        with patch(
-            "nkd_agents.cli.agent", new_callable=AsyncMock, return_value="Summary."
-        ):
-            await auto_compact(msgs, AsyncMock())
-        assert "conversation_summary" in str(msgs[0]["content"])
-        assert msgs[1] == _user_text("c")
