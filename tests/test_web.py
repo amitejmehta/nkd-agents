@@ -1,11 +1,11 @@
-"""Tests for web tools (fetch_url)."""
+"""Tests for web tools (fetch_url, _html_to_markdown)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from nkd_agents.web import fetch_url
+from nkd_agents.web import _html_to_markdown, fetch_url
 
 
 @pytest.fixture
@@ -35,24 +35,20 @@ def mock_httpx_success():
 @pytest.mark.asyncio
 async def test_fetch_url_success(mock_cwd, mock_httpx_success):
     """Successful fetch writes file and returns char count."""
-    with patch(
-        "nkd_agents.web.trafilatura.extract", return_value="# Extracted Content"
-    ):
-        result = await fetch_url("https://example.com", "output.md")
+    result = await fetch_url("https://example.com", "output.md")
 
-    assert "19 chars" in result
+    assert "chars" in result
     assert str(mock_cwd / "output.md") in result
-    assert (mock_cwd / "output.md").read_text() == "# Extracted Content"
+    assert (mock_cwd / "output.md").read_text() == "Hello World"
 
 
 @pytest.mark.asyncio
 async def test_fetch_url_no_content_extracted(mock_cwd, mock_httpx_success):
-    """Returns error when trafilatura extracts nothing."""
-    with patch("nkd_agents.web.trafilatura.extract", return_value=None):
-        result = await fetch_url("https://example.com", "output.md")
+    """Returns error when extraction yields nothing."""
+    mock_httpx_success.text = "<html><body></body></html>"
+    result = await fetch_url("https://example.com", "output.md")
 
     assert "Error" in result
-    assert "No content extracted" in result
     assert not (mock_cwd / "output.md").exists()
 
 
@@ -76,11 +72,95 @@ async def test_fetch_url_http_error(mock_cwd):
     assert not (mock_cwd / "output.md").exists()
 
 
+# ---------------------------------------------------------------------------
+# _html_to_markdown unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_html_to_markdown_skips_noise_tags():
+    html = "<nav>skip</nav><header>skip</header><p>keep</p><footer>skip</footer>"
+    assert _html_to_markdown(html) == "keep"
+
+
+def test_html_to_markdown_nested_skip_tags():
+    html = "<nav><nav>inner</nav></nav><p>after</p>"
+    assert _html_to_markdown(html) == "after"
+
+
+def test_html_to_markdown_headings_and_links():
+    html = '<h1>Title</h1><p><a href="https://x.com">link</a></p>'
+    md = _html_to_markdown(html)
+    assert "# Title" in md
+    assert "[link](https://x.com)" in md
+
+
+def test_html_to_markdown_list():
+    html = "<ul><li>a</li><li>b</li></ul>"
+    md = _html_to_markdown(html)
+    assert "- a" in md
+    assert "- b" in md
+    # Items should not be double-spaced
+    assert "- a\n- b" in md
+
+
+def test_html_to_markdown_code_block():
+    html = "<pre>x = 1</pre>"
+    md = _html_to_markdown(html)
+    assert "```" in md
+    assert "x = 1" in md
+
+
+def test_html_to_markdown_anchor_no_href():
+    html = "<p>see <a>this</a> here</p>"
+    assert "this" in _html_to_markdown(html)
+    assert "[" not in _html_to_markdown(html)
+
+
+def test_html_to_markdown_whitespace_only_body():
+    assert _html_to_markdown("<html><body>   </body></html>") == ""
+
+
+def test_html_to_markdown_collapses_blank_lines():
+    html = "<p>a</p><p>b</p><p>c</p>"
+    md = _html_to_markdown(html)
+    assert "\n\n\n" not in md
+
+
+def test_html_to_markdown_table_basic():
+    html = "<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td>2</td></tr></table>"
+    md = _html_to_markdown(html)
+    assert "| a | b |" in md
+    assert "| 1 | 2 |" in md
+
+
+def test_html_to_markdown_table_with_thead():
+    html = (
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr></tbody>"
+        "</table>"
+    )
+    md = _html_to_markdown(html)
+    assert "| Name | Age |" in md
+    assert "| --- | --- |" in md
+    assert "| Alice | 30 |" in md
+    # separator must appear between header and body
+    lines = [l for l in md.splitlines() if l.strip()]
+    header_idx = next(i for i, l in enumerate(lines) if "Name" in l)
+    sep_idx = next(i for i, l in enumerate(lines) if "---" in l)
+    data_idx = next(i for i, l in enumerate(lines) if "Alice" in l)
+    assert header_idx < sep_idx < data_idx
+
+
+# ---------------------------------------------------------------------------
+# fetch_url integration tests
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
 async def test_fetch_url_relative_path_resolution(mock_cwd, mock_httpx_success):
     """Relative paths resolve against cwd_ctx."""
-    with patch("nkd_agents.web.trafilatura.extract", return_value="content"):
-        result = await fetch_url("https://example.com", "subdir/output.md")
+    result = await fetch_url("https://example.com", "subdir/output.md")
 
     expected_path = mock_cwd / "subdir" / "output.md"
     assert expected_path.exists()
