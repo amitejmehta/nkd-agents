@@ -120,7 +120,7 @@ async def web_search(query: str, max_results: int = 5) -> str:
     url = f"https://duckduckgo.com/?q={quote_plus(query)}&ia=web"
     ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
-    with tempfile.TemporaryDirectory() as profile:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         proc = subprocess.Popen(
             [
                 _find_chrome(),
@@ -130,6 +130,7 @@ async def web_search(query: str, max_results: int = 5) -> str:
                 "--no-default-browser-check",
                 "--disable-gpu",
                 "--disable-dev-shm-usage",
+                "--no-sandbox",
                 f"--user-data-dir={profile}",
                 f"--user-agent={ua}",
                 url,
@@ -183,7 +184,11 @@ async def web_search(query: str, max_results: int = 5) -> str:
             results = response.get("result", {}).get("result", {}).get("value", [])
         finally:
             proc.terminate()
-            proc.wait()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
     if not results:
         return "No results found"
