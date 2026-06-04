@@ -206,6 +206,28 @@ class TestLoadEnv:
         del os.environ["VALID"]
         del os.environ["ANOTHER"]
 
+    def test_skips_comment_lines(self, tmp_path):
+        """load_env skips lines that are comments (start with '#')."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("REAL=val\n# this is a comment\nOTHER=val2")
+        load_env(str(env_file))
+        assert os.environ.get("REAL") == "val"
+        assert os.environ.get("OTHER") == "val2"
+        assert not any(k.startswith("#") for k in os.environ)
+        del os.environ["REAL"]
+        del os.environ["OTHER"]
+
+    def test_skips_indented_comment_lines(self, tmp_path):
+        """load_env skips lines that are indented comments (lstrip starts with '#')."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("REAL2=val\n  # indented comment\nOTHER2=val3")
+        load_env(str(env_file))
+        assert os.environ.get("REAL2") == "val"
+        assert os.environ.get("OTHER2") == "val3"
+        assert not any(k.startswith("#") or k.startswith(" ") for k in os.environ)
+        del os.environ["REAL2"]
+        del os.environ["OTHER2"]
+
 
 class TestHandleLiteralAnnotation:
     def test_valid_str_literal(self):

@@ -33,7 +33,7 @@ except ImportError as e:
     TOOLS = _BASE_TOOLS
 
 # constants
-MODELS = ("claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5")
+MODELS = ("claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5")
 NKD_DIR = Path.home() / ".nkd-agents"
 SKILLS_DIR = NKD_DIR / "skills"
 BANNER = (
@@ -66,56 +66,6 @@ MODE_PREFIXES: dict[str, str] = {
 CACHE_WARM_MSG = os.environ.get(
     "NKD_CACHE_WARM_MSG", 'Sending msg to warm cache. Just respond: "okay"'
 )
-
-
-SUMMARY_PROMPT = (
-    "Summarize the conversation above concisely. Preserve: key decisions and rationale, "
-    "file paths/branch names/PR numbers/URLs, paths to referenced documents (images, PDFs, PPTX, etc.), "
-    "current task state, errors and resolutions, "
-    "pending work. Be direct, use bullet points, no preamble."
-)
-
-
-async def auto_compact(messages: list[MessageParam], client: AsyncAnthropic) -> None:
-    """Summarize old messages via LLM when count exceeds threshold.
-
-    Replaces messages[0..boundary] with a single summary user message.
-    If messages[0] is already a <conversation_summary>, it's included in the
-    context fed to the LLM so the new summary naturally incorporates it.
-    """
-    if len(messages) <= AUTO_COMPACT_THRESHOLD:
-        return
-
-    boundary = len(messages) - AUTO_COMPACT_TARGET
-    if messages[boundary].get("role") == "assistant":
-        boundary = max(boundary - 1, 0)
-    # Walk back past any orphaned tool_result at the boundary
-    while (
-        boundary > 0
-        and isinstance((content := messages[boundary].get("content")), list)
-        and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
-    ):
-        boundary -= 1
-
-    old_messages = messages[:boundary]
-    summary = await agent(
-        client,
-        messages=[*old_messages, {"role": "user", "content": SUMMARY_PROMPT}],
-        model=COMPACT_MODEL,
-        max_tokens=2048,
-    )
-    messages[:boundary] = [
-        {
-            "role": "user",
-            "content": (
-                f"<conversation_summary>\n{summary}\n</conversation_summary>\n\n"
-                "The above summarizes our conversation so far. Continue from here."
-            ),
-        }
-    ]
-    logger.info(
-        f"{DIM}Summarized {len(old_messages)} messages → 1 (via {COMPACT_MODEL}){RESET}"
-    )
 
 
 class CLI:
@@ -235,7 +185,6 @@ class CLI:
     async def llm_loop(self) -> None:
         while True:
             msg = await self.queue.get()
-            await auto_compact(self.messages, self.client)
             self.messages.append(msg)
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
