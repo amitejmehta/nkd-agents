@@ -126,6 +126,32 @@ def test_html_to_markdown_collapses_blank_lines():
     assert "\n\n\n" not in md
 
 
+def test_html_to_markdown_table_basic():
+    html = "<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td>2</td></tr></table>"
+    md = _html_to_markdown(html)
+    assert "| a | b |" in md
+    assert "| 1 | 2 |" in md
+
+
+def test_html_to_markdown_table_with_thead():
+    html = (
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr></tbody>"
+        "</table>"
+    )
+    md = _html_to_markdown(html)
+    assert "| Name | Age |" in md
+    assert "| --- | --- |" in md
+    assert "| Alice | 30 |" in md
+    # separator must appear between header and body
+    lines = [l for l in md.splitlines() if l.strip()]
+    header_idx = next(i for i, l in enumerate(lines) if "Name" in l)
+    sep_idx = next(i for i, l in enumerate(lines) if "---" in l)
+    data_idx = next(i for i, l in enumerate(lines) if "Alice" in l)
+    assert header_idx < sep_idx < data_idx
+
+
 # ---------------------------------------------------------------------------
 # fetch_url integration tests
 # ---------------------------------------------------------------------------

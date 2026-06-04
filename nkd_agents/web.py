@@ -49,7 +49,7 @@ _SKIP_TAGS = frozenset(
 )
 
 _BLOCK_TAGS = frozenset(
-    ["p", "div", "section", "article", "blockquote", "td", "th", "dt", "dd"]
+    ["p", "div", "section", "article", "blockquote", "dt", "dd"]
 )
 
 _HEADING_TAGS = {
@@ -69,6 +69,10 @@ class _ContentExtractor(HTMLParser):
         self._parts: list[str] = []
         self._tag_stack: list[str] = []
         self._in_pre = False
+        self._in_cell = False
+        self._cell_buf: list[str] = []
+        self._row_cells: list[str] = []
+        self._in_thead = False
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
         self._tag_stack.append(tag)
@@ -82,8 +86,13 @@ class _ContentExtractor(HTMLParser):
             self._parts.append("`")
         elif tag in _HEADING_TAGS:
             self._parts.append(f"\n{_HEADING_TAGS[tag]} ")
+        elif tag in ("td", "th"):
+            self._in_cell = True
+            self._cell_buf = []
         elif tag == "li":
             self._parts.append("\n- ")
+        elif tag == "thead":
+            self._in_thead = True
         elif tag == "br":
             self._parts.append("\n")
         elif tag == "hr":
@@ -109,6 +118,24 @@ class _ContentExtractor(HTMLParser):
             self._parts.append("\n```\n")
         elif tag == "code" and not self._in_pre:
             self._parts.append("`")
+        elif tag in ("td", "th"):
+            self._in_cell = False
+            self._row_cells.append("".join(self._cell_buf).strip())
+            self._cell_buf = []
+        elif tag == "tr":
+            if self._row_cells:
+                self._parts.append("\n| " + " | ".join(self._row_cells) + " |")
+                self._row_cells = []
+        elif tag == "thead":
+            # Count columns from the last emitted header row
+            last_row = next(
+                (p for p in reversed(self._parts) if p.startswith("\n| ")), None
+            )
+            ncols = last_row.strip().strip("|").count("|") + 1 if last_row else 1
+            self._parts.append("\n| " + " | ".join(["---"] * ncols) + " |")
+            self._in_thead = False
+        elif tag == "table":
+            self._parts.append("\n")
         elif tag in _HEADING_TAGS or tag in _BLOCK_TAGS:
             self._parts.append("\n")
         elif tag == "a" and current.startswith("a:"):
@@ -116,7 +143,11 @@ class _ContentExtractor(HTMLParser):
             self._parts.append(f"]({href})")
 
     def handle_data(self, data: str) -> None:
-        if not self._skip_depth:
+        if self._skip_depth:
+            return
+        if self._in_cell:
+            self._cell_buf.append(data)
+        else:
             self._parts.append(data)
 
     def get_markdown(self) -> str:
