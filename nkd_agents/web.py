@@ -11,7 +11,6 @@ import logging
 import secrets
 import shutil
 import struct
-import subprocess
 import tempfile
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
@@ -121,22 +120,20 @@ async def web_search(query: str, max_results: int = 5) -> str:
     ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
-        proc = subprocess.Popen(
-            [
-                _find_chrome(),
-                f"--remote-debugging-port={port}",
-                "--headless=new",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-gpu",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                f"--user-data-dir={profile}",
-                f"--user-agent={ua}",
-                url,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+        proc = await asyncio.create_subprocess_exec(
+            _find_chrome(),
+            f"--remote-debugging-port={port}",
+            "--headless=new",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            f"--user-data-dir={profile}",
+            f"--user-agent={ua}",
+            url,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
         )
         try:
             # Wait for CDP endpoint to be ready
@@ -184,11 +181,7 @@ async def web_search(query: str, max_results: int = 5) -> str:
             results = response.get("result", {}).get("result", {}).get("value", [])
         finally:
             proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+            await asyncio.wait_for(proc.wait(), timeout=5)
 
     if not results:
         return "No results found"
