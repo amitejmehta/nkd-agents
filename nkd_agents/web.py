@@ -104,12 +104,13 @@ async def _cdp(host: str, port: int, ws_path: str, cmd: dict) -> dict:
         writer.close()
 
 
-async def web_search(query: str, max_results: int = 5) -> str:
+async def web_search(query: str, max_results: int = 5, js_timeout: int = 3) -> str:
     """Search the web and return results.
 
     Args:
         query: Search query string
         max_results: Maximum number of results to return (default: 5)
+        js_timeout: Seconds to wait for JS results to render (default: 3, increase if results are empty)
 
     Returns:
         Formatted string with titles, URLs, and snippets
@@ -152,7 +153,7 @@ async def web_search(query: str, max_results: int = 5) -> str:
             tab = next(t for t in tabs if t.get("type") == "page")
             ws_url = urlparse(tab["webSocketDebuggerUrl"])
 
-            await asyncio.sleep(3)  # allow JS results to render
+            await asyncio.sleep(js_timeout)
 
             JS = (
                 """
