@@ -12,6 +12,7 @@ from openai.types.responses.response_reasoning_item import Summary
 from pydantic import BaseModel
 
 from nkd_agents.openai import (
+    bytes_to_content,
     extract_text_and_tool_calls,
     output_format,
     tool,
@@ -180,6 +181,33 @@ async def test_tool_content_blocks():
         {"read": read}, _tool_call("call_1", "read", '{"path": "f.txt"}')
     )
     assert result["output"] == [{"type": "input_text", "text": "file content"}]
+
+
+def test_bytes_to_content_image():
+    data = b"\xff\xd8\xff"
+    b64 = base64.standard_b64encode(data).decode()
+    assert bytes_to_content(data, "jpg") == [
+        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
+    ]
+    assert bytes_to_content(data, "png") == [
+        {"type": "input_image", "image_url": f"data:image/png;base64,{b64}"}
+    ]
+
+
+def test_bytes_to_content_pdf():
+    data = b"%PDF-1.4"
+    b64 = base64.standard_b64encode(data).decode()
+    assert bytes_to_content(data, "pdf") == [
+        {
+            "type": "input_file",
+            "filename": "file.pdf",
+            "file_data": f"data:application/pdf;base64,{b64}",
+        }
+    ]
+
+
+def test_bytes_to_content_text():
+    assert bytes_to_content(b"hello world", "txt") == "hello world"
 
 
 @pytest.mark.asyncio

@@ -89,11 +89,11 @@ def extract_text_and_tool_calls(
 
 
 def bytes_to_content(
-    fc: FileContent,
+    data: bytes, ext: str
 ) -> str | ResponseFunctionCallOutputItemListParam:
-    """Convert FileContent to OpenAI tool output format."""
-    ext = "jpeg" if fc.ext == "jpg" else fc.ext
-    b64 = base64.standard_b64encode(fc.data).decode("utf-8")
+    """Convert bytes to OpenAI tool output format."""
+    ext = "jpeg" if ext.lower() == "jpg" else ext.lower()
+    b64 = base64.standard_b64encode(data).decode("utf-8")
     if ext in ("jpeg", "png", "gif", "webp"):
         return [{"type": "input_image", "image_url": f"data:image/{ext};base64,{b64}"}]
     if ext == "pdf":
@@ -104,7 +104,7 @@ def bytes_to_content(
                 "file_data": f"data:application/pdf;base64,{b64}",
             }
         ]
-    return fc.data.decode("utf-8", errors="ignore").strip()
+    return data.decode("utf-8", errors="ignore").strip()
 
 
 async def tool(
@@ -124,7 +124,7 @@ async def tool(
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
         if isinstance(result, FileContent):
-            result = bytes_to_content(result)
+            result = bytes_to_content(result.data, result.ext)
         return FunctionCallOutput(
             type="function_call_output", call_id=tool_call.call_id, output=result
         )
