@@ -3,20 +3,21 @@
 Layers:
   KeyEvent        — parsed keystroke
   RawTerminal     — context manager; owns raw mode; yields KeyEvents
-  InputHandler    — keybindings dict + default line-accumulation logic
-  readline_input  — async line reader with history, echo, bindings
+  LineState       — mutable line-editor state
+  LINE_ACTIONS    — dict of key → action(LineState); composable, extensible
+  readline_input  — async line reader: wires it all together
 
 Example:
-    from nkd_agents.input import readline_input, InputHandler, Interrupt
+    from nkd_agents.input2 import readline_input, Interrupt
     from collections import deque
 
     history = deque(maxlen=1000)
-    handler = InputHandler(bindings={"\x1b": my_interrupt_fn})
+    bindings = {"\x1b": my_interrupt_fn}
 
     async def loop():
         while True:
             try:
-                line = await readline_input("> ", handler=handler, history=history)
+                line = await readline_input("> ", bindings=bindings, history=history)
             except Interrupt:
                 cancel_llm()
             except EOFError:
@@ -42,19 +43,11 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class KeyEvent:
     char: str
-    ctrl: bool = False
-    alt: bool = False
-    escape: bool = False  # bare ESC (not part of a sequence)
-
-    def __str__(self) -> str:
-        mods = "".join(m for m, v in (("ctrl+", self.ctrl), ("alt+", self.alt)) if v)
-        return f"{mods}{self.char!r}"
 
 
 def _parse(data: bytes) -> KeyEvent:
-    """Parse raw bytes into a KeyEvent."""
     if data == b"\x1b":
-        return KeyEvent(char="\x1b", escape=True)
+        return KeyEvent(char="esc")
     if data == b"\x1b[A":
         return KeyEvent(char="up")
     if data == b"\x1b[B":
@@ -64,19 +57,23 @@ def _parse(data: bytes) -> KeyEvent:
     if data == b"\x1b[D":
         return KeyEvent(char="left")
     if data in (b"\x1b[1;3C", b"\x1bf", b"\x1b\x1b[C"):
-        return KeyEvent(char="alt_right")
+        return KeyEvent(char="alt+right")
     if data in (b"\x1b[1;3D", b"\x1bb", b"\x1b\x1b[D"):
-        return KeyEvent(char="alt_left")
-    if data in (b"\x1b\x7f", b"\x1b[3;3~"):
-        return KeyEvent(char="alt_backspace")
+        return KeyEvent(char="alt+left")
+    if data in (b"\x1b\x7f", b"\x1b[3;3~", b"\x17"):
+        return KeyEvent(char="alt+backspace")
+    if data == b"\x1b[Z":
+        return KeyEvent(char="shift-tab")
     if len(data) == 1:
         b = data[0]
         if b == 0x7F:
             return KeyEvent(char="backspace")
-        if b == 0x0D or b == 0x0A:
+        if b in (0x0D, 0x0A):
             return KeyEvent(char="enter")
-        if 0x01 <= b <= 0x1A:  # ctrl+a .. ctrl+z
-            return KeyEvent(char=chr(b + 0x60), ctrl=True)
+        if b == 0x09:
+            return KeyEvent(char="tab")
+        if 0x01 <= b <= 0x1A:
+            return KeyEvent(char=f"ctrl+{chr(b + 0x60)}")
         return KeyEvent(char=data.decode("utf-8", errors="replace"))
     return KeyEvent(char=data.decode("utf-8", errors="replace"))
 
@@ -87,13 +84,11 @@ def _parse(data: bytes) -> KeyEvent:
 
 
 class RawTerminal:
-    """Context manager that owns raw mode on stdin.
+    """Async context manager that owns raw mode; yields KeyEvents.
 
-    Async-iterates KeyEvents. Safe to use from one coroutine at a time.
-
-        async with RawTerminal() as term:
-            async for event in term:
-                ...
+    async with RawTerminal() as term:
+        async for event in term:
+            ...
     """
 
     def __init__(self, fd: int | None = None) -> None:
@@ -126,202 +121,222 @@ class RawTerminal:
         if self._reader is None:
             raise StopAsyncIteration
         try:
-            data = await self._reader.read(32)
+            data = await self._reader.read(4096)
             if not data:
                 raise StopAsyncIteration
             return _parse(data)
         except asyncio.IncompleteReadError:
             raise StopAsyncIteration
 
+    async def read_raw(self) -> bytes:
+        """Read raw bytes (may contain multiple chars from a paste)."""
+        if self._reader is None:
+            return b""
+        return await self._reader.read(4096)
+
 
 # ---------------------------------------------------------------------------
-# InputHandler
+# LineState
 # ---------------------------------------------------------------------------
 
-
-class Interrupt(Exception):
-    """Raised by readline_input when an interrupt binding fires."""
+_CLEAR = "\r\033[K"
 
 
 @dataclass
-class InputHandler:
-    """Maps key chars to callables. Unbound keys fall through to line accumulation.
+class LineState:
+    buf: list[str] = field(default_factory=list)
+    cursor_pos: int = 0
+    hist_idx: int = -1  # -1 = live input
+    saved: str = ""
+    prompt: str = "> "
+    history: deque[str] | None = None
+    pastes: dict[int, str] = field(default_factory=dict)
 
-    Binding key is the raw char string, e.g.:
-      "\x1b"   — ESC
-      "\x03"   — ctrl+c  (but handled separately as EOFError/Interrupt)
-      "up"     — up arrow
-      "down"   — down arrow
+    def render(self) -> None:
+        line = "".join(self.buf)
+        sys.stdout.write(f"{_CLEAR}{self.prompt}{line}")
+        diff = len(line) - self.cursor_pos
+        if diff:
+            sys.stdout.write(f"\x1b[{diff}D")
+        sys.stdout.flush()
 
-    Callable signature: () -> None | raises Interrupt | raises EOFError
-    """
+    def insert(self, ch: str) -> None:
+        self.buf.insert(self.cursor_pos, ch)
+        self.cursor_pos += 1
 
-    bindings: dict[str, Callable[[], None]] = field(default_factory=dict)
+    def insert_paste(self, text: str) -> None:
+        n = len(self.pastes) + 1
+        self.pastes[n] = text
+        token = list(f"[paste #{n}]")
+        self.buf[self.cursor_pos : self.cursor_pos] = token
+        self.cursor_pos += len(token)
 
-    def dispatch(self, event: KeyEvent) -> bool:
-        """Call binding if registered. Returns True if handled."""
-        fn = self.bindings.get(event.char if not event.escape else "\x1b")
-        if fn:
-            fn()
-            return True
-        return False
+    def submit(self) -> str:
+        line = "".join(self.buf)
+        for n, text in self.pastes.items():
+            line = line.replace(f"[paste #{n}]", text)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        if self.history is not None and line:
+            self.history.appendleft(line)
+        return line
+
+
+# ---------------------------------------------------------------------------
+# LineActions  (key → Callable[[LineState], None])
+# ---------------------------------------------------------------------------
+
+LineAction = Callable[[LineState], None]
+
+
+def _backspace(s: LineState) -> None:
+    if s.cursor_pos > 0:
+        s.buf.pop(s.cursor_pos - 1)
+        s.cursor_pos -= 1
+        s.render()
+
+
+def _clear_line(s: LineState) -> None:
+    s.buf.clear()
+    s.cursor_pos = 0
+    s.render()
+
+
+def _left(s: LineState) -> None:
+    if s.cursor_pos > 0:
+        s.cursor_pos -= 1
+        sys.stdout.write("\x1b[D")
+        sys.stdout.flush()
+
+
+def _right(s: LineState) -> None:
+    if s.cursor_pos < len(s.buf):
+        s.cursor_pos += 1
+        sys.stdout.write("\x1b[C")
+        sys.stdout.flush()
+
+
+def _word_left(s: LineState) -> None:
+    while s.cursor_pos > 0 and s.buf[s.cursor_pos - 1] == " ":
+        s.cursor_pos -= 1
+    while s.cursor_pos > 0 and s.buf[s.cursor_pos - 1] != " ":
+        s.cursor_pos -= 1
+    s.render()
+
+
+def _word_right(s: LineState) -> None:
+    while s.cursor_pos < len(s.buf) and s.buf[s.cursor_pos] == " ":
+        s.cursor_pos += 1
+    while s.cursor_pos < len(s.buf) and s.buf[s.cursor_pos] != " ":
+        s.cursor_pos += 1
+    s.render()
+
+
+def _word_backspace(s: LineState) -> None:
+    end = s.cursor_pos
+    while s.cursor_pos > 0 and s.buf[s.cursor_pos - 1] == " ":
+        s.cursor_pos -= 1
+    while s.cursor_pos > 0 and s.buf[s.cursor_pos - 1] != " ":
+        s.cursor_pos -= 1
+    del s.buf[s.cursor_pos : end]
+    s.render()
+
+
+def _hist_up(s: LineState) -> None:
+    if not s.history:
+        return
+    if s.hist_idx == -1:
+        s.saved = "".join(s.buf)
+    if s.hist_idx < len(s.history) - 1:
+        s.hist_idx += 1
+        s.buf[:] = list(s.history[s.hist_idx])
+        s.cursor_pos = len(s.buf)
+        s.render()
+
+
+def _hist_down(s: LineState) -> None:
+    if not s.history or s.hist_idx == -1:
+        return
+    if s.hist_idx > 0:
+        s.hist_idx -= 1
+        s.buf[:] = list(s.history[s.hist_idx])
+    else:
+        s.hist_idx = -1
+        s.buf[:] = list(s.saved)
+    s.cursor_pos = len(s.buf)
+    s.render()
+
+
+# Default built-in actions. Keyed by KeyEvent.char.
+LINE_ACTIONS: dict[str, LineAction] = {
+    "backspace": _backspace,
+    "ctrl+u": _clear_line,
+    "left": _left,
+    "right": _right,
+    "alt+left": _word_left,
+    "alt+right": _word_right,
+    "alt+backspace": _word_backspace,
+    "up": _hist_up,
+    "down": _hist_down,
+}
 
 
 # ---------------------------------------------------------------------------
 # readline_input
 # ---------------------------------------------------------------------------
 
-_CLEAR = "\r\033[K"  # CR + erase to end of line
 
-
-async def readline_input(
+async def prompt(
     prompt: str = "> ",
     *,
-    handler: InputHandler | None = None,
+    bindings: dict[str, Callable[[], None]] | None = None,
     history: deque[str] | None = None,
 ) -> str:
-    """Async line reader with raw terminal, echo, backspace, history, bindings.
-
-    Returns the completed line.
-    Raises Interrupt if an interrupt binding fires.
-    Raises EOFError on ctrl+d.
+    """Async line reader. Returns completed line.
+    Raises Interrupt on interrupt binding, EOFError on ctrl+d, KeyboardInterrupt on ctrl+c.
     """
-    handler = handler or InputHandler()
-    buf: list[str] = []
-    cursor_pos = 0  # index into buf
-    hist_idx = -1  # -1 = current input
-    saved: str = ""  # saved buf when navigating history
-
-    def _render(line: str, pos: int) -> None:
-        # render line, then move cursor to pos
-        sys.stdout.write(f"{_CLEAR}{prompt}{line}")
-        # reposition: move left by (len - pos) chars
-        diff = len(line) - pos
-        if diff:
-            sys.stdout.write(f"\x1b[{diff}D")
-        sys.stdout.flush()
-
-    _render("", 0)
+    bindings = bindings or {}
+    state = LineState(prompt=prompt, history=history)
+    state.render()
 
     async with RawTerminal() as term:
-        async for event in term:
+        while True:
+            data = await term.read_raw()
+            if not data:
+                break
+
+            # Multi-byte chunk → treat as paste: store and show token, render once.
+            text = data.decode("utf-8", errors="replace")
+            if len(text) > 1:
+                state.insert_paste(text)
+                state.render()
+                continue
+
+            event = _parse(data)
+
             # ctrl+d → EOF
-            if event.ctrl and event.char == "d":
+            if event.char == "ctrl+d":
                 sys.stdout.write("\n")
                 sys.stdout.flush()
                 raise EOFError
 
-            # ctrl+c → exit
-            if event.ctrl and event.char == "c":
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                raise KeyboardInterrupt
-
-            # registered bindings
-            if handler.dispatch(event):
+            # user bindings
+            if event.char in bindings:
+                bindings[event.char]()
                 continue
 
             # enter → submit
             if event.char == "enter":
-                line = "".join(buf)
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                if history is not None and line:
-                    history.appendleft(line)
-                return line
+                return state.submit()
 
-            # backspace
-            if event.char == "backspace":
-                if cursor_pos > 0:
-                    buf.pop(cursor_pos - 1)
-                    cursor_pos -= 1
-                    _render("".join(buf), cursor_pos)
+            # built-in line actions
+            if event.char in LINE_ACTIONS:
+                LINE_ACTIONS[event.char](state)
                 continue
 
-            # ctrl+u → clear line
-            if event.ctrl and event.char == "u":
-                buf.clear()
-                cursor_pos = 0
-                _render("", 0)
-                continue
+            # printable char
+            if len(event.char) == 1:
+                state.insert(event.char)
+                state.render()
 
-            # up arrow → history back
-            if event.char == "up":
-                if history:
-                    if hist_idx == -1:
-                        saved = "".join(buf)
-                    if hist_idx < len(history) - 1:
-                        hist_idx += 1
-                        buf[:] = list(history[hist_idx])
-                        cursor_pos = len(buf)
-                        _render("".join(buf), cursor_pos)
-                continue
-
-            # down arrow → history forward
-            if event.char == "down":
-                if history:
-                    if hist_idx > 0:
-                        hist_idx -= 1
-                        buf[:] = list(history[hist_idx])
-                    elif hist_idx == 0:
-                        hist_idx = -1
-                        buf[:] = list(saved)
-                    cursor_pos = len(buf)
-                    _render("".join(buf), cursor_pos)
-                continue
-
-            # left → move cursor left
-            if event.char == "left":
-                if cursor_pos > 0:
-                    cursor_pos -= 1
-                    sys.stdout.write("\x1b[D")
-                    sys.stdout.flush()
-                continue
-
-            # right → move cursor right
-            if event.char == "right":
-                if cursor_pos < len(buf):
-                    cursor_pos += 1
-                    sys.stdout.write("\x1b[C")
-                    sys.stdout.flush()
-                continue
-
-            # alt+backspace → delete word left
-            if event.char == "alt_backspace":
-                end = cursor_pos
-                while cursor_pos > 0 and buf[cursor_pos - 1] == " ":
-                    cursor_pos -= 1
-                while cursor_pos > 0 and buf[cursor_pos - 1] != " ":
-                    cursor_pos -= 1
-                del buf[cursor_pos:end]
-                _render("".join(buf), cursor_pos)
-                continue
-
-            # alt+left → jump word left
-            if event.char == "alt_left":
-                while cursor_pos > 0 and buf[cursor_pos - 1] == " ":
-                    cursor_pos -= 1
-                while cursor_pos > 0 and buf[cursor_pos - 1] != " ":
-                    cursor_pos -= 1
-                _render("".join(buf), cursor_pos)
-                continue
-
-            # alt+right → jump word right
-            if event.char == "alt_right":
-                while cursor_pos < len(buf) and buf[cursor_pos] == " ":
-                    cursor_pos += 1
-                while cursor_pos < len(buf) and buf[cursor_pos] != " ":
-                    cursor_pos += 1
-                _render("".join(buf), cursor_pos)
-                continue
-
-            # skip other control/escape sequences
-            if event.ctrl or event.escape:
-                continue
-
-            # printable char — insert at cursor
-            buf.insert(cursor_pos, event.char)
-            cursor_pos += 1
-            _render("".join(buf), cursor_pos)
-
-    return "".join(buf)
+    return "".join(state.buf)

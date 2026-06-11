@@ -28,7 +28,7 @@ from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam
 
 from .anthropic import agent
-from .input2 import readline_input
+from .input import prompt
 from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, glob, grep, read_file, write_file
 from .utils import load_env, serialize
@@ -187,7 +187,7 @@ class CLI:
     async def _prompt_loop(self) -> None:
         bindings = {"esc": self.interrupt}
         while True:
-            text = await readline_input("> ", bindings=bindings, history=self.history)
+            text = await prompt("> ", bindings=bindings, history=self.history)
 
             text = text.strip()
             if not text:
