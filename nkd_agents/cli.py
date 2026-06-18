@@ -18,19 +18,21 @@ from prompt_toolkit.styles import Style
 
 from .anthropic import agent
 from .logging import DIM, RED, RESET, configure_logging
-from .tools import bash, edit_file, glob, grep, read_file, write_file
+from .tools import (
+    bash,
+    edit_file,
+    fetch_url,
+    glob,
+    grep,
+    read_file,
+    web_search,
+    write_file,
+)
 from .utils import load_env, serialize
 
 logger = logging.getLogger(__name__)
 
-_BASE_TOOLS = (read_file, write_file, edit_file, bash, glob, grep)
-try:
-    from .web import fetch_url, web_search
-
-    TOOLS = (*_BASE_TOOLS, fetch_url, web_search)
-except ImportError as e:
-    logger.warning(f"{DIM}Web tools disabled (install nkd-agents[web]): {e}{RESET}")
-    TOOLS = _BASE_TOOLS
+TOOLS = (read_file, write_file, edit_file, bash, glob, grep, fetch_url, web_search)
 
 # constants
 MODELS = ("claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5")

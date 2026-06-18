@@ -9,7 +9,7 @@ description = "nkd-agents is a package for building agents using only what you r
 readme = "README.md"
 license = "MIT"
 authors = [
-    { name = "Amitej Mehta", email = "amitejmehta@berkeley.edu" }
+    { name = "Amitej Mehta", email = "amitejmehta@gmail.com" }
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -24,10 +24,6 @@ nkd = "nkd_agents.cli:main"
 [project.optional-dependencies]
 cli = [
     "prompt-toolkit>=3.0.52,<4.0.0", # cli user input
-]
-web = [
-    "playwright>=1.58.0,<2.0.0", # web search with browser automation
-    "trafilatura>=2.0.0,<3.0.0", # fetch_url tool
 ]
 dev = [
     "freezegun==1.5.1",
