@@ -4,8 +4,10 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam
@@ -79,6 +81,7 @@ class CLI:
         self.messages: list[MessageParam] = []
         self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
+        self.subagent_tasks: dict[str, asyncio.Task[str]] = {}
         self.last_message_at: float = 0.0
         self.warm_count: int = 0
         self.mode = list(MODE_PREFIXES)[0]
@@ -159,6 +162,64 @@ class CLI:
         modes = list[str](MODE_PREFIXES)
         self.mode = modes[(modes.index(self.mode) + 1) % len(modes)]
 
+    def make_subagent_tools(self) -> tuple:
+        queue = self.queue
+        subagent_tasks = self.subagent_tasks
+        client = self.client
+        kwargs = self.kwargs
+
+        async def subagent(
+            prompt: str,
+            model: Literal[
+                "claude-sonnet-4-6", "claude-haiku-4-5"
+            ] = "claude-haiku-4-5",
+        ) -> str:
+            """Spawn a background subagent with the given prompt. Returns a task_id immediately.
+            The result is delivered as a follow-up user message when complete.
+
+            Args:
+                prompt: The prompt to run in the background.
+                model: Model to use. Options: claude-sonnet-4-6, claude-haiku-4-5.
+            """
+            task_id = str(uuid.uuid4())[:8]
+            messages: list[MessageParam] = [{"role": "user", "content": prompt}]
+            subagent_kwargs = {**kwargs, "model": model}
+
+            async def run() -> str:
+                return await agent(
+                    client, fns=TOOLS, messages=messages, **subagent_kwargs
+                )
+
+            task: asyncio.Task[str] = asyncio.create_task(run())
+            subagent_tasks[task_id] = task
+
+            def on_done(t: asyncio.Task[str]) -> None:
+                subagent_tasks.pop(task_id, None)
+                if t.cancelled():
+                    content = f"[subagent {task_id} cancelled]"
+                elif t.exception():
+                    content = f"[subagent {task_id} error]: {t.exception()}"
+                else:
+                    content = f"[subagent {task_id} result]: {t.result()}"
+                queue.put_nowait({"role": "user", "content": content})
+
+            task.add_done_callback(on_done)
+            return f"Subagent {task_id} started."
+
+        async def cancel_subagent(task_id: str) -> str:
+            """Cancel a running background subagent by task_id.
+
+            Args:
+                task_id: The task_id returned by subagent().
+            """
+            task = subagent_tasks.get(task_id)
+            if not task:
+                return f"No running subagent with task_id '{task_id}'."
+            task.cancel()
+            return f"Subagent {task_id} cancelled."
+
+        return subagent, cancel_subagent
+
     async def cache_warmer(self) -> None:
         while True:
             await asyncio.sleep(30)
@@ -187,8 +248,9 @@ class CLI:
             msg = await self.queue.get()
             self.messages.append(msg)
             self.warm_count = 0
+            fns = (*TOOLS, *self.make_subagent_tools())
             self.llm_task = asyncio.create_task(
-                agent(self.client, messages=self.messages, fns=TOOLS, **self.kwargs)
+                agent(self.client, messages=self.messages, fns=fns, **self.kwargs)
             )
             try:
                 await self.llm_task

@@ -171,9 +171,12 @@ class TestLLMLoop:
                 await loop_task
             assert len(cli.messages) == 1
             assert cli.messages[0] is msg
-            mock_llm.assert_called_once_with(
-                cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs
-            )
+            call_kwargs = mock_llm.call_args
+            assert call_kwargs.args[0] is cli.client
+            assert call_kwargs.kwargs["messages"] is cli.messages
+            # TOOLS are a subset; subagent tools are appended
+            for t in TOOLS:
+                assert t in call_kwargs.kwargs["fns"]
 
     async def test_survives_cancelled_llm_task(self, cli: CLI):
         call_count = 0
