@@ -25,10 +25,6 @@ nkd = "nkd_agents.cli:main"
 cli = [
     "prompt-toolkit>=3.0.52,<4.0.0", # cli user input
 ]
-web = [
-    "playwright>=1.58.0,<2.0.0", # web search with browser automation
-    "trafilatura>=2.0.0,<3.0.0", # fetch_url tool
-]
 dev = [
     "freezegun==1.5.1",
     "opentelemetry-sdk>=1.20.0",
