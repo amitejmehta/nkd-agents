@@ -2,14 +2,23 @@ import asyncio
 import logging
 import os
 import signal
+import tempfile
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote_plus, urlparse
 
-from .ctx import cwd_ctx
+import httpx
+
 from .logging import GREEN, RESET
 from .utils import display_diff
+from .web import ContentExtractor, cdp, find_chrome
 
 logger = logging.getLogger(__name__)
+
+# working directory for tools - relative paths are resolved against this
+# useful to set if the agent's cwd != python process's cwd (default is python process's cwd)
+cwd_ctx = ContextVar[Path]("cwd_ctx", default=Path.cwd())
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,3 +219,128 @@ async def grep(
         if out
         else f"No matches found for pattern: {pattern}"
     )
+
+
+async def web_search(query: str, max_results: int = 5, js_timeout: int = 3) -> str:
+    """Search the web and return results.
+
+    Args:
+        query: Search query string
+        max_results: Maximum number of results to return (default: 5)
+        js_timeout: Seconds to wait for JS results to render (default: 3, increase if results are empty)
+
+    Returns:
+        Formatted string with titles, URLs, and snippets
+    """
+    logger.info(f"Searching: {GREEN}{query}{RESET}")
+    port = 9222
+    url = f"https://duckduckgo.com/?q={quote_plus(query)}&ia=web"
+    ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
+        proc = await asyncio.create_subprocess_exec(
+            find_chrome(),
+            f"--remote-debugging-port={port}",
+            "--headless=new",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            f"--user-data-dir={profile}",
+            f"--user-agent={ua}",
+            url,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            # Wait for CDP endpoint to be ready
+            async with httpx.AsyncClient() as client:
+                for _ in range(20):
+                    try:
+                        tabs = (
+                            await client.get(f"http://localhost:{port}/json")
+                        ).json()
+                        break
+                    except Exception:
+                        await asyncio.sleep(0.3)
+                else:
+                    raise RuntimeError("Chrome CDP did not become ready")
+
+            tab = next(t for t in tabs if t.get("type") == "page")
+            ws_url = urlparse(tab["webSocketDebuggerUrl"])
+
+            await asyncio.sleep(js_timeout)
+
+            JS = (
+                """
+                (() => {
+                    const arts = Array.from(document.querySelectorAll('article')).slice(0, %d);
+                    return arts.map(el => {
+                        const a = el.querySelector('a[data-testid="result-title-a"]');
+                        const s = el.querySelector('div[data-result="snippet"]');
+                        return {title: a?.innerText||'', url: a?.href||'', snippet: s?.innerText||''};
+                    }).filter(r => r.url);
+                })()
+                """
+                % max_results
+            )
+
+            response = await cdp(
+                ws_url.hostname,
+                ws_url.port,
+                ws_url.path,
+                {
+                    "id": 1,
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": JS, "returnByValue": True},
+                },
+            )
+            results = response.get("result", {}).get("result", {}).get("value", [])
+        finally:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=5)
+
+    if not results:
+        return "No results found"
+
+    output = "\n\n".join(
+        f"Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}"
+        for r in results
+    )
+    logger.info(f"Found {len(results)} results:\n{output}")
+    return output
+
+
+async def fetch_url(url: str, save_path: str) -> str:
+    """Fetch a webpage and convert to clean markdown.
+
+    Args:
+        url: The URL to fetch
+        save_path: Path where the extracted markdown content should be saved.
+            Required (not optional) to avoid loading potentially huge page content
+            directly into the LLM context window.
+
+    Returns:
+        Success message with character count and path, or error message.
+    """
+    logger.info(f"Fetching: {GREEN}{url}{RESET}")
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        html = response.text
+
+    parser = ContentExtractor()
+    parser.feed(html)
+    markdown = parser.get_markdown()
+
+    if not markdown:
+        return f"Error fetching '{url}': No content extracted"
+
+    p = Path(save_path)
+    file_path = p if p.is_absolute() else cwd_ctx.get() / p
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(markdown, encoding="utf-8")
+
+    logger.info(f"Saved {len(markdown):,} chars to {file_path}")
+    return f"Saved {len(markdown):,} chars to {file_path}. For long files, start by grepping for keywords."
