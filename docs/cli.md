@@ -25,10 +25,9 @@ caffeinate -u -t 3600 &  # keep awake for 1 hour
 | Key | Action |
 |-----|--------|
 | `tab` | Toggle **extended thinking** on/off (default: adaptive — Claude decides how much to think; override via `NKD_THINKING`) |
-| `shift+tab` | Cycle **mode**: None → Plan → Socratic → None |
-| `esc esc` | **Interrupt** — cancel the running LLM call or tool execution |
-| `ctrl+l` | **Cycle model**: sonnet → opus → haiku → sonnet (logged on switch, applies to next message) |
-| `ctrl+u` | Clear input line |
+| `shift+tab` | Cycle **mode**: Act → Plan → Socratic → Act |
+| `esc` | **Clear or interrupt** — if input has text, clears it; otherwise cancels the running LLM call |
+| `ctrl+l` | **Cycle model**: sonnet → opus → haiku → sonnet (applies to next message) |
 | `ctrl+c` / `ctrl+d` | Exit — session auto-saved to `~/.nkd-agents/sessions/{YYYYMMDDHHMMSS}.json` |
 
 **Message queuing:** you can type and submit a new message while the LLM is still responding — it queues and runs as soon as the current turn completes.
@@ -65,7 +64,7 @@ Modes extend the same mechanism: a prefix injected into every user message, so t
 
 | Mode | Full injected prefix | Use when |
 |------|---------------------|----------|
-| **None** | `Be brief and exacting. Mode: None.` | Default |
+| **Act** | `Be brief and exacting. Mode: Act.` | Default |
 | **Plan** | `Be brief and exacting. Mode: Plan (READ ONLY!)` | Think before acting — model reads and proposes, doesn't write |
 | **Socratic** | `Be brief and exacting. Mode: Socratic (ASK, DON'T TELL!)` | Be questioned toward the answer rather than given it |
 

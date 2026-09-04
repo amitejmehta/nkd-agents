@@ -1,7 +1,5 @@
 """Test utils module functionality."""
 
-import inspect
-import logging
 import os
 from typing import Literal
 
@@ -9,10 +7,6 @@ import pytest
 from pydantic import BaseModel
 
 from nkd_agents.utils import (
-    _handle_literal_annotation,
-    _handle_primitive,
-    _handle_union,
-    display_diff,
     extract_function_params,
     load_env,
     serialize,
@@ -38,7 +32,7 @@ class TestExtractFunctionParams:
 
     @pytest.mark.asyncio
     async def test_required_vs_optional(self):
-        """Required params lack defaults, optional have them."""
+        """Required params have no defaults; optional params are absent from required_list."""
 
         async def func(required: str, a: str = "x", b: int = 1, c: str = "y"):
             pass
@@ -46,9 +40,9 @@ class TestExtractFunctionParams:
         params, required_list = extract_function_params(func)
         assert required_list == ["required"]
         assert "default" not in params["required"]
-        assert params["a"]["default"] == "x"
-        assert params["b"]["default"] == 1
-        assert params["c"]["default"] == "y"
+        assert "default" not in params["a"]
+        assert "default" not in params["b"]
+        assert "default" not in params["c"]
 
     @pytest.mark.asyncio
     async def test_literals(self):
@@ -102,41 +96,20 @@ class TestExtractFunctionParams:
         assert "Unsupported Literal type" in str(exc.value)
 
     @pytest.mark.asyncio
-    async def test_empty_literal_error(self):
-        """Empty Literal raises error (line 29)."""
-        # Tests the error path in _handle_literal_annotation
-        from nkd_agents.utils import _handle_literal_annotation
+    async def test_union_types_unsupported(self):
+        """Union types (including T | None) are unsupported and raise errors."""
 
-        with pytest.raises(ValueError) as exc:
-            _handle_literal_annotation((), "func.param")
-        assert "Empty Literal" in str(exc.value)
-
-    @pytest.mark.asyncio
-    async def test_optional_type(self):
-        """T | None unions are supported and extract the base type."""
-
-        async def func(a: int, b: int | None = None, c: str | None = None):
+        async def func(b: int | None = None):
             pass
 
-        params, required_list = extract_function_params(func)
-        assert params["a"]["type"] == "integer"
-        assert params["b"]["type"] == "integer"
-        assert params["c"]["type"] == "string"
-        assert required_list == ["a"]
-        assert "default" not in params["a"]
-        assert params["b"]["default"] is None
-        assert params["c"]["default"] is None
-
-    @pytest.mark.asyncio
-    async def test_non_optional_union_error(self):
-        """Unions other than T | None raise error."""
-
-        async def func(val: int | str):
-            pass
-
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match="Unsupported type"):
             extract_function_params(func)
-        assert "Only T | None unions supported" in str(exc.value)
+
+        async def func2(val: int | str):
+            pass
+
+        with pytest.raises(ValueError, match="Unsupported type"):
+            extract_function_params(func2)
 
     @pytest.mark.asyncio
     async def test_var_positional_rejected(self):
@@ -229,57 +202,6 @@ class TestLoadEnv:
         del os.environ["OTHER2"]
 
 
-class TestHandleLiteralAnnotation:
-    def test_valid_str_literal(self):
-        assert _handle_literal_annotation(("a", "b"), "f.p") == {
-            "type": "string",
-            "enum": ["a", "b"],
-        }
-
-    def test_valid_int_literal(self):
-        assert _handle_literal_annotation((1, 2), "f.p") == {
-            "type": "integer",
-            "enum": [1, 2],
-        }
-
-    def test_empty_raises(self):
-        with pytest.raises(ValueError, match="Empty Literal"):
-            _handle_literal_annotation((), "f.p")
-
-    def test_unsupported_type_raises(self):
-        with pytest.raises(ValueError, match="Unsupported Literal type"):
-            _handle_literal_annotation((b"x",), "f.p")
-
-    def test_mixed_types_raises(self):
-        with pytest.raises(ValueError, match="mixed"):
-            _handle_literal_annotation(("a", 1), "f.p")
-
-
-class TestHandleUnion:
-    def test_optional_int(self):
-        assert _handle_union((int, type(None)), "f.p") == {"type": "integer"}
-
-    def test_non_optional_raises(self):
-        with pytest.raises(ValueError, match="Only T | None"):
-            _handle_union((int, str), "f.p")
-
-    def test_triple_union_raises(self):
-        with pytest.raises(ValueError, match="Only T | None"):
-            _handle_union((int, str, type(None)), "f.p")
-
-
-class TestHandlePrimitive:
-    def test_str(self):
-        assert _handle_primitive(str, "f.p") == {"type": "string"}
-
-    def test_unannotated_defaults_to_string(self):
-        assert _handle_primitive(inspect.Parameter.empty, "f.p") == {"type": "string"}
-
-    def test_unsupported_type_raises(self):
-        with pytest.raises(ValueError, match="Unsupported type"):
-            _handle_primitive(dict, "f.p")
-
-
 class TestSerialize:
     def test_primitive_passthrough(self):
         assert serialize("x") == "x"
@@ -319,13 +241,3 @@ class TestSerialize:
             inner: Inner
 
         assert serialize(Outer(inner=Inner(n=3))) == {"inner": {"n": 3}}
-
-
-class TestDisplayDiff:
-    """Test display_diff functionality."""
-
-    def test_logs_diff(self, caplog):
-        """display_diff logs colored diff output."""
-        caplog.set_level(logging.INFO)
-        display_diff("old\nline1\nline2", "new\nline1\nline3", "test.txt")
-        assert "Update: test.txt" in caplog.text

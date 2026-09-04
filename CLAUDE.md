@@ -30,6 +30,13 @@ xenon --max-average A --max-modules A --max-absolute B nkd_agents/
 pytest tests/ -v --cov=nkd_agents --cov-report=term-missing 2>&1 | tail -20
 ```
 
+Before refactoring `tty.py`, also check the tests can still fail — coverage alone
+does not prove that:
+
+```bash
+python scripts/tty_mutants.py
+```
+
 ## Running Examples
 
 ```bash

@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Break each invariant in tty.py on purpose and check a test notices.
+
+A passing suite proves nothing until you know it can fail. Every entry below is an
+invariant we actually rely on; if a mutant survives, the tests are decorative and
+the next refactor will silently break that invariant.
+
+    python scripts/tty_mutants.py            # all of them
+    python scripts/tty_mutants.py --list     # just the names
+
+Not part of `pytest`: this spawns pytest per mutant, so nesting it in the suite
+would make it recursive and slow. Run it before a refactor of tty.py, or in CI.
+"""
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+TARGET = Path(__file__).resolve().parent.parent / "nkd_agents" / "tty.py"
+TESTS = ["tests/test_tty.py", "tests/test_tty_screen.py"]
+
+# (name, original source, replacement). Each must break exactly one invariant.
+MUTANTS: list[tuple[str, str, str]] = [
+    (
+        "no clipping of chrome to the terminal width",
+        "return _clip(self.style + s, cols) + RESET",
+        "return self.style + s + RESET",
+    ),
+    (
+        "no newline strip (a newline is a second row)",
+        'SGR.split(s.replace("\\n", " "))',
+        "SGR.split(s)",
+    ),
+    ("no room made for the box", "self._room(len(box))", "self._rows = len(box)"),
+    (
+        "no clearing of rows freed by a shrink",
+        "blanks = max(0, min(top - 1, self._rows - len(box)))",
+        "blanks = 0",
+    ),
+    (
+        "no scroll region",
+        'f"\\x1b7\\x1b[1;{top - 1}r"',
+        '"\\x1b7"',
+    ),
+    (
+        "box may claim row 1 (negative row escapes)",
+        "][: max(0, height - 1)]",
+        "]",
+    ),
+    (
+        "no windowing of a tall buffer",
+        "rows = self._window(self._input_rows(cols), max(1, height - CHROME - 1))",
+        "rows = self._input_rows(cols)",
+    ),
+    (
+        "window ignores the cursor",
+        "start = min(max(0, cur - limit + 1), len(rows) - limit)",
+        "start = 0",
+    ),
+    ("no zero-width guard", "cols = max(1, cols)", "pass"),
+    (
+        "resize does not erase the reflowed box",
+        'self._write(f"\\x1b[J\\x1b[r\\x1b[{top - 1};1H")',
+        'self._write(f"\\x1b[r\\x1b[{top - 1};1H")',
+    ),
+    (
+        "resize makes room relative to the moved cursor",
+        'self._write(f"\\x1b[J\\x1b[r\\x1b[{top - 1};1H")\n            '
+        "self._rows = len(box)",
+        'self._write("\\x1b[J")\n            self._room(len(box))',
+    ),
+    (
+        "resize does not anchor the cursor above the box",
+        '\\x1b[J\\x1b[r\\x1b[{top - 1};1H"',
+        '\\x1b[J\\x1b[r"',
+    ),
+    (
+        "room does not restore the cursor",
+        '(f"\\x1b[{rows}A" if rows else "")',
+        '""',
+    ),
+    (
+        "room indexes with a bare newline (CR+LF under ONLCR)",
+        '"\\x1bD" * rows',
+        '"\\n" * rows',
+    ),
+    (
+        "room does not reset the previous render's scroll region",
+        'self._write("\\x1b[r" + "\\x1bD" * rows',
+        'self._write("" + "\\x1bD" * rows',
+    ),
+    (
+        "no SIGWINCH handler",
+        "loop.add_signal_handler(signal.SIGWINCH, self._render, True)",
+        "pass",
+    ),
+]
+
+
+def killed(source: str, original: str, replacement: str) -> bool:
+    """True if the suite fails once `original` is replaced. Restores the file."""
+    if original not in source:
+        raise SystemExit(f"mutant no longer applies, source changed: {original!r}")
+    TARGET.write_text(source.replace(original, replacement, 1))
+    try:
+        run = subprocess.run(
+            [sys.executable, "-m", "pytest", *TESTS, "-q", "-x", "--no-header"],
+            capture_output=True,
+        )
+        return run.returncode != 0
+    finally:
+        TARGET.write_text(source)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--list", action="store_true", help="print names and exit")
+    args = ap.parse_args()
+    if args.list:
+        print("\n".join(name for name, _, _ in MUTANTS))
+        return 0
+
+    source = TARGET.read_text()
+    survivors = []
+    for name, original, replacement in MUTANTS:
+        ok = killed(source, original, replacement)
+        print(f"  {'killed ' if ok else 'SURVIVED'}  {name}", flush=True)
+        if not ok:
+            survivors.append(name)
+
+    print(f"\n{len(MUTANTS) - len(survivors)}/{len(MUTANTS)} killed")
+    for name in survivors:
+        print(f"  survivor: {name} - no test covers this invariant")
+    return 1 if survivors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
