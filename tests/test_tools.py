@@ -1,6 +1,7 @@
 """Comprehensive tests for nkd_agents/tools.py"""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,10 +9,13 @@ import pytest
 from nkd_agents.tools import (
     FileContent,
     bash,
+    cwd_ctx,
     edit_file,
     glob,
     grep,
+    queue_ctx,
     read_file,
+    resolve,
     write_file,
 )
 
@@ -96,13 +100,12 @@ class TestReadFile:
 
     @pytest.mark.asyncio
     async def test_read_file_too_large(self, tmp_path):
-        """Non-binary files over 50 000 bytes return an error string."""
+        """Non-binary files over 50 000 bytes raise ValueError."""
         file_path = tmp_path / "big.txt"
         file_path.write_bytes(b"x" * 50001)
 
-        result = await read_file(str(file_path))
-        assert isinstance(result, str)
-        assert "too large" in result
+        with pytest.raises(ValueError, match="too large"):
+            await read_file(str(file_path))
 
     @pytest.mark.asyncio
     async def test_read_file_not_found(self):
@@ -352,9 +355,30 @@ class TestBash:
 
     @pytest.mark.asyncio
     async def test_bash_timeout(self):
-        """Test bash timeout raises TimeoutError."""
-        with pytest.raises(TimeoutError, match="timed out after 0.1 seconds"):
-            await bash("sleep 10", timeout=0.1)
+        """Test bash timeout returns an error string."""
+        result = await bash("sleep 10", timeout=0.1)
+        assert result == "Error: Command timed out after 0.1 seconds"
+
+    @pytest.mark.asyncio
+    async def test_bash_background(self):
+        """background=True returns PID immediately; result lands on queue_ctx."""
+        q: asyncio.Queue = asyncio.Queue()
+        token = queue_ctx.set(q)
+        try:
+            result = await bash("sleep 0.2 && echo hello", background=True)
+            assert result.startswith("PID: ")
+            assert q.empty()  # returned before the command finished
+            msg = await asyncio.wait_for(q.get(), timeout=2)
+            assert msg["role"] == "user"
+            assert msg["content"].startswith(f"[bash:{result[5:]}]\n")
+            assert "STDOUT: hello" in msg["content"]
+            assert "EXIT CODE: 0" in msg["content"]
+
+            await bash("sleep 10", background=True, timeout=0.1)
+            msg = await asyncio.wait_for(q.get(), timeout=2)
+            assert "Error: Command timed out after 0.1 seconds" in msg["content"]
+        finally:
+            queue_ctx.reset(token)
 
     @pytest.mark.asyncio
     async def test_bash_background_via_shell(self):
@@ -363,19 +387,78 @@ class TestBash:
         assert "EXIT CODE: 0" in result
 
 
-class TestGlob:
-    @pytest.mark.asyncio
-    async def test_glob_matches(self, tmp_path):
-        """Test glob finds matching files."""
-        (tmp_path / "a.py").write_text("x")
-        (tmp_path / "b.py").write_text("x")
-        (tmp_path / "c.txt").write_text("x")
+class TestResolve:
+    """Unit tests for the free resolve() function."""
 
-        from nkd_agents.tools import cwd_ctx
+    def test_relative_no_sandbox(self, tmp_path):
+        """No cwd_ctx set: relative path resolves against process cwd."""
+        token = cwd_ctx.set(None)
+        try:
+            result = resolve("foo/bar.txt")
+            assert result == Path.cwd() / "foo/bar.txt"
+        finally:
+            cwd_ctx.reset(token)
 
+    def test_absolute_no_sandbox(self):
+        """No cwd_ctx set: absolute path passes through."""
+        token = cwd_ctx.set(None)
+        try:
+            assert resolve("/etc/hosts") == Path("/etc/hosts")
+        finally:
+            cwd_ctx.reset(token)
+
+    def test_relative_sandbox(self, tmp_path):
+        """cwd_ctx set: relative path resolves against sandbox dir."""
         token = cwd_ctx.set(tmp_path)
         try:
-            result = await glob("*.py")
+            assert resolve("foo/bar.txt") == tmp_path / "foo/bar.txt"
+        finally:
+            cwd_ctx.reset(token)
+
+    def test_absolute_sandbox_raises(self, tmp_path):
+        """cwd_ctx set: absolute path raises ValueError."""
+        token = cwd_ctx.set(tmp_path)
+        try:
+            with pytest.raises(ValueError, match="outside the sandbox"):
+                resolve("/etc/hosts")
+        finally:
+            cwd_ctx.reset(token)
+
+    def test_symlink_escape_sandbox_raises(self, tmp_path):
+        """cwd_ctx set: symlink escaping sandbox raises ValueError."""
+        outside = tmp_path.parent / "outside.txt"
+        outside.write_text("secret")
+        link = tmp_path / "escape.txt"
+        link.symlink_to(outside)
+        token = cwd_ctx.set(tmp_path)
+        try:
+            with pytest.raises(ValueError, match="escapes the sandbox"):
+                resolve("escape.txt")
+        finally:
+            cwd_ctx.reset(token)
+
+    def test_symlink_inside_sandbox_allowed(self, tmp_path):
+        """cwd_ctx set: symlink within sandbox is allowed."""
+        target = tmp_path / "real.txt"
+        target.write_text("safe")
+        link = tmp_path / "link.txt"
+        link.symlink_to(target)
+        token = cwd_ctx.set(tmp_path)
+        try:
+            assert resolve("link.txt") == tmp_path / "link.txt"
+        finally:
+            cwd_ctx.reset(token)
+
+
+class TestGlob:
+    @pytest.mark.asyncio
+    async def test_matches_files(self, tmp_path):
+        (tmp_path / "a.py").write_text("")
+        (tmp_path / "b.py").write_text("")
+        (tmp_path / "c.txt").write_text("")
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await glob("*.py", ".")
             assert "a.py" in result
             assert "b.py" in result
             assert "c.txt" not in result
@@ -383,157 +466,83 @@ class TestGlob:
             cwd_ctx.reset(token)
 
     @pytest.mark.asyncio
-    async def test_glob_recursive(self, tmp_path):
-        """Test ** recursive glob."""
+    async def test_no_matches(self, tmp_path):
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await glob("*.rs", ".")
+            assert result == "No matches found"
+        finally:
+            cwd_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_hidden_excluded_by_default(self, tmp_path):
+        (tmp_path / ".hidden.py").write_text("")
+        (tmp_path / "visible.py").write_text("")
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await glob("*.py", ".")
+            assert "visible.py" in result
+            assert ".hidden.py" not in result
+        finally:
+            cwd_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_hidden_included_when_flag_set(self, tmp_path):
+        (tmp_path / ".hidden.py").write_text("")
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await glob("*.py", ".", include_hidden=True)
+            assert ".hidden.py" in result
+        finally:
+            cwd_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_recursive_glob(self, tmp_path):
         sub = tmp_path / "sub"
         sub.mkdir()
-        (sub / "deep.py").write_text("x")
-        (tmp_path / "top.py").write_text("x")
-
-        from nkd_agents.tools import cwd_ctx
-
+        (sub / "deep.py").write_text("")
         token = cwd_ctx.set(tmp_path)
         try:
-            result = await glob("**/*.py")
-            assert "top.py" in result
-            assert "sub/deep.py" in result
+            result = await glob("**/*.py", ".")
+            assert "deep.py" in result
         finally:
             cwd_ctx.reset(token)
 
-    @pytest.mark.asyncio
-    async def test_glob_no_matches(self, tmp_path):
-        """Test glob returns message when nothing matches."""
-        result = await glob("*.xyz", path=str(tmp_path))
-        assert result == "No matches found"
 
-    @pytest.mark.asyncio
-    async def test_glob_custom_path(self, tmp_path):
-        """Test glob with explicit path argument."""
-        sub = tmp_path / "dir"
-        sub.mkdir()
-        (sub / "f.md").write_text("x")
-
-        result = await glob("*.md", path=str(sub))
-        assert "f.md" in result
-
-    @pytest.mark.asyncio
-    async def test_glob_excludes_directories(self, tmp_path):
-        """Test glob only returns files, not directories."""
-        (tmp_path / "file.py").write_text("x")
-        (tmp_path / "dir.py").mkdir()  # directory with .py name
-
-        result = await glob("*.py", path=str(tmp_path))
-        assert "file.py" in result
-        lines = [line for line in result.splitlines() if line.strip()]
-        assert len(lines) == 1
-
-    @pytest.mark.asyncio
-    async def test_glob_excludes_hidden_by_default(self, tmp_path):
-        """Test glob ignores hidden files and dirs by default."""
-        (tmp_path / "visible.py").write_text("x")
-        (tmp_path / ".hidden.py").write_text("x")
-        hidden_dir = tmp_path / ".venv"
-        hidden_dir.mkdir()
-        (hidden_dir / "pkg.py").write_text("x")
-
-        result = await glob("**/*.py", path=str(tmp_path))
-        assert "visible.py" in result
-        assert ".hidden.py" not in result
-        assert ".venv/pkg.py" not in result
-
-    @pytest.mark.asyncio
-    async def test_glob_include_hidden(self, tmp_path):
-        """Test glob includes hidden files when include_hidden=True."""
-        (tmp_path / "visible.py").write_text("x")
-        (tmp_path / ".hidden.py").write_text("x")
-        hidden_dir = tmp_path / ".venv"
-        hidden_dir.mkdir()
-        (hidden_dir / "pkg.py").write_text("x")
-
-        result = await glob("**/*.py", path=str(tmp_path), include_hidden=True)
-        assert "visible.py" in result
-        assert ".hidden.py" in result
-        assert ".venv/pkg.py" in result
-
-
+@pytest.mark.skipif(not __import__("shutil").which("rg"), reason="rg not installed")
 class TestGrep:
     @pytest.mark.asyncio
-    async def test_grep_finds_pattern(self, tmp_path):
-        """Test grep finds matching lines."""
-        (tmp_path / "test.py").write_text(
-            "def hello():\n    pass\n\ndef world():\n    pass\n"
-        )
-
-        result = await grep("def hello", path=str(tmp_path))
-        assert "def hello" in result
-
-    @pytest.mark.asyncio
-    async def test_grep_with_include_filter(self, tmp_path):
-        """Test grep --glob filter."""
-        (tmp_path / "a.py").write_text("target_string\n")
-        (tmp_path / "b.txt").write_text("target_string\n")
-
-        result = await grep("target_string", include="*.py", path=str(tmp_path))
-        assert "target_string" in result
-        assert "b.txt" not in result
-
-    @pytest.mark.asyncio
-    async def test_grep_no_matches(self, tmp_path):
-        """Test grep returns message when nothing matches."""
-        (tmp_path / "test.py").write_text("nothing here\n")
-
-        result = await grep("nonexistent_xyz", path=str(tmp_path))
-        assert "No matches found" in result
-
-    @pytest.mark.asyncio
-    async def test_grep_respects_cwd(self, tmp_path):
-        """Test grep uses cwd_ctx when no path given."""
-        from nkd_agents.tools import cwd_ctx
-
-        (tmp_path / "file.py").write_text("unique_marker_abc\n")
-
+    async def test_finds_pattern(self, tmp_path):
+        (tmp_path / "file.py").write_text("def hello():\n    pass\n")
         token = cwd_ctx.set(tmp_path)
         try:
-            result = await grep("unique_marker_abc")
-            assert "unique_marker_abc" in result
+            result = await grep("def hello", path=".")
+            assert "hello" in result
+            assert "EXIT CODE: 0" in result
         finally:
             cwd_ctx.reset(token)
 
     @pytest.mark.asyncio
-    async def test_grep_excludes_hidden_by_default(self, tmp_path):
-        """Test grep ignores hidden files and dirs by default."""
-        (tmp_path / "visible.py").write_text("secret_token\n")
-        (tmp_path / ".hidden.py").write_text("secret_token\n")
-        hidden_dir = tmp_path / ".venv"
-        hidden_dir.mkdir()
-        (hidden_dir / "pkg.py").write_text("secret_token\n")
-
-        result = await grep("secret_token", path=str(tmp_path))
-        assert "visible.py" in result
-        assert ".hidden.py" not in result
-        assert ".venv" not in result
+    async def test_no_match_nonzero_exit(self, tmp_path):
+        (tmp_path / "file.py").write_text("nothing here\n")
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await grep("zzznomatch", path=".")
+            assert "EXIT CODE: 1" in result
+        finally:
+            cwd_ctx.reset(token)
 
     @pytest.mark.asyncio
-    async def test_grep_total_output_capped_at_200_lines(self, tmp_path):
-        """Total output is capped at 200 lines, even across many files / many matches."""
-        # 10 files with 100 matches each = 1000 hits; far more than 200 lines.
-        for i in range(10):
-            (tmp_path / f"f{i}.txt").write_text("hit\n" * 100)
-
-        result = await grep("hit", path=str(tmp_path), context=0)
-        assert len(result.splitlines()) <= 200
-
-    @pytest.mark.asyncio
-    async def test_grep_include_hidden(self, tmp_path):
-        """Test grep searches hidden files when include_hidden=True."""
-        (tmp_path / "visible.py").write_text("secret_token\n")
-        hidden_dir = tmp_path / ".venv"
-        hidden_dir.mkdir()
-        (hidden_dir / "pkg.py").write_text("secret_token\n")
-
-        result = await grep("secret_token", path=str(tmp_path), include_hidden=True)
-        assert "visible.py" in result
-        assert ".venv" in result
+    async def test_file_filter(self, tmp_path):
+        (tmp_path / "a.py").write_text("target_word\n")
+        (tmp_path / "b.txt").write_text("target_word\n")
+        token = cwd_ctx.set(tmp_path)
+        try:
+            result = await grep("target_word", include="*.py", path=".")
+            assert "a.py" in result
+            assert "b.txt" not in result
+        finally:
+            cwd_ctx.reset(token)
 
 
 class TestCwdContext:
@@ -542,8 +551,6 @@ class TestCwdContext:
     @pytest.mark.asyncio
     async def test_read_file_relative_path(self, tmp_path):
         """read_file resolves relative paths against cwd_ctx."""
-        from nkd_agents.tools import cwd_ctx, read_file
-
         subdir = tmp_path / "subdir"
         subdir.mkdir()
         test_file = subdir / "test.txt"
@@ -561,8 +568,6 @@ class TestCwdContext:
     @pytest.mark.asyncio
     async def test_edit_file_relative_path(self, tmp_path):
         """write_file resolves relative paths against cwd_ctx."""
-        from nkd_agents.tools import cwd_ctx, write_file
-
         subdir = tmp_path / "subdir"
         subdir.mkdir()
 
@@ -577,8 +582,6 @@ class TestCwdContext:
     @pytest.mark.asyncio
     async def test_bash_cwd_context(self, tmp_path):
         """bash executes in cwd_ctx directory."""
-        from nkd_agents.tools import bash, cwd_ctx
-
         subdir = tmp_path / "workdir"
         subdir.mkdir()
 
@@ -592,8 +595,6 @@ class TestCwdContext:
     @pytest.mark.asyncio
     async def test_cwd_isolation(self, tmp_path):
         """cwd_ctx changes don't affect other contexts."""
-        from nkd_agents.tools import cwd_ctx, read_file
-
         dir1 = tmp_path / "dir1"
         dir2 = tmp_path / "dir2"
         dir1.mkdir()

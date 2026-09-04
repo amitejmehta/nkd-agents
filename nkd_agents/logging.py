@@ -1,6 +1,9 @@
+import difflib
 import logging
 import sys
 from contextvars import ContextVar
+
+logger = logging.getLogger(__name__)
 
 IS_TTY = sys.stderr.isatty()
 GREEN = "\033[32m" if IS_TTY else ""
@@ -28,3 +31,15 @@ def configure_logging(level: int = logging.INFO) -> None:
     handler.addFilter(ContextFilter())
     logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+def display_diff(old: str, new: str, path: str) -> None:
+    """Display a colorized unified diff in the console."""
+    diff = difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm="")
+
+    lines = [f"\nUpdate: {path}"]
+    for line in diff:
+        color = GREEN if line[0] == "+" else RED if line[0] == "-" else ""
+        lines.append(f"{color}{line}{RESET}")
+
+    logger.info("\n".join(lines))

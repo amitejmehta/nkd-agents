@@ -1,6 +1,11 @@
 import logging
 
-from nkd_agents.logging import ContextFilter, configure_logging, logging_ctx
+from nkd_agents.logging import (
+    ContextFilter,
+    configure_logging,
+    display_diff,
+    logging_ctx,
+)
 
 
 def test_context_filter_with_context():
@@ -68,3 +73,13 @@ def test_configure_logging_silences_httpx():
     """Test configure_logging sets httpx logger to WARNING"""
     configure_logging()
     assert logging.getLogger("httpx").level == logging.WARNING
+
+
+class TestDisplayDiff:
+    """Test display_diff functionality."""
+
+    def test_logs_diff(self, caplog):
+        """display_diff logs colored diff output."""
+        caplog.set_level(logging.INFO)
+        display_diff("old\nline1\nline2", "new\nline1\nline3", "test.txt")
+        assert "Update: test.txt" in caplog.text

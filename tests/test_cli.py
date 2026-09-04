@@ -7,9 +7,9 @@ from anthropic.types import MessageParam
 from nkd_agents.cli import (
     CLI,
     MODELS,
-    THINKING,
     TOOLS,
 )
+from nkd_agents.tty import ESC
 
 
 @pytest.fixture
@@ -21,39 +21,27 @@ def cli(tmp_path, monkeypatch):
     return CLI()
 
 
-class TestBottomToolbar:
+class TestToolbar:
     def test_shows_model(self, cli: CLI):
-        frags = cli.bottom_toolbar()
-        text = "".join(f[1] for f in frags)
-        assert MODELS[0] in text
+        assert MODELS[0] in cli.toolbar()
 
     def test_shows_mode(self, cli: CLI):
-        frags = cli.bottom_toolbar()
-        text = "".join(f[1] for f in frags)
-        assert "None" in text
+        assert "Act" in cli.toolbar()
 
     def test_thinking_off(self, cli: CLI):
-        frags = cli.bottom_toolbar()
-        text = "".join(f[1] for f in frags)
-        assert "✗" in text
+        assert "think:off" in cli.toolbar()
 
     def test_thinking_on(self, cli: CLI):
-        cli.kwargs["thinking"] = THINKING
-        frags = cli.bottom_toolbar()
-        text = "".join(f[1] for f in frags)
-        assert "✓" in text
+        cli.toggle_thinking()
+        assert "think:on" in cli.toolbar()
 
     def test_reflects_model_change(self, cli: CLI):
         cli.switch_model()
-        frags = cli.bottom_toolbar()
-        text = "".join(f[1] for f in frags)
-        assert MODELS[1] in text
+        assert MODELS[1] in cli.toolbar()
 
     def test_reflects_mode_change(self, cli: CLI):
         cli.cycle_mode()
-        frags = cli.bottom_toolbar()
-        text = "".join(f[1] for f in frags)
-        assert "Plan" in text
+        assert "Plan" in cli.toolbar()
 
 
 class TestInit:
@@ -67,7 +55,7 @@ class TestInit:
         assert cli.model_idx == 0
         assert cli.kwargs["model"] == MODELS[0]
         assert cli.kwargs["max_tokens"] > 0
-        assert "thinking" not in cli.kwargs
+        assert cli.kwargs["thinking"] == {"type": "disabled"}
         assert cli.messages == []
         assert cli.llm_task is None
 
@@ -96,24 +84,21 @@ class TestSwitchModel:
     def test_syncs_idx_with_nkd_model(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setenv("NKD_MODEL", "claude-opus-4-8")
+        monkeypatch.setenv("NKD_MODEL", MODELS[1])
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         cli = CLI()
-        assert cli.model_idx == MODELS.index("claude-opus-4-8")
+        assert cli.model_idx == 1
         cli.switch_model()
-        assert cli.kwargs["model"] != "claude-opus-4-8"
+        assert cli.kwargs["model"] == MODELS[2]
 
 
 class TestToggleThinking:
-    def test_enable(self, cli: CLI):
-        assert "thinking" not in cli.kwargs
+    def test_toggles(self, cli: CLI):
+        assert cli.kwargs["thinking"]["type"] == "disabled"
         cli.toggle_thinking()
-        assert cli.kwargs["thinking"] == THINKING
-
-    def test_disable(self, cli: CLI):
-        cli.kwargs["thinking"] = THINKING
+        assert cli.kwargs["thinking"]["type"] == "adaptive"
         cli.toggle_thinking()
-        assert "thinking" not in cli.kwargs
+        assert cli.kwargs["thinking"]["type"] == "disabled"
 
 
 class TestCycleMode:
@@ -132,15 +117,11 @@ class TestCycleMode:
 
 
 class TestInterrupt:
-    def test_double_escape_binding(self, cli: CLI):
-        kb = cli.session.key_bindings
-        assert kb is not None
-        assert any(
-            tuple(getattr(k, "value", k) for k in b.keys) == ("escape", "escape")
-            for b in kb.bindings
-        )
+    def test_escape_binding(self, cli: CLI):
+        assert ESC in cli.session.key_bindings
 
     def test_no_task(self, cli: CLI):
+        cli.llm_task = None
         cli.interrupt()  # should not raise
 
     def test_done_task(self, cli: CLI):
@@ -150,6 +131,20 @@ class TestInterrupt:
         cli.llm_task.cancel.assert_not_called()
 
     def test_running_task(self, cli: CLI):
+        cli.llm_task = MagicMock()
+        cli.llm_task.done.return_value = False
+        cli.interrupt()
+        cli.llm_task.cancel.assert_called_once()
+
+    def test_clears_buffer_when_text_present(self, cli: CLI):
+        cli.llm_task = MagicMock()
+        cli.llm_task.done.return_value = False
+        cli.session.buf, cli.session.cursor = "some input", 4
+        cli.interrupt()
+        assert (cli.session.buf, cli.session.cursor) == ("", 0)
+        cli.llm_task.cancel.assert_not_called()
+
+    def test_cancels_task_when_buffer_empty(self, cli: CLI):
         cli.llm_task = MagicMock()
         cli.llm_task.done.return_value = False
         cli.interrupt()
@@ -171,9 +166,11 @@ class TestLLMLoop:
                 await loop_task
             assert len(cli.messages) == 1
             assert cli.messages[0] is msg
-            mock_llm.assert_called_once_with(
-                cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs
-            )
+            mock_llm.assert_called_once()
+            call_kwargs = mock_llm.call_args
+            assert call_kwargs.args == (cli.client,)
+            assert call_kwargs.kwargs["messages"] is cli.messages
+            assert call_kwargs.kwargs["fns"] == TOOLS
 
     async def test_survives_cancelled_llm_task(self, cli: CLI):
         call_count = 0
@@ -258,62 +255,6 @@ class TestBuildSystemPrompt:
         (tmp_path / "CLAUDE.md").write_text("")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         assert CLI().build_system_prompt() is None
-
-
-class TestBuildMessage:
-    def test_none_mode(self, cli: CLI):
-        from nkd_agents.cli import START_PHRASE
-
-        result = cli.build_message("do something")
-        assert result.startswith(START_PHRASE)
-        assert "Mode: None." in result
-        assert result.endswith(" do something")
-        assert "(" not in result
-
-    def test_plan_mode(self, cli: CLI):
-        from nkd_agents.cli import MODE_PREFIXES
-
-        cli.mode = "plan"
-        result = cli.build_message("review this")
-        assert "Mode: Plan" in result
-        assert f"({MODE_PREFIXES['plan']})" in result
-        assert result.endswith(" review this")
-
-    def test_socratic_mode(self, cli: CLI):
-        from nkd_agents.cli import MODE_PREFIXES
-
-        cli.mode = "socratic"
-        result = cli.build_message("explain this")
-        assert "Mode: Socratic" in result
-        assert f"({MODE_PREFIXES['socratic']})" in result
-        assert result.endswith(" explain this")
-
-    def test_custom_start_phrase(self, tmp_path, monkeypatch):
-        import importlib
-
-        import nkd_agents.cli as cli_mod
-
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setenv("NKD_START_PHRASE", "Custom phrase.")
-        importlib.reload(cli_mod)
-        cli = cli_mod.CLI()
-        result = cli.build_message("task")
-        assert result.startswith("Custom phrase.")
-
-    def test_custom_plan_prefix(self, tmp_path, monkeypatch):
-        import importlib
-
-        import nkd_agents.cli as cli_mod
-
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setenv("NKD_PLAN_MODE", "HANDS OFF!")
-        importlib.reload(cli_mod)
-        cli = cli_mod.CLI()
-        cli.mode = "plan"
-        result = cli.build_message("review")
-        assert "(HANDS OFF!)" in result
 
 
 # --- helpers for auto_compact tests ---

@@ -2,7 +2,7 @@ import asyncio
 import base64
 import json
 import logging
-from typing import Awaitable, Callable, Mapping, Sequence
+from typing import Awaitable, Callable, Sequence
 
 from openai import AsyncOpenAI
 from openai.types.responses import (
@@ -11,9 +11,10 @@ from openai.types.responses import (
     ResponseFormatTextConfigParam,
     ResponseFunctionCallOutputItemListParam,
     ResponseFunctionToolCall,
+    ResponseTextDeltaEvent,
 )
 from openai.types.responses.response_create_params import (
-    ResponseCreateParamsNonStreaming,
+    ResponseCreateParamsBase,
 )
 from openai.types.responses.response_input_item_param import FunctionCallOutput
 from opentelemetry import trace
@@ -48,9 +49,7 @@ def tool_schema(
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
 
-    parameters, required_parameters = extract_function_params(
-        func, allow_defaults=False
-    )
+    parameters, _ = extract_function_params(func)
 
     return {
         "type": "function",
@@ -59,7 +58,7 @@ def tool_schema(
         "parameters": {
             "type": "object",
             "properties": parameters,
-            "required": required_parameters,
+            "required": list[str](parameters.keys()),
             "additionalProperties": False,
         },
         "strict": True,
@@ -92,7 +91,7 @@ def bytes_to_content(
     data: bytes, ext: str
 ) -> str | ResponseFunctionCallOutputItemListParam:
     """Convert bytes to OpenAI tool output format."""
-    ext = "jpeg" if ext.lower() == "jpg" else ext.lower()
+    ext = ext.lower().replace("jpg", "jpeg")
     b64 = base64.standard_b64encode(data).decode("utf-8")
     if ext in ("jpeg", "png", "gif", "webp"):
         return [{"type": "input_image", "image_url": f"data:image/{ext};base64,{b64}"}]
@@ -108,26 +107,28 @@ def bytes_to_content(
 
 
 async def tool(
-    tool_dict: Mapping[
-        str,
+    tool_call: ResponseFunctionToolCall,
+    fns: Sequence[
         Callable[
             ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
-        ],
+        ]
     ],
-    tool_call: ResponseFunctionToolCall,
 ) -> FunctionCallOutput:
     with tracer.start_as_current_span(f"execute_tool {tool_call.name}") as span:
         span.set_attribute("gen_ai.operation.name", "execute_tool")
         try:
-            result = await tool_dict[tool_call.name](**json.loads(tool_call.arguments))
+            fn = next(fn for fn in fns if fn.__name__ == tool_call.name)
+            result = await fn(**json.loads(tool_call.arguments))
         except Exception as e:
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
         if isinstance(result, FileContent):
             result = bytes_to_content(result.data, result.ext)
-        return FunctionCallOutput(
-            type="function_call_output", call_id=tool_call.call_id, output=result
-        )
+        return {
+            "type": "function_call_output",
+            "call_id": tool_call.call_id,
+            "output": result,
+        }
 
 
 async def agent(
@@ -137,7 +138,8 @@ async def agent(
             ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
         ]
     ] = (),
-    **kwargs: Unpack[ResponseCreateParamsNonStreaming],
+    on_text: Callable[[str], None] | None = None,
+    **kwargs: Unpack[ResponseCreateParamsBase],
 ) -> str:
     """Run GPT in agentic loop (run until no tool calls, then return text).
 
@@ -152,33 +154,31 @@ async def agent(
     - input is mutated in-place after each completed turn — callers see updates
       immediately, so interrupts preserve all fully-committed turns.
     """
-    if not isinstance(kwargs.get("input", []), list):
-        raise ValueError("input is mutated in-place as history and must be a list")
-
-    tool_dict = {fn.__name__: fn for fn in fns}
+    if not isinstance(kwargs.get("input", None), list):
+        raise ValueError("input is mutated and must be a list")
     if "tools" not in kwargs:
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
 
     with tracer.start_as_current_span(
         f"invoke_agent {kwargs.get('model', '')}"
-    ) as agent_span:
-        agent_span.set_attribute("gen_ai.operation.name", "invoke_agent")
-        iteration = 0
+    ) as span:
+        span.set_attribute("gen_ai.operation.name", "invoke_agent")
+
+        i = 0
         while True:
-            agent_span.set_attribute("iterations", iteration)
-            with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
-                turn_span.set_attribute("gen_ai.operation.name", "turn")
+            async with client.responses.stream(**kwargs) as stream:
+                async for event in stream:
+                    if on_text and isinstance(event, ResponseTextDeltaEvent):
+                        on_text(event.delta)
+                resp = await stream.get_final_response()
 
-                resp = await client.responses.create(**kwargs)
-                logger.info(f"usage={resp.usage}")
-                text, tool_calls = extract_text_and_tool_calls(resp)
+            logger.info(f"[{i}] usage={resp.usage}")
+            text, tool_calls = extract_text_and_tool_calls(resp)
 
-                results = await asyncio.gather(
-                    *[tool(tool_dict, c) for c in tool_calls]
-                )
-                kwargs["input"] += resp.output + results  # type: ignore[assignment]
+            results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
+            kwargs["input"] += resp.output + results  # type: ignore[assignment]
 
-                if not tool_calls:
-                    return text
+            if not tool_calls:
+                return text
 
-            iteration += 1
+            i += 1

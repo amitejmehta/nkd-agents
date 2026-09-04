@@ -1,12 +1,10 @@
 import asyncio
 import base64
 import logging
-from typing import Awaitable, Callable, Iterable, Mapping, Sequence
+from typing import Awaitable, Callable, Iterable, Sequence
 
 from anthropic import AsyncAnthropic, AsyncAnthropicVertex, transform_schema
 from anthropic.types import (
-    Base64ImageSourceParam,
-    Base64PDFSourceParam,
     Message,
     TextBlockParam,
     ToolParam,
@@ -31,28 +29,6 @@ def output_format(model: type[BaseModel]) -> JSONOutputFormatParam:
     """Build the JSON schema format block for use in output_config."""
     schema = transform_schema(model.model_json_schema())
     return {"type": "json_schema", "schema": schema}
-
-
-def bytes_to_content(data: bytes, ext: str) -> Content:
-    """Convert bytes to Anthropic content blocks based on media type."""
-    ext = "jpeg" if ext.lower() == "jpg" else ext.lower()
-    if ext in ("jpeg", "png", "gif", "webp"):
-        media_type = f"image/{ext}"
-        assert media_type in ("image/jpeg", "image/png", "image/gif", "image/webp")
-        base64_data = base64.standard_b64encode(data).decode("utf-8")
-        source = Base64ImageSourceParam(
-            type="base64", media_type=media_type, data=base64_data
-        )
-        return {"type": "image", "source": source}
-    elif ext == "pdf":
-        base64_data = base64.standard_b64encode(data).decode("utf-8")
-        source = Base64PDFSourceParam(
-            type="base64", media_type="application/pdf", data=base64_data
-        )
-        return {"type": "document", "source": source}
-    else:
-        text = data.decode("utf-8", errors="ignore").strip()
-        return {"type": "text", "text": text}
 
 
 def tool_schema(
@@ -93,16 +69,36 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
     return text, tool_calls
 
 
+def bytes_to_content(data: bytes, ext: str) -> Content:
+    """Convert bytes to Anthropic content blocks based on media type."""
+    ext = ext.lower().replace("jpg", "jpeg")
+    b64 = base64.standard_b64encode(data).decode("utf-8")
+    if ext in ("jpeg", "png", "gif", "webp"):
+        media_type = f"image/{ext}"
+        assert media_type in ("image/jpeg", "image/png", "image/gif", "image/webp")
+        return {
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": b64},
+        }
+    elif ext == "pdf":
+        return {
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
+        }
+    else:
+        text = data.decode("utf-8", errors="ignore").strip()
+        return {"type": "text", "text": text}
+
+
 async def tool(
-    tool_dict: Mapping[
-        str, Callable[..., Awaitable[str | FileContent | Iterable[Content]]]
-    ],
     tool_call: ToolUseBlock,
+    fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]],
 ) -> ToolResultBlockParam:
     with tracer.start_as_current_span(f"execute_tool {tool_call.name}") as span:
         span.set_attribute("gen_ai.operation.name", "execute_tool")
         try:
-            result = await tool_dict[tool_call.name](**tool_call.input)
+            fn = next(fn for fn in fns if fn.__name__ == tool_call.name)
+            result = await fn(**tool_call.input)
         except Exception as e:
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
@@ -116,6 +112,7 @@ async def tool(
 async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
     fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]] = (),
+    on_text: Callable[[str], None] | None = None,
     **kwargs: Unpack[MessageCreateParamsBase],
 ) -> str:
     """Run Claude in agentic loop (run until no tool calls, then return text).
@@ -131,35 +128,31 @@ async def agent(
     """
     if not isinstance(kwargs["messages"], list):
         raise ValueError("messages is mutated in-place as history and must be a list")
-
-    tool_dict = {fn.__name__: fn for fn in fns}
     if "tools" not in kwargs:
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
+    if kwargs["tools"]:
+        kwargs.setdefault("cache_control", {"type": "ephemeral"})
 
-    with tracer.start_as_current_span(
-        f"invoke_agent {kwargs.get('model', '')}"
-    ) as agent_span:
-        agent_span.set_attribute("gen_ai.operation.name", "invoke_agent")
-        iteration = 0
+    with tracer.start_as_current_span(f"invoke_agent {kwargs['model']}") as span:
+        span.set_attribute("gen_ai.operation.name", "invoke_agent")
+
+        i = 0
         while True:
-            agent_span.set_attribute("iterations", iteration)
-            with tracer.start_as_current_span(f"turn {iteration}") as turn_span:
-                turn_span.set_attribute("gen_ai.operation.name", "turn")
+            async with client.messages.stream(**kwargs) as stream:
+                async for delta in stream.text_stream:
+                    if on_text:
+                        on_text(delta)
+                resp = await stream.get_final_message()
 
-                resp = await client.messages.create(**kwargs)
-                logger.info(f"stop_reason={resp.stop_reason}\nusage={resp.usage}")
-                text, tool_calls = extract_text_and_tool_calls(resp)
+            logger.info(f"[{i}] stop_reason={resp.stop_reason}\nusage={resp.usage}")
+            text, tool_calls = extract_text_and_tool_calls(resp)
 
-                results = await asyncio.gather(
-                    *[tool(tool_dict, c) for c in tool_calls]
-                )
+            results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
+            kwargs["messages"].append({"role": "assistant", "content": resp.content})
 
-                kwargs["messages"].append(
-                    {"role": "assistant", "content": resp.content}
-                )
-                if tool_calls:
-                    kwargs["messages"].append({"role": "user", "content": results})
-                else:
-                    return text
+            if not tool_calls:
+                return text
 
-            iteration += 1
+            kwargs["messages"].append({"role": "user", "content": results})
+
+            i += 1

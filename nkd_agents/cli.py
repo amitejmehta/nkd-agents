@@ -8,61 +8,32 @@ from datetime import datetime
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
-from anthropic.types import MessageParam
-from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import StyleAndTextTuples
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.styles import Style
 
 from .anthropic import agent
 from .logging import DIM, RED, RESET, configure_logging
-from .tools import bash, edit_file, glob, grep, read_file, write_file
+from .tools import bash, edit_file, glob, grep, queue_ctx, read_file, write_file
+from .tty import ESC, Prompt
 from .utils import load_env, serialize
+from .web import fetch_url, web_search
 
 logger = logging.getLogger(__name__)
 
-_BASE_TOOLS = (read_file, write_file, edit_file, bash, glob, grep)
-try:
-    from .web import fetch_url, web_search
-
-    TOOLS = (*_BASE_TOOLS, fetch_url, web_search)
-except ImportError as e:
-    logger.warning(f"{DIM}Web tools disabled (install nkd-agents[web]): {e}{RESET}")
-    TOOLS = _BASE_TOOLS
+TOOLS = (read_file, write_file, edit_file, bash, glob, grep, fetch_url, web_search)
 
 # constants
-MODELS = ("claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5")
+MODELS = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5")
 NKD_DIR = Path.home() / ".nkd-agents"
-SKILLS_DIR = NKD_DIR / "skills"
-BANNER = (
-    f"\n\n{DIM}nkd-agents\n\n"
-    "'tab':       toggle thinking\n"
-    "'shift+tab': cycle mode (None → Plan → Socratic)\n"
-    "'esc esc':   interrupt\n"
-    "'ctrl+u':    clear input\n"
-    "'ctrl+l':    next model\n"
-    f"'skills':    {SKILLS_DIR} (click · paste to LLM)\n"
-    f"'subagents': {SKILLS_DIR}/subagents/SKILL.md\n"
-    f"'cli docs':  https://github.com/amitejmehta/nkd-agents/blob/main/docs/cli.md{RESET}\n"
-)
-
 # runtime config (override via env / ~/.nkd-agents/.env)
 load_env((NKD_DIR / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
-THINKING = json.loads(os.environ.get("NKD_THINKING", '{"type": "adaptive"}'))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
-MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 2))
-AUTO_COMPACT_THRESHOLD = int(os.environ.get("NKD_AUTO_COMPACT_THRESHOLD", 50))
-AUTO_COMPACT_TARGET = int(os.environ.get("NKD_AUTO_COMPACT_TARGET", 15))
-COMPACT_MODEL = os.environ.get("NKD_COMPACT_MODEL", "claude-haiku-4-5")
+MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 1))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
-MODE_PREFIXES: dict[str, str] = {
-    "none": "",
-    "plan": os.environ.get("NKD_PLAN_MODE", "READ ONLY!"),
-    "socratic": os.environ.get("NKD_SOCRATIC_MODE", "ASK, DON'T TELL!"),
-}
+MODE_PREFIXES: list[str] = [
+    "Mode: Act.",
+    f"Mode: Plan ({os.environ.get('NKD_PLAN_MODE', 'READ ONLY!')})",
+    f"Mode: Socratic ({os.environ.get('NKD_SOCRATIC_MODE', 'ASK, DO NOT TELL!')}).",
+]
 CACHE_WARM_MSG = os.environ.get(
     "NKD_CACHE_WARM_MSG", 'Sending msg to warm cache. Just respond: "okay"'
 )
@@ -76,39 +47,32 @@ class CLI:
 
         # agent
         self.client = AsyncAnthropic(max_retries=4)
-        self.messages: list[MessageParam] = []
-        self.queue: asyncio.Queue[MessageParam] = asyncio.Queue()
+        self.messages = []
+        self.queue = asyncio.Queue()
+        queue_ctx.set(self.queue)
         self.llm_task: asyncio.Task | None = None
         self.last_message_at: float = 0.0
         self.warm_count: int = 0
-        self.mode = list(MODE_PREFIXES)[0]
+        self.mode = MODE_PREFIXES[0]
         model = os.environ.get("NKD_MODEL", MODELS[0])
         self.model_idx = MODELS.index(model) if model in MODELS else 0
         self.kwargs = {
             "model": model,
             "max_tokens": MAX_TOKENS,
-            "cache_control": {"type": "ephemeral"},
+            "thinking": {"type": "disabled"},
         }
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
 
         # prompt
-        kb = KeyBindings()
-        kb.add("c-l")(lambda e: self.switch_model())
-        kb.add("escape", "escape")(lambda e: self.interrupt())
-        kb.add("tab")(lambda e: self.toggle_thinking())
-        kb.add("s-tab")(lambda e: self.cycle_mode())
-        self.session = PromptSession[str](
-            history=FileHistory(str(NKD_DIR / ".history")),
-            key_bindings=kb,
-            style=Style(
-                [
-                    ("bottom-toolbar", "noinherit bg:default #554466"),
-                    ("bottom-toolbar.key", "noinherit bg:default #665577 bold"),
-                    ("", "fg:#888888"),
-                ]
-            ),
-            bottom_toolbar=self.bottom_toolbar,
+        self.session = Prompt(
+            key_bindings={
+                "\x0c": lambda p: self.switch_model(),  # ctrl-l
+                ESC: lambda p: self.interrupt(),  # esc
+                "\t": lambda p: self.toggle_thinking(),  # tab
+                ESC + "[Z": lambda p: self.cycle_mode(),  # shift-tab
+            },
+            toolbar=self.toolbar,
         )
 
     def build_system_prompt(self) -> str | None:
@@ -124,36 +88,29 @@ class CLI:
         parts.append(f"CWD: {Path.cwd()}\nHOME: {Path.home()}")
         return "\n\n".join(parts).strip()
 
-    def build_message(self, text: str) -> str:
-        mode_suffix = MODE_PREFIXES[self.mode]
-        mode_suffix = f" ({mode_suffix})" if mode_suffix else ""
-        return f"{START_PHRASE} Mode: {self.mode.title()}{mode_suffix}. {text}"
-
-    def bottom_toolbar(self) -> StyleAndTextTuples:
-        thinking = "✓" if "thinking" in self.kwargs else "✗"
-        return [
-            ("class:bottom-toolbar", "\n"),
-            ("class:bottom-toolbar.key", " model"),
-            ("class:bottom-toolbar", f":{self.kwargs['model']} "),
-            ("class:bottom-toolbar.key", "mode"),
-            ("class:bottom-toolbar", f":{self.mode.title()} "),
-            ("class:bottom-toolbar.key", "think"),
-            ("class:bottom-toolbar", f":{thinking} "),
-        ]
-
-    def interrupt(self) -> None:
-        if self.llm_task and not self.llm_task.done():
-            logger.info(f"{RED}...Interrupted. What now?{RESET}")
-            self.llm_task.cancel()
-
     def switch_model(self) -> None:
         self.model_idx = (self.model_idx + 1) % len(MODELS)
         self.kwargs["model"] = MODELS[self.model_idx]
 
     def toggle_thinking(self) -> None:
-        thinking = self.kwargs.pop("thinking", None)
-        if not thinking:
-            self.kwargs["thinking"] = THINKING
+        type_map = {"adaptive": "disabled", "disabled": "adaptive"}
+        self.kwargs["thinking"]["type"] = type_map[self.kwargs["thinking"]["type"]]
+
+    def interrupt(self) -> None:
+        if self.session.buf:
+            self.session.buf, self.session.cursor = "", 0
+            return
+        if self.llm_task and not self.llm_task.done():
+            self.llm_task.cancel()
+
+    def toolbar(self) -> str:
+        thinking = "on" if self.kwargs["thinking"]["type"] == "adaptive" else "off"
+        busy = "●" if self.llm_task and not self.llm_task.done() else "○"
+        mode_label = self.mode.split(":")[1].strip().split(" ")[0].rstrip(".")
+        return (
+            f" {busy} {self.kwargs['model']} (c-l)  "
+            f"{mode_label} (s-tab)  think:{thinking} (tab)"
+        )
 
     def cycle_mode(self) -> None:
         modes = list[str](MODE_PREFIXES)
@@ -184,16 +141,22 @@ class CLI:
 
     async def llm_loop(self) -> None:
         while True:
-            msg = await self.queue.get()
-            self.messages.append(msg)
+            self.messages.append(await self.queue.get())
             self.warm_count = 0
             self.llm_task = asyncio.create_task(
-                agent(self.client, messages=self.messages, fns=TOOLS, **self.kwargs)
+                agent(
+                    self.client,
+                    fns=TOOLS,
+                    # on_text=lambda s: print(s, end="", flush=True),
+                    messages=self.messages,
+                    **self.kwargs,
+                )
             )
             try:
                 await self.llm_task
+                print()
             except asyncio.CancelledError:
-                pass
+                logger.info(f"{RED}...Interrupted. What now?{RESET}")
             except Exception as e:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
@@ -201,11 +164,10 @@ class CLI:
 
     async def prompt_loop(self) -> None:
         while True:
-            text: str = await self.session.prompt_async("> ")
+            text: str = await self.session.prompt_async("❯ ")
             if text and text.strip():
-                await self.queue.put(
-                    {"role": "user", "content": self.build_message(text.strip())}
-                )
+                content = f"{START_PHRASE} {self.mode}. {text.strip()}"
+                await self.queue.put({"role": "user", "content": content})
 
     def save_session(self, path: Path | None = None) -> None:
         if path is None:
@@ -232,20 +194,23 @@ def main() -> None:
     cli = CLI()
 
     try:
-        with patch_stdout(raw=True):
-            configure_logging(LOG_LEVEL)
-            if args.session:
-                cli.messages[:] = json.loads(args.session.read_text())
-                logger.info(f"Loaded session: {args.session}")
-            if args.prompt:
-                cli.messages.append({"role": "user", "content": args.prompt})
-                result = asyncio.run(
-                    agent(cli.client, messages=cli.messages, fns=TOOLS, **cli.kwargs)
+        configure_logging(LOG_LEVEL)
+        if args.session:
+            cli.messages[:] = json.loads(args.session.read_text())
+            logger.info(f"Loaded session: {args.session}")
+        if args.prompt:
+            result = asyncio.run(
+                agent(
+                    cli.client,
+                    messages=[{"role": "user", "content": args.prompt}],
+                    fns=TOOLS,
+                    **cli.kwargs,
                 )
-                print(result)
-            else:
-                print(BANNER)
-                asyncio.run(cli.start())
+            )
+            print(result)
+        else:
+            print(f"\n\n\n\n\n{DIM}nkd-agents\n\n{RESET}")
+            asyncio.run(cli.start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
     finally:

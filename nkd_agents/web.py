@@ -4,15 +4,14 @@ Only loaded when playwright is installed (pip install nkd_agents[web]).
 """
 
 import logging
-from pathlib import Path
 from urllib.parse import quote_plus
 
 import httpx
 import trafilatura
 from playwright.async_api import async_playwright
 
-from .ctx import cwd_ctx
 from .logging import GREEN, RESET
+from .tools import resolve
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +93,7 @@ async def fetch_url(url: str, save_path: str) -> str:
     if not markdown:
         return f"Error fetching '{url}': No content extracted"
 
-    p = Path(save_path)
-    file_path = p if p.is_absolute() else cwd_ctx.get() / p
+    file_path = resolve(save_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(markdown, encoding="utf-8")
 

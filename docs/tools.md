@@ -82,20 +82,28 @@ For multiple changes to the same file, call `edit_file` multiple times with smal
 ## `bash`
 
 ```python
-async def bash(command: str, timeout: int = 30) -> str
+async def bash(command: str, timeout: int = 30, background: bool = False) -> str
 ```
 
 Execute a shell command via `bash -c`. Returns:
 
 ```
-STDOUT:
-{stdout}
-STDERR:
-{stderr}
+STDOUT: {stdout}
+STDERR: {stderr}
 EXIT CODE: {returncode}
 ```
 
-Or raises `TimeoutError("Command timed out after {timeout} seconds: {command}")` after `SIGKILL`-ing the process group. The framework's tool dispatcher surfaces the exception as an error string to the model.
+Or `Error: Command timed out after {timeout} seconds` after `SIGKILL`-ing the process group. Timeouts are returned, not raised, so the model sees them the same way it sees a non-zero exit code.
+
+With `background=True` the tool returns `PID: {pid}` immediately and the result is later put on `queue_ctx` as a user message prefixed `[bash:{pid}]`. The CLI's `llm_loop` drains this queue, so the output arrives as the next turn. `timeout` still applies to background commands.
+
+Don't want the model to see `background` (or don't have a queue)? Wrap it. The schema is built from `__name__`, `__doc__`, and the signature, so a thin wrapper named `bash` with a two-parameter signature is all it takes:
+
+```python
+async def bash(command: str, timeout: int = 30) -> str:
+    """Execute a bash command and return the results."""
+    return await tools.bash(command, timeout)
+```
 
 - Runs in `cwd_ctx` directory.
 - Default timeout: 30 seconds. Override per-call.
