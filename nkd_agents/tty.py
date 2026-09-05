@@ -233,9 +233,8 @@ class Prompt:
         self._write("\x1b[r" + "\x1bD" * rows + (f"\x1b[{rows}A" if rows else ""))
         self._rows = rows
 
-    def _render(self, resized: bool = False) -> None:
-        cols, height = os.get_terminal_size()
-        cols = max(1, cols)  # a zero-width terminal would divide by zero below
+    def _layout(self, cols: int, height: int) -> tuple[list[str], int]:
+        """Box rows and the 1-based screen row they start on. Pure: no I/O."""
 
         def chrome(s: str) -> str:
             return _clip(self.style + s, cols) + RESET
@@ -247,7 +246,12 @@ class Prompt:
         rule = chrome(self.border * cols)
         rows = self._window(self._input_rows(cols), max(1, height - CHROME - 1))
         box = [rule, *rows, rule, chrome(self.toolbar())][: max(0, height - 1)]
-        top = height - len(box) + 1
+        return box, height - len(box) + 1
+
+    def _render(self, resized: bool = False) -> None:
+        cols, height = os.get_terminal_size()
+        cols = max(1, cols)  # a zero-width terminal would divide by zero below
+        box, top = self._layout(cols, height)
         # Rows a shrink freed above the box are still ours, and get painted blank.
         blanks = max(0, min(top - 1, self._rows - len(box)))
         if resized:
