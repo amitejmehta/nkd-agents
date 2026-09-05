@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import threading
 
 import pytest
 
@@ -23,9 +24,10 @@ def dim(s: str) -> str:
 
 
 def room(rows: int) -> str:
-    """A normal render makes room relative to the cursor: full-screen region, `rows`
+    """A normal render makes room relative to the cursor: full-screen region (which
+    homes the cursor on a real terminal, hence the save/restore around it), `rows`
     indexes, cursor back. The indexes scroll only if the room isn't there yet."""
-    return "\x1b[r" + "\x1bD" * rows + f"\x1b[{rows}A"
+    return "\x1b7\x1b[r\x1b8" + "\x1bD" * rows + f"\x1b[{rows}A"
 
 
 def anchor(top: int) -> str:
@@ -74,13 +76,6 @@ class TestEditing:
         p._handle("\x7f")
         p._handle("\x7f")  # no-op at start
         assert (p.buf, p.cursor) == ("", 0)
-
-    @pytest.mark.parametrize("key", ["\n", ESC + "\r", ESC + "[13;2u"])
-    def test_newline_keys(self, p: Prompt, key: str) -> None:
-        type_(p, "a")
-        p._handle(key)
-        type_(p, "b")
-        assert p.buf == "a\nb"
 
     def test_arrows_clamp(self, p: Prompt) -> None:
         p._handle(ESC + "[D")
@@ -221,13 +216,6 @@ class TestInputRows:
         type_(p, "abc")  # 5 chars = cols
         assert p._input_rows(cols=5) == ["> abc", f"{REV} {NORM}"]
 
-    def test_newline_indents_and_cursor_mid_text(self, p: Prompt) -> None:
-        type_(p, "ab")
-        p._handle("\n")
-        type_(p, "cd")
-        p._handle(ESC + "[D")
-        assert p._input_rows(cols=10) == ["> ab", f"  c{REV}d{NORM}"]
-
     def test_cursor_before_paste_sits_on_label(self, p: Prompt) -> None:
         p._handle(PASTE + "x")
         type_(p, "z")
@@ -269,14 +257,14 @@ class TestRender:
         p._render()
         capsys.readouterr()
 
-        p._handle("\n")  # second input row: box is now 5 rows
+        type_(p, "a" * 8)  # exactly fills the row: wraps to a second, empty row
         p._render()
         out = capsys.readouterr().out
         assert "\x1b[1;15r" in out and room(5) in out  # one more row of room
         assert painted(out) == {
             16: rule(10),
-            17: "> ",
-            18: f"  {CUR}",
+            17: "> aaaaaaaa",
+            18: CUR,
             19: rule(10),
             20: dim("tb"),
         }
@@ -284,9 +272,9 @@ class TestRender:
         p._handle("\x7f")  # back to 4 rows
         p._render()
         out = capsys.readouterr().out
-        assert room(4) in out  # asks for less room, so the newlines do not scroll
+        assert room(4) in out  # asks for less room, so nothing scrolls
         assert painted(out)[16] == ""  # freed row 16 wiped
-        assert painted(out)[18] == f"> {CUR}"
+        assert painted(out)[18] == f"> aaaaaaa{CUR}"
 
     def test_overflow_wraps_into_a_taller_box(self, screen) -> None:
         p, capsys = screen
@@ -432,19 +420,6 @@ class TestGeometryIsAlwaysOnScreen:
         p._render()
         assert all(row >= 2 for row in painted(capsys.readouterr().out))
 
-    @pytest.mark.parametrize("cursor", [0, 50, -1], ids=["top", "middle", "bottom"])
-    def test_tall_buffer_keeps_the_cursor_on_screen(
-        self, p: Prompt, monkeypatch, capsys, cursor: int
-    ) -> None:
-        """A buffer taller than the terminal is windowed, and the window follows the
-        cursor - painting the first N rows would hide where you are typing. Asserted
-        through _render, so it fails if _render stops windowing at all."""
-        monkeypatch.setattr(os, "get_terminal_size", lambda: os.terminal_size((10, 8)))
-        p.buf = "\n".join(f"row{i}" for i in range(20))
-        p.cursor = len(p.buf) if cursor == -1 else cursor
-        p._render()
-        assert any(REV in row for row in painted(capsys.readouterr().out).values())
-
 
 class TestClip:
     def test_escapes_are_free_and_never_cut(self) -> None:
@@ -484,3 +459,27 @@ class TestReadKey:
         os.write(w, f"{ESC}[200~x\ny{ESC}[201~z".encode())
         assert asyncio.run(p._read_key()) == PASTE + "x\ny"
         assert asyncio.run(p._read_key()) == "z"
+
+    def test_multibyte_char_is_one_key(self, piped) -> None:
+        """Reading a byte at a time split UTF-8 sequences into U+FFFD pairs."""
+        p, w = piped
+        os.write(w, "é".encode())
+        assert asyncio.run(p._read_key()) == "é"
+
+    def test_cancelled_read_leaves_no_reader_and_no_thread(self, piped) -> None:
+        """ctrl-c cancels the read. With run_in_executor the worker stayed blocked in
+        os.read and the interpreter hung joining it at exit; add_reader is removed."""
+        p, w = piped
+        before = threading.enumerate()
+
+        async def drive() -> bool:
+            task = asyncio.ensure_future(p._read_key())
+            await asyncio.sleep(0)  # let it register
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            os.write(w, b"x")  # would wake a blocked worker; must reach nobody
+            return asyncio.get_running_loop().remove_reader(p.fd)
+
+        assert asyncio.run(drive()) is False  # nothing was still registered
+        assert threading.enumerate() == before

@@ -23,9 +23,8 @@ Sizing is re-derived from one `os.get_terminal_size()` per render, and a SIGWINC
 handler repaints: a resize changes cols, height, the box's row count and DECSTBM all
 at once, and the terminal re-wraps the old box into the scroll region.
 
-Also: input wraps and the box grows; ctrl-j / alt-enter / shift-enter insert a
-newline (shift-enter needs a kitty-protocol terminal). No history (removed: unused),
-no completion, no vi mode.
+Also: input wraps and the box grows, but buf is always one logical line; Enter
+always submits. No history (removed: unused), no completion, no vi mode.
 
 tests/test_tty.py pins every key and the escapes; tests/test_tty_screen.py drives a
 VT emulator and asserts what lands on screen; scripts/tty_mutants.py breaks each
@@ -36,7 +35,6 @@ import asyncio
 import contextlib
 import os
 import re
-import select
 import signal
 import sys
 import termios
@@ -50,7 +48,30 @@ CHROME = 3  # rule above, rule below, toolbar
 DIM, RESET = "\x1b[38;5;242m", "\x1b[0m"  # grey 242
 SGR = re.compile(r"(\x1b\[[0-9;]*m)")  # a color escape: some chars, zero cells
 REV = "\x1b[7m"  # reverse video, drawn as the fake cursor
-NEWLINE_KEYS = ("\n", ESC + "\r", ESC + "[13;2u")  # ctrl-j, alt-enter, shift-enter
+HIDE_CURSOR, SHOW_CURSOR = "\x1b[?25l", "\x1b[?25h"
+PASTE_ON, PASTE_OFF = "\x1b[?2004h", "\x1b[?2004l"
+SAVE_CURSOR, RESTORE_CURSOR = "\x1b7", "\x1b8"
+RESET_SCROLL_REGION = "\x1b[r"
+CLEAR_TO_END = "\x1b[J"
+IND = "\x1bD"  # scroll down one row, no carriage return (see _room)
+
+
+def goto(row: int) -> str:
+    return f"\x1b[{row};1H"
+
+
+def clear_row(row: int) -> str:
+    return f"{goto(row)}\x1b[2K"
+
+
+def scroll_region(bottom: int) -> str:
+    return f"\x1b[1;{bottom}r"
+
+
+def up(rows: int) -> str:
+    return f"\x1b[{rows}A" if rows else ""
+
+
 # key -> (direction, by_word). Backspace deletes left; delete / option-delete right.
 DELETES = {
     "\x7f": (-1, False),  # backspace
@@ -99,8 +120,9 @@ class Prompt:
       and ctrl-d cannot be overridden.
     toolbar: optional callable() -> str, rendered below the input box.
     border: character repeated to draw the rules above and below the input.
-    style: default color for the border and toolbar. Either may carry its own
-      escapes instead; the box only owns width, and cuts both to it (see _clip).
+    style: default color for the border, toolbar and the echoed submission, so
+      your lines read apart from the output. Border and toolbar may carry their
+      own escapes instead; the box only owns width, and cuts both to it (see _clip).
     """
 
     def __init__(
@@ -170,8 +192,6 @@ class Prompt:
     def _handle(self, key: str) -> None:
         if key.startswith(PASTE):
             self._paste(key[1:])
-        elif key in NEWLINE_KEYS:
-            self._insert("\n")
         elif dele := DELETES.get(key):
             self._delete(*dele)
         elif move := MOVES.get(key):
@@ -193,29 +213,14 @@ class Prompt:
 
     def _input_rows(self, cols: int) -> list[str]:
         """Wrap label+buf into terminal rows, with a reverse-video fake cursor."""
-        rows: list[str] = []
-        pad = " " * len(self.label)
-        head = self.buf[: self.cursor]
-        cur_line = head.count("\n")
-        offset = len(self._display(head[head.rfind("\n") + 1 :])) + len(pad)
-        cur_row = cur_col = 0
-        for i, line in enumerate(self.buf.split("\n")):
-            if i == cur_line:
-                cur_row, cur_col = len(rows) + offset // cols, offset % cols
-            text = (self.label if i == 0 else pad) + self._display(line)
-            rows += [text[j : j + cols] for j in range(0, len(text) + 1, cols)]
+        text = self.label + self._display(self.buf)
+        offset = len(self.label) + len(self._display(self.buf[: self.cursor]))
+        rows = [text[j : j + cols] for j in range(0, len(text) + 1, cols)]
+        cur_row, cur_col = offset // cols, offset % cols
         r, c = rows[cur_row], cur_col
         # REV = reverse video on, \x1b[27m = off: a 1-cell fake cursor
         rows[cur_row] = f"{r[:c]}{REV}{r[c : c + 1] or ' '}\x1b[27m{r[c + 1 :]}"
         return rows
-
-    def _window(self, rows: list[str], limit: int) -> list[str]:
-        """At most `limit` of `rows`, sliding to keep the cursor's row visible."""
-        if len(rows) <= limit:
-            return rows
-        cur = next(i for i, r in enumerate(rows) if REV in r)
-        start = min(max(0, cur - limit + 1), len(rows) - limit)
-        return rows[start : start + limit]
 
     def _room(self, rows: int) -> None:
         """Put `rows` empty rows below the cursor, leaving the cursor where it was.
@@ -225,12 +230,18 @@ class Prompt:
         ones scroll output up by exactly the shortfall. \\x1b[r first, or they would
         scroll inside the previous render's region. \\x1b[0A would move 1, not 0.
 
-        \\x1bD (IND) and not "\\n": the tty layer still has OPOST|ONLCR on, so a "\\n"
-        would go out as CR+LF and move the cursor to column 1, truncating any output
-        line written without a trailing newline. IND scrolls the same but never
-        carriage-returns. pyte does not model ONLCR, so no test can catch this.
+        Two things real terminals do that pyte does not, so no screen test can catch
+        either; tests/test_tty.py pins the exact bytes instead:
+        - DECSTBM (\\x1b[r, with or without params) homes the cursor to (1,1). Without
+          the \\x1b7/\\x1b8 around it the cursor would end up at the top of the screen
+          and every print() after this render would overwrite output from row 1.
+        - The tty layer still has OPOST|ONLCR on, so a "\\n" would go out as CR+LF
+          and move the cursor to column 1, truncating any output line written without
+          a trailing newline. \\x1bD (IND) scrolls the same but never carriage-returns.
         """
-        self._write("\x1b[r" + "\x1bD" * rows + (f"\x1b[{rows}A" if rows else ""))
+        self._write(
+            SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows + up(rows)
+        )
         self._rows = rows
 
     def _layout(self, cols: int, height: int) -> tuple[list[str], int]:
@@ -240,12 +251,12 @@ class Prompt:
             return _clip(self.style + s, cols) + RESET
 
         # The box never claims row 1, so the scroll region (rows 1..top-1) is always
-        # at least one row tall and every index below lands on the screen. The window
-        # enforces it for any usable terminal; the slice is the last resort for one
-        # too short to hold even the chrome.
+        # at least one row tall and every index below lands on the screen. The slice
+        # is the last resort for a terminal too short to hold even the chrome.
         rule = chrome(self.border * cols)
-        rows = self._window(self._input_rows(cols), max(1, height - CHROME - 1))
-        box = [rule, *rows, rule, chrome(self.toolbar())][: max(0, height - 1)]
+        box = [rule, *self._input_rows(cols), rule, chrome(self.toolbar())][
+            : max(0, height - 1)
+        ]
         return box, height - len(box) + 1
 
     def _render(self, resized: bool = False) -> None:
@@ -259,48 +270,52 @@ class Prompt:
             # _room's indexes would fire at the bottom row and scroll output away,
             # a line per row of box. \x1b[J erases the re-wrapped box (always below
             # the cursor), then anchor absolutely above the box instead.
-            self._write(f"\x1b[J\x1b[r\x1b[{top - 1};1H")
+            self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))
             self._rows = len(box)
         else:
             self._room(len(box))
-        # \x1b7 = save cursor, \x1b8 = restore it to the output area; \x1b[1;Nr =
-        # scroll region rows 1..N; \x1b[i;1H = goto row i col 1; \x1b[2K = clear it.
         painted = enumerate([""] * blanks + box, start=top - blanks)
         self._write(
-            f"\x1b7\x1b[1;{top - 1}r"
-            + "".join(f"\x1b[{i};1H\x1b[2K{line}" for i, line in painted)
-            + "\x1b8"
+            SAVE_CURSOR
+            + scroll_region(top - 1)
+            + "".join(f"{clear_row(i)}{line}" for i, line in painted)
+            + RESTORE_CURSOR
         )
 
     # -- input --------------------------------------------------------------
 
-    def _read(self, n: int) -> str:
-        return os.read(self.fd, n).decode(errors="replace")
+    async def _fill(self) -> None:
+        """Wait for stdin, then append everything it has to `_pending`.
 
-    def _read_pending(self) -> str:
-        """Everything already buffered on stdin, without blocking."""
-        out = ""
-        while select.select([self.fd], [], [], 0.02)[0]:  # 20ms: enough for one seq
-            out += self._read(4096)
-        return out
+        add_reader, not run_in_executor: a worker thread blocked in os.read cannot
+        be cancelled, and the default executor joins its threads at exit, so ctrl-c
+        would hang until a second one. A reader is just removed.
+        """
+        loop = asyncio.get_running_loop()
+        readable = loop.create_future()
+        loop.add_reader(self.fd, readable.set_result, None)
+        try:
+            await readable
+        finally:
+            loop.remove_reader(self.fd)
+        self._pending += os.read(self.fd, 4096).decode(errors="replace")
 
     async def _read_key(self) -> str:
-        loop = asyncio.get_event_loop()
-        if self._pending:
-            ch, self._pending = self._pending[0], self._pending[1:]
-        else:
-            ch = await loop.run_in_executor(None, self._read, 1)
+        if not self._pending:
+            await self._fill()
+        ch, self._pending = self._pending[0], self._pending[1:]
         if ch != ESC:
             return ch
-        # ESC alone vs. the start of a sequence (arrows, alt-keys, paste): peek at
-        # whatever arrived with it. Empty -> bare escape key.
-        rest = self._pending + await loop.run_in_executor(None, self._read_pending)
-        self._pending = ""
+        # ESC alone vs. the start of a sequence (arrows, alt-keys, paste): a terminal
+        # sends a sequence in one write, so it is whatever arrived with the ESC.
+        # Empty -> bare escape key.
+        rest, self._pending = self._pending, ""
         if not rest.startswith("[200~"):  # \x1b[200~ = bracketed paste start
             return ESC + rest
         pasted = rest.removeprefix("[200~")
         while ESC + "[201~" not in pasted:  # \x1b[201~ = bracketed paste end
-            pasted += await loop.run_in_executor(None, self._read, 4096)
+            await self._fill()
+            pasted, self._pending = pasted + self._pending, ""
         pasted, _, self._pending = pasted.partition(ESC + "[201~")
         return PASTE + pasted
 
@@ -312,12 +327,11 @@ class Prompt:
         mode = termios.tcgetattr(self.fd)
         mode[0] &= ~termios.ICRNL  # don't translate \r -> \n, so enter != ctrl-j
         termios.tcsetattr(self.fd, termios.TCSADRAIN, mode)
-        # \x1b[?25l = hide cursor; \x1b[?2004h = enable bracketed paste. The first
-        # _render makes its own room, so there is nothing to reserve here.
-        self._write("\x1b[?25l\x1b[?2004h")
+        # The first _render makes its own room, so there is nothing to reserve here.
+        self._write(HIDE_CURSOR + PASTE_ON)
         # A resize invalidates cols, height, the box's row count and DECSTBM all at
         # once; only a repaint re-derives them from one consistent reading.
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         loop.add_signal_handler(signal.SIGWINCH, self._render, True)
         try:
             yield
@@ -325,18 +339,26 @@ class Prompt:
             loop.remove_signal_handler(signal.SIGWINCH)
             height = os.get_terminal_size().lines
             top = height - self._rows + 1
-            # \x1b[?2004l = paste off; \x1b7 save; \x1b[r = reset scroll region;
-            # goto box top, \x1b[J = clear to end of screen; \x1b8 restore;
-            # \x1b[?25h = show cursor.
-            self._write(f"\x1b[?2004l\x1b7\x1b[r\x1b[{top};1H\x1b[J\x1b8\x1b[?25h")
+            self._write(
+                PASTE_OFF
+                + SAVE_CURSOR
+                + RESET_SCROLL_REGION
+                + goto(top)
+                + CLEAR_TO_END
+                + RESTORE_CURSOR
+                + SHOW_CURSOR
+            )
             termios.tcsetattr(self.fd, termios.TCSADRAIN, old)
 
     async def prompt_async(self, label: str = "❯ ") -> str:
+        """The submitted line, expanded. Echoed on a line of its own: the leading
+        "\\n" ends whatever a concurrent writer left half-written."""
         self.buf, self.cursor, self.pastes, self.label = "", 0, [], label
+        self._rows = 0  # the last box was erased at teardown; nothing to reclaim
         with self._raw():
             self._render()
             while (key := await self._read_key()) != "\r":
                 self._handle(key)
                 self._render()
-        self._write(f"{label}{self._display(self.buf)}\n")
+        self._write(f"\n{self.style}{label}{self._display(self.buf)}{RESET}\n\n")
         return self._expand()
