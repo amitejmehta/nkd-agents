@@ -10,7 +10,7 @@ from pathlib import Path
 from anthropic import AsyncAnthropic
 
 from .anthropic import agent
-from .logging import DIM, RED, RESET, configure_logging
+from .logging import DIM, RED, RESET  # , configure_logging
 from .tools import bash, edit_file, glob, grep, queue_ctx, read_file, write_file
 from .tty import ESC, Prompt
 from .utils import load_env, serialize
@@ -29,11 +29,14 @@ LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 1))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
-MODE_PREFIXES: list[str] = [
-    "Mode: Act.",
-    f"Mode: Plan ({os.environ.get('NKD_PLAN_MODE', 'READ ONLY!')})",
-    f"Mode: Socratic ({os.environ.get('NKD_SOCRATIC_MODE', 'ASK, DO NOT TELL!')}).",
-]
+MODES = ("Act", "Plan", "Socratic")
+COLORS = (
+    "\x1b[38;5;242m",  # dim grey
+    "\x1b[38;2;255;20;147m",  # neon pink
+    "\x1b[38;5;39m",  # sky blue
+    "\x1b[38;5;114m",  # sage green
+    "\x1b[38;5;214m",  # amber
+)
 CACHE_WARM_MSG = os.environ.get(
     "NKD_CACHE_WARM_MSG", 'Sending msg to warm cache. Just respond: "okay"'
 )
@@ -53,7 +56,7 @@ class CLI:
         self.llm_task: asyncio.Task | None = None
         self.last_message_at: float = 0.0
         self.warm_count: int = 0
-        self.mode = MODE_PREFIXES[0]
+        self.mode = MODES[0]
         model = os.environ.get("NKD_MODEL", MODELS[0])
         self.model_idx = MODELS.index(model) if model in MODELS else 0
         self.kwargs = {
@@ -71,9 +74,12 @@ class CLI:
                 ESC: lambda p: self.interrupt(),  # esc
                 "\t": lambda p: self.toggle_thinking(),  # tab
                 ESC + "[Z": lambda p: self.cycle_mode(),  # shift-tab
+                "\x14": lambda p: self.cycle_color(),  # ctrl-t
             },
             toolbar=self.toolbar,
+            style=COLORS[0],
         )
+        self.color_idx = 0
 
     def build_system_prompt(self) -> str | None:
         nkd_dir = Path.home() / ".nkd-agents"
@@ -104,17 +110,19 @@ class CLI:
             self.llm_task.cancel()
 
     def toolbar(self) -> str:
-        thinking = "on" if self.kwargs["thinking"]["type"] == "adaptive" else "off"
+        thinking = "✓" if self.kwargs["thinking"]["type"] == "adaptive" else "✗"
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
-        mode_label = self.mode.split(":")[1].strip().split(" ")[0].rstrip(".")
         return (
-            f" {busy} {self.kwargs['model']} (c-l)  "
-            f"{mode_label} (s-tab)  think:{thinking} (tab)"
+            f" {self.mode} (s-tab)  {busy} {self.kwargs['model']} (c-l)  "
+            f"think:{thinking} (tab)"
         )
 
     def cycle_mode(self) -> None:
-        modes = list[str](MODE_PREFIXES)
-        self.mode = modes[(modes.index(self.mode) + 1) % len(modes)]
+        self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]
+
+    def cycle_color(self) -> None:
+        self.color_idx = (self.color_idx + 1) % len(COLORS)
+        self.session.style = COLORS[self.color_idx]
 
     async def cache_warmer(self) -> None:
         while True:
@@ -147,26 +155,27 @@ class CLI:
                 agent(
                     self.client,
                     fns=TOOLS,
-                    # on_text=lambda s: print(s, end="", flush=True),
+                    on_text=lambda s: print(s, end="", flush=True),
                     messages=self.messages,
                     **self.kwargs,
                 )
             )
             try:
                 await self.llm_task
-                print()
             except asyncio.CancelledError:
-                logger.info(f"{RED}...Interrupted. What now?{RESET}")
+                # logger.info(f"{RED}...Interrupted. What now?{RESET}")
+                pass
             except Exception as e:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
+                print()
                 self.last_message_at = time.monotonic()
 
     async def prompt_loop(self) -> None:
         while True:
             text: str = await self.session.prompt_async("❯ ")
             if text and text.strip():
-                content = f"{START_PHRASE} {self.mode}. {text.strip()}"
+                content = f"{START_PHRASE} Mode: {self.mode}. {text.strip()}"
                 await self.queue.put({"role": "user", "content": content})
 
     def save_session(self, path: Path | None = None) -> None:
@@ -194,7 +203,7 @@ def main() -> None:
     cli = CLI()
 
     try:
-        configure_logging(LOG_LEVEL)
+        # configure_logging(LOG_LEVEL)
         if args.session:
             cli.messages[:] = json.loads(args.session.read_text())
             logger.info(f"Loaded session: {args.session}")

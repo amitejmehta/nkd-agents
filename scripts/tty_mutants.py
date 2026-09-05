@@ -40,55 +40,65 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "no scroll region",
-        'f"\\x1b7\\x1b[1;{top - 1}r"',
-        '"\\x1b7"',
+        "SAVE_CURSOR\n            + scroll_region(top - 1)",
+        'SAVE_CURSOR\n            + ""',
     ),
     (
         "box may claim row 1 (negative row escapes)",
-        "][: max(0, height - 1)]",
-        "]",
-    ),
-    (
-        "no windowing of a tall buffer",
-        "rows = self._window(self._input_rows(cols), max(1, height - CHROME - 1))",
-        "rows = self._input_rows(cols)",
-    ),
-    (
-        "window ignores the cursor",
-        "start = min(max(0, cur - limit + 1), len(rows) - limit)",
-        "start = 0",
+        "[rule, *self._input_rows(cols), rule, chrome(self.toolbar())][\n            : max(0, height - 1)\n        ]",
+        "[rule, *self._input_rows(cols), rule, chrome(self.toolbar())]",
     ),
     ("no zero-width guard", "cols = max(1, cols)", "pass"),
     (
         "resize does not erase the reflowed box",
-        'self._write(f"\\x1b[J\\x1b[r\\x1b[{top - 1};1H")',
-        'self._write(f"\\x1b[r\\x1b[{top - 1};1H")',
+        "CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1)",
+        "RESET_SCROLL_REGION + goto(top - 1)",
     ),
     (
         "resize makes room relative to the moved cursor",
-        'self._write(f"\\x1b[J\\x1b[r\\x1b[{top - 1};1H")\n            '
+        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))\n            "
         "self._rows = len(box)",
-        'self._write("\\x1b[J")\n            self._room(len(box))',
+        "self._write(CLEAR_TO_END)\n            self._room(len(box))",
     ),
     (
         "resize does not anchor the cursor above the box",
-        '\\x1b[J\\x1b[r\\x1b[{top - 1};1H"',
-        '\\x1b[J\\x1b[r"',
+        "CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1)",
+        "CLEAR_TO_END + RESET_SCROLL_REGION",
     ),
     (
         "room does not restore the cursor",
-        '(f"\\x1b[{rows}A" if rows else "")',
-        '""',
+        'return f"\\x1b[{rows}A" if rows else ""',
+        'return ""',
     ),
     (
         "room indexes with a bare newline (CR+LF under ONLCR)",
-        '"\\x1bD" * rows',
-        '"\\n" * rows',
+        'IND = "\\x1bD"',
+        'IND = "\\n"',
     ),
     (
         "room does not reset the previous render's scroll region",
-        'self._write("\\x1b[r" + "\\x1bD" * rows',
-        'self._write("" + "\\x1bD" * rows',
+        "SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows",
+        'SAVE_CURSOR + "" + RESTORE_CURSOR + IND * rows',
+    ),
+    (
+        "room lets \\x1b[r home the cursor (real terminals do; pyte does not)",
+        "SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows",
+        "RESET_SCROLL_REGION + IND * rows",
+    ),
+    (
+        "second prompt reclaims the previous box's rows",
+        "self._rows = 0  # the last box was erased at teardown; nothing to reclaim",
+        "pass",
+    ),
+    (
+        "echo lands on a writer's half-written line",
+        'self._write(f"\\n{self.style}{label}',
+        'self._write(f"{self.style}{label}',
+    ),
+    (
+        "echo is not styled",
+        'self._write(f"\\n{self.style}{label}',
+        'self._write(f"\\n{label}',
     ),
     (
         "no SIGWINCH handler",
