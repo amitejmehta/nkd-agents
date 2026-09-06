@@ -9,8 +9,8 @@ from pathlib import Path
 
 from anthropic import AsyncAnthropic
 
-from .anthropic import agent
-from .logging import DIM, RED, RESET  # , configure_logging
+from .anthropic import agent, tool_schema
+from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, glob, grep, queue_ctx, read_file, write_file
 from .tty import ESC, Prompt
 from .utils import load_env, serialize
@@ -21,15 +21,16 @@ logger = logging.getLogger(__name__)
 TOOLS = (read_file, write_file, edit_file, bash, glob, grep, fetch_url, web_search)
 
 # constants
-MODELS = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5")
-NKD_DIR = Path.home() / ".nkd-agents"
+MODELS = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001")
+CACHE_WARM_MSG = 'warming cache just respond "okay"'
 # runtime config (override via env / ~/.nkd-agents/.env)
+NKD_DIR = Path.home() / ".claude" / "nkd"
 load_env((NKD_DIR / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 1))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
-MODES = ("Act", "Plan", "Socratic")
+MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
 COLORS = (
     "\x1b[38;5;242m",  # dim grey
     "\x1b[38;2;255;20;147m",  # neon pink
@@ -37,16 +38,12 @@ COLORS = (
     "\x1b[38;5;114m",  # sage green
     "\x1b[38;5;214m",  # amber
 )
-CACHE_WARM_MSG = os.environ.get(
-    "NKD_CACHE_WARM_MSG", 'Sending msg to warm cache. Just respond: "okay"'
-)
 
 
 class CLI:
     def __init__(self) -> None:
         # dirs
         (NKD_DIR / "sessions").mkdir(parents=True, exist_ok=True)
-        (NKD_DIR / "skills").mkdir(parents=True, exist_ok=True)
 
         # agent
         self.client = AsyncAnthropic(max_retries=4)
@@ -55,19 +52,16 @@ class CLI:
         queue_ctx.set(self.queue)
         self.llm_task: asyncio.Task | None = None
         self.last_message_at: float = 0.0
-        self.warm_count: int = 0
+        self.cache_warm_count: int = 0
         self.mode = MODES[0]
-        model = os.environ.get("NKD_MODEL", MODELS[0])
-        self.model_idx = MODELS.index(model) if model in MODELS else 0
         self.kwargs = {
-            "model": model,
+            "model": os.environ.get("NKD_MODEL", MODELS[0]),
             "max_tokens": MAX_TOKENS,
             "thinking": {"type": "disabled"},
         }
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
 
-        # prompt
         self.session = Prompt(
             key_bindings={
                 "\x0c": lambda p: self.switch_model(),  # ctrl-l
@@ -79,11 +73,9 @@ class CLI:
             toolbar=self.toolbar,
             style=COLORS[0],
         )
-        self.color_idx = 0
 
     def build_system_prompt(self) -> str | None:
-        nkd_dir = Path.home() / ".nkd-agents"
-        paths = (nkd_dir / "CLAUDE.md", Path("CLAUDE.md"))
+        paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
         parts = [
             p.read_text(encoding="utf-8")
             for p in paths
@@ -95,12 +87,14 @@ class CLI:
         return "\n\n".join(parts).strip()
 
     def switch_model(self) -> None:
-        self.model_idx = (self.model_idx + 1) % len(MODELS)
-        self.kwargs["model"] = MODELS[self.model_idx]
+        self.kwargs["model"] = MODELS[
+            (MODELS.index(self.kwargs["model"]) + 1) % len(MODELS)
+        ]
 
     def toggle_thinking(self) -> None:
-        type_map = {"adaptive": "disabled", "disabled": "adaptive"}
-        self.kwargs["thinking"]["type"] = type_map[self.kwargs["thinking"]["type"]]
+        on = {"type": "adaptive", "display": "summarized"}
+        off = {"type": "disabled"}
+        self.kwargs["thinking"] = on if self.kwargs["thinking"] == off else off
 
     def interrupt(self) -> None:
         if self.session.buf:
@@ -110,19 +104,19 @@ class CLI:
             self.llm_task.cancel()
 
     def toolbar(self) -> str:
-        thinking = "✓" if self.kwargs["thinking"]["type"] == "adaptive" else "✗"
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
-        return (
-            f" {self.mode} (s-tab)  {busy} {self.kwargs['model']} (c-l)  "
-            f"think:{thinking} (tab)"
-        )
+        mode = self.mode.split(" (")[0]
+        model = self.kwargs["model"].split("claude-")[1]
+        think = "✓" if self.kwargs["thinking"]["type"] == "adaptive" else "✗"
+        return f" {busy} {mode} (s-tab) {model} (c-l) think:{think} (tab)"
 
     def cycle_mode(self) -> None:
         self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]
 
     def cycle_color(self) -> None:
-        self.color_idx = (self.color_idx + 1) % len(COLORS)
-        self.session.style = COLORS[self.color_idx]
+        self.session.style = COLORS[
+            (COLORS.index(self.session.style) + 1) % len(COLORS)
+        ]
 
     async def cache_warmer(self) -> None:
         while True:
@@ -131,18 +125,20 @@ class CLI:
             if (
                 self.messages
                 and idle >= 270
-                and self.warm_count < MAX_CACHE_WARMS
+                and self.cache_warm_count < MAX_CACHE_WARMS
                 and (not self.llm_task or self.llm_task.done())
             ):
                 try:
-                    messages = self.messages + [
+                    kwargs = self.kwargs.copy()
+                    kwargs["tools"] = [tool_schema(fn) for fn in TOOLS]
+                    kwargs["messages"] = self.messages + [
                         {"role": "user", "content": CACHE_WARM_MSG}
                     ]
-                    await self.client.messages.create(messages=messages, **self.kwargs)
+                    await self.client.messages.create(**kwargs)
                     self.last_message_at = time.monotonic()
-                    self.warm_count += 1
+                    self.cache_warm_count += 1
                     logger.info(
-                        f"{DIM}Warmed cache ({self.warm_count}/{MAX_CACHE_WARMS}){RESET}"
+                        f"{DIM}Warmed cache ({self.cache_warm_count}/{MAX_CACHE_WARMS}){RESET}"
                     )
                 except Exception as e:
                     logger.warning(f"{DIM}Cache warm failed (will retry): {e}{RESET}")
@@ -150,7 +146,7 @@ class CLI:
     async def llm_loop(self) -> None:
         while True:
             self.messages.append(await self.queue.get())
-            self.warm_count = 0
+            self.cache_warm_count = 0
             self.llm_task = asyncio.create_task(
                 agent(
                     self.client,
@@ -163,12 +159,12 @@ class CLI:
             try:
                 await self.llm_task
             except asyncio.CancelledError:
-                # logger.info(f"{RED}...Interrupted. What now?{RESET}")
-                pass
+                print(f"{RED}\n\nInterrupted.\n\n{RESET}")
             except Exception as e:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
                 print()
+                self.llm_task = None
                 self.last_message_at = time.monotonic()
 
     async def prompt_loop(self) -> None:
@@ -203,23 +199,12 @@ def main() -> None:
     cli = CLI()
 
     try:
-        # configure_logging(LOG_LEVEL)
+        configure_logging(LOG_LEVEL)
         if args.session:
             cli.messages[:] = json.loads(args.session.read_text())
             logger.info(f"Loaded session: {args.session}")
-        if args.prompt:
-            result = asyncio.run(
-                agent(
-                    cli.client,
-                    messages=[{"role": "user", "content": args.prompt}],
-                    fns=TOOLS,
-                    **cli.kwargs,
-                )
-            )
-            print(result)
-        else:
-            print(f"\n\n\n\n\n{DIM}nkd-agents\n\n{RESET}")
-            asyncio.run(cli.start())
+        print(f"\n\n\n\n\n{DIM}nkd-agents\n\n{RESET}")
+        asyncio.run(cli.start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
     finally:

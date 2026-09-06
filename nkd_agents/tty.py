@@ -14,10 +14,10 @@ Three design choices carry most of the weight; don't undo them without reading t
    construction, so no code defends the placeholder. An earlier version stored the
    label text in `buf` and needed regexes everywhere to keep it intact.
 
-3. The box owns *width*, the caller owns *color*. `toolbar`, `border` and `style` may
-   carry any escapes; _clip cuts every chrome row to the terminal in cells, not
-   characters. A row that overflows wraps, and wrapping on the bottom row scrolls the
-   whole screen - which walks the box upward and eats a line of real output.
+3. The box owns *width* and *color*. `toolbar` and `border` are plain text painted in
+   `style`; every chrome row is cut to the terminal width. A row that overflows
+   wraps, and wrapping on the bottom row scrolls the whole screen - which walks the
+   box upward and eats a line of real output.
 
 Sizing is re-derived from one `os.get_terminal_size()` per render, and a SIGWINCH
 handler repaints: a resize changes cols, height, the box's row count and DECSTBM all
@@ -46,7 +46,6 @@ PASTE = "\x00"  # prefix on the key returned by _read_key for a bracketed paste
 PUA = 0xE000  # paste n is stored in buf as chr(PUA + n)
 CHROME = 3  # rule above, rule below, toolbar
 DIM, RESET = "\x1b[38;5;242m", "\x1b[0m"  # grey 242
-SGR = re.compile(r"(\x1b\[[0-9;]*m)")  # a color escape: some chars, zero cells
 REV = "\x1b[7m"  # reverse video, drawn as the fake cursor
 HIDE_CURSOR, SHOW_CURSOR = "\x1b[?25l", "\x1b[?25h"
 PASTE_ON, PASTE_OFF = "\x1b[?2004h", "\x1b[?2004l"
@@ -96,33 +95,17 @@ MOVES = {
 }
 
 
-def _clip(s: str, cols: int) -> str:
-    """`s` as one row of at most `cols` *cells*, never cut mid-escape.
-
-    Colors cost no budget, so `s[:cols]` under-fills and `cols + len(escapes)`
-    overshoots by any escape past the cut; spend the budget while walking instead.
-    """
-    out, budget = "", cols
-    for i, part in enumerate(SGR.split(s.replace("\n", " "))):
-        if i % 2:  # odd parts are the capture group: an escape, kept whole and free
-            out += part
-        else:
-            out += part[:budget]
-            budget -= len(part[:budget])
-    return out
-
-
 class Prompt:
     """Async prompt with key bindings, raw terminal only.
 
     key_bindings: raw key sequence (e.g. "\\x0c" for ctrl-l, ESC + "[Z" for
       shift-tab) -> sync callable(prompt) -> None. Built-in editing keys, ctrl-c
       and ctrl-d cannot be overridden.
-    toolbar: optional callable() -> str, rendered below the input box.
+    toolbar: optional callable() -> str, plain text rendered below the input box.
     border: character repeated to draw the rules above and below the input.
-    style: default color for the border, toolbar and the echoed submission, so
-      your lines read apart from the output. Border and toolbar may carry their
-      own escapes instead; the box only owns width, and cuts both to it (see _clip).
+    style: color for the border, toolbar and the echoed submission, so your lines
+      read apart from the output. Toolbar and border carry no escapes of their own:
+      the box owns color as well as width, and cuts every chrome row to the latter.
     """
 
     def __init__(
@@ -151,7 +134,7 @@ class Prompt:
         self.cursor += len(text)
 
     def _paste(self, text: str) -> None:
-        self.pastes.append(text)
+        self.pastes.append(text.replace("\r\n", "\n").replace("\r", "\n"))
         self._insert(chr(PUA + len(self.pastes) - 1))
 
     def _paste_idx(self, c: str) -> int | None:
@@ -248,7 +231,7 @@ class Prompt:
         """Box rows and the 1-based screen row they start on. Pure: no I/O."""
 
         def chrome(s: str) -> str:
-            return _clip(self.style + s, cols) + RESET
+            return self.style + s.replace("\n", " ")[:cols] + RESET
 
         # The box never claims row 1, so the scroll region (rows 1..top-1) is always
         # at least one row tall and every index below lands on the screen. The slice
