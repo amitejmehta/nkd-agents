@@ -7,6 +7,7 @@ from anthropic.types import MessageParam
 from nkd_agents.cli import (
     CLI,
     MODELS,
+    MODES,
     TOOLS,
 )
 from nkd_agents.tty import ESC
@@ -23,21 +24,21 @@ def cli(tmp_path, monkeypatch):
 
 class TestToolbar:
     def test_shows_model(self, cli: CLI):
-        assert MODELS[0] in cli.toolbar()
+        assert MODELS[0].split("claude-")[1] in cli.toolbar()
 
     def test_shows_mode(self, cli: CLI):
         assert "Act" in cli.toolbar()
 
     def test_thinking_off(self, cli: CLI):
-        assert "think:off" in cli.toolbar()
+        assert "think:✗" in cli.toolbar()
 
     def test_thinking_on(self, cli: CLI):
         cli.toggle_thinking()
-        assert "think:on" in cli.toolbar()
+        assert "think:✓" in cli.toolbar()
 
     def test_reflects_model_change(self, cli: CLI):
         cli.switch_model()
-        assert MODELS[1] in cli.toolbar()
+        assert MODELS[1].split("claude-")[1] in cli.toolbar()
 
     def test_reflects_mode_change(self, cli: CLI):
         cli.cycle_mode()
@@ -52,7 +53,6 @@ class TestInit:
         CLI()  # should not raise
 
     def test_defaults(self, cli: CLI):
-        assert cli.model_idx == 0
         assert cli.kwargs["model"] == MODELS[0]
         assert cli.kwargs["max_tokens"] > 0
         assert cli.kwargs["thinking"] == {"type": "disabled"}
@@ -72,13 +72,11 @@ class TestSwitchModel:
     def test_cycles_through_models(self, cli: CLI):
         assert cli.kwargs["model"] == MODELS[0]
         cli.switch_model()
-        assert cli.model_idx == 1
         assert cli.kwargs["model"] == MODELS[1]
 
     def test_wraps_around(self, cli: CLI):
         for _ in range(len(MODELS)):
             cli.switch_model()
-        assert cli.model_idx == 0
         assert cli.kwargs["model"] == MODELS[0]
 
     def test_syncs_idx_with_nkd_model(self, tmp_path, monkeypatch):
@@ -87,7 +85,7 @@ class TestSwitchModel:
         monkeypatch.setenv("NKD_MODEL", MODELS[1])
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         cli = CLI()
-        assert cli.model_idx == 1
+        assert cli.kwargs["model"] == MODELS[1]
         cli.switch_model()
         assert cli.kwargs["model"] == MODELS[2]
 
@@ -108,12 +106,9 @@ class TestCycleMode:
         assert cli.mode != initial
 
     def test_wraps_around(self, cli: CLI):
-        from nkd_agents.cli import MODE_PREFIXES
-
-        n = len(MODE_PREFIXES)
-        for _ in range(n):
+        for _ in range(len(MODES)):
             cli.cycle_mode()
-        assert cli.mode == list(MODE_PREFIXES)[0]
+        assert cli.mode == MODES[0]
 
 
 class TestInterrupt:
@@ -207,7 +202,7 @@ class TestBuildSystemPrompt:
     def test_global_only(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        global_md = tmp_path / ".nkd-agents" / "CLAUDE.md"
+        global_md = tmp_path / ".claude" / "CLAUDE.md"
         global_md.parent.mkdir()
         global_md.write_text("global content")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
@@ -227,7 +222,7 @@ class TestBuildSystemPrompt:
     def test_both_global_first(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        global_md = tmp_path / ".nkd-agents" / "CLAUDE.md"
+        global_md = tmp_path / ".claude" / "CLAUDE.md"
         global_md.parent.mkdir()
         global_md.write_text("global content")
         (tmp_path / "CLAUDE.md").write_text("local content")
@@ -249,7 +244,7 @@ class TestBuildSystemPrompt:
     def test_empty_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        global_md = tmp_path / ".nkd-agents" / "CLAUDE.md"
+        global_md = tmp_path / ".claude" / "CLAUDE.md"
         global_md.parent.mkdir()
         global_md.write_text("")
         (tmp_path / "CLAUDE.md").write_text("")

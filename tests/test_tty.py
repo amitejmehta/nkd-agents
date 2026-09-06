@@ -5,10 +5,10 @@ import threading
 
 import pytest
 
-from nkd_agents.tty import DIM, ESC, PASTE, RESET, REV, Prompt, _clip
+from nkd_agents.tty import DIM, ESC, PASTE, RESET, REV, Prompt
 
 NORM = "\x1b[27m"
-RED, GREEN = "\x1b[31m", "\x1b[32m"
+GREEN = "\x1b[32m"
 CUR = f"{REV} {NORM}"  # the fake cursor on an empty cell
 SGR = re.compile(r"\x1b\[[0-9;]*m")
 # a "\x1b[<row>;1H\x1b[2K" jump followed by text and colors, up to the next jump
@@ -206,6 +206,16 @@ class TestPaste:
         type_(p, "[Paste #7, 2 lines]")
         assert p._expand() == "[Paste #7, 2 lines]"
 
+    @pytest.mark.parametrize(
+        "line_ending", ["\n", "\r", "\r\n"], ids=["lf", "cr", "crlf"]
+    )
+    def test_line_count_is_correct_for_any_line_ending(
+        self, p: Prompt, line_ending: str
+    ) -> None:
+        p._handle(PASTE + line_ending.join(["l1", "l2", "l3"]))
+        assert shown(p) == "[Paste #1, 3 lines]"
+        assert p._expand() == "l1\nl2\nl3"
+
 
 class TestInputRows:
     def test_wraps_and_marks_cursor(self, p: Prompt) -> None:
@@ -349,15 +359,14 @@ class TestRender:
         p._render()
         assert painted(capsys.readouterr().out)[20] == dim("a b")
 
-    def test_caller_owns_color_box_owns_width(self, screen) -> None:
+    def test_style_and_border_are_honored(self, screen) -> None:
         p, capsys = screen
         p.border, p.style = "=", GREEN
-        p.toolbar = lambda: f"{RED}busy{GREEN} model (c-l)  think:off (tab)"
+        p.toolbar = lambda: "busy model (c-l)  think:off (tab)"
         p._render()
         rows = painted(capsys.readouterr().out)
-        assert rows[17] == GREEN + "=" * 10 + RESET  # border char and color honored
-        assert rows[20] == f"{GREEN}{RED}busy{GREEN} model{RESET}"  # colors survive
-        assert cells(rows[20]) == self.COLS  # ...and are not paid for in cells
+        assert rows[17] == GREEN + "=" * 10 + RESET
+        assert rows[20] == f"{GREEN}busy model{RESET}"
 
     def test_never_writes_a_bare_newline(self, screen) -> None:
         """cbreak leaves OPOST|ONLCR on, so a "\\n" reaches the terminal as CR+LF and
@@ -419,19 +428,6 @@ class TestGeometryIsAlwaysOnScreen:
         )
         p._render()
         assert all(row >= 2 for row in painted(capsys.readouterr().out))
-
-
-class TestClip:
-    def test_escapes_are_free_and_never_cut(self) -> None:
-        assert _clip(f"{RED}abcdef", 3) == f"{RED}abc"
-        assert _clip(f"ab{RED}cdef", 3) == f"ab{RED}c"
-        # an escape past the cut is still free, so it rides along - but it must not
-        # buy any of the visible text that followed it
-        assert _clip(f"abcdef{RED}g", 3) == f"abc{RED}"
-        assert cells(_clip(f"abcdef{RED}g", 3)) == 3
-
-    def test_short_string_is_untouched(self) -> None:
-        assert _clip(f"{RED}ab{RESET}", 5) == f"{RED}ab{RESET}"
 
 
 class TestReadKey:

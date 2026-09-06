@@ -24,13 +24,13 @@ TESTS = ["tests/test_tty.py", "tests/test_tty_screen.py"]
 MUTANTS: list[tuple[str, str, str]] = [
     (
         "no clipping of chrome to the terminal width",
-        "return _clip(self.style + s, cols) + RESET",
+        'return self.style + s.replace("\\n", " ")[:cols] + RESET',
         "return self.style + s + RESET",
     ),
     (
         "no newline strip (a newline is a second row)",
-        'SGR.split(s.replace("\\n", " "))',
-        "SGR.split(s)",
+        'return self.style + s.replace("\\n", " ")[:cols] + RESET',
+        "return self.style + s[:cols] + RESET",
     ),
     ("no room made for the box", "self._room(len(box))", "self._rows = len(box)"),
     (
