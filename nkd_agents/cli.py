@@ -10,7 +10,7 @@ from anthropic import AsyncAnthropic
 
 from .anthropic import agent
 from .logging import DIM, RED, RESET, configure_logging
-from .tools import bash, edit_file, glob, grep, queue_ctx, read_file, write_file
+from .tools import bash, edit_file, glob, grep, read_file, write_file
 from .tty import ESC, Prompt
 from .utils import load_env, serialize
 from .web import fetch_url, web_search
@@ -84,7 +84,6 @@ class CLI:
         self.client = AsyncAnthropic(max_retries=4)
         self.messages = []
         self.queue = asyncio.Queue()
-        queue_ctx.set(self.queue)
         self.llm_task: asyncio.Task | None = None
         self.mode = MODES[0]
         self.kwargs = {
