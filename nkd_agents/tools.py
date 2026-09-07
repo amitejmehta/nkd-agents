@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 # are sandboxed to that directory: absolute paths and symlink escapes are
 # rejected, and relative paths resolve against it.
 cwd_ctx = ContextVar[Path | None]("cwd_ctx", default=None)
-queue_ctx = ContextVar[asyncio.Queue]("queue_ctx")
 
 
 def resolve(path: str) -> Path:
@@ -111,19 +110,14 @@ async def edit_file(
     return f"Success: Updated {p}"
 
 
-async def bash(command: str, timeout: int = 30, background: bool = False) -> str:
+async def bash(command: str, timeout: int = 30) -> str:
     """Execute a bash command and return the results.
     STDOUT is truncated to 50,000 characters.
 
     Returns "STDOUT: {stdout}\nSTDERR: {stderr}\nEXIT CODE: {returncode}", or
     "Error: Command timed out after {timeout} seconds" (process group is SIGKILLed).
-
-    background=True returns "PID: {pid}" immediately; the result arrives later as a
-    user message prefixed "[bash:{pid}]". Use this for long-running commands instead
-    of a trailing `&`, which blocks until timeout or silently detaches the process.
-    `timeout` still applies, so raise it for slow commands.
     """
-    logger.info(f"{DIM}${RESET} {command}{DIM}{' &' * background}{RESET}")
+    logger.info(f"{DIM}${RESET} {command}{RESET}")
     process: asyncio.subprocess.Process = await asyncio.create_subprocess_exec(
         "bash",
         "-c",
@@ -134,22 +128,6 @@ async def bash(command: str, timeout: int = 30, background: bool = False) -> str
         cwd=cwd_ctx.get() or Path.cwd(),
         start_new_session=True,  # new process group so kill() takes out child processes too
     )
-    if not background:
-        return await wait(process, timeout)
-
-    # To hide `background` from the model (or skip setting the queue), wrap it:
-    #   async def bash(command: str, timeout: int = 30) -> str: return await tools.bash(command, timeout)
-    q = queue_ctx.get()
-
-    async def deliver() -> None:
-        body = await wait(process, timeout)
-        await q.put({"role": "user", "content": f"[bash:{process.pid}]\n{body}"})
-
-    asyncio.create_task(deliver())
-    return f"PID: {process.pid}"
-
-
-async def wait(process: asyncio.subprocess.Process, timeout: int = 30) -> str:
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except asyncio.TimeoutError:

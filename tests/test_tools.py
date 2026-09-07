@@ -13,7 +13,6 @@ from nkd_agents.tools import (
     edit_file,
     glob,
     grep,
-    queue_ctx,
     read_file,
     resolve,
     write_file,
@@ -358,27 +357,6 @@ class TestBash:
         """Test bash timeout returns an error string."""
         result = await bash("sleep 10", timeout=0.1)
         assert result == "Error: Command timed out after 0.1 seconds"
-
-    @pytest.mark.asyncio
-    async def test_bash_background(self):
-        """background=True returns PID immediately; result lands on queue_ctx."""
-        q: asyncio.Queue = asyncio.Queue()
-        token = queue_ctx.set(q)
-        try:
-            result = await bash("sleep 0.2 && echo hello", background=True)
-            assert result.startswith("PID: ")
-            assert q.empty()  # returned before the command finished
-            msg = await asyncio.wait_for(q.get(), timeout=2)
-            assert msg["role"] == "user"
-            assert msg["content"].startswith(f"[bash:{result[5:]}]\n")
-            assert "STDOUT: hello" in msg["content"]
-            assert "EXIT CODE: 0" in msg["content"]
-
-            await bash("sleep 10", background=True, timeout=0.1)
-            msg = await asyncio.wait_for(q.get(), timeout=2)
-            assert "Error: Command timed out after 0.1 seconds" in msg["content"]
-        finally:
-            queue_ctx.reset(token)
 
     @pytest.mark.asyncio
     async def test_bash_background_via_shell(self):
