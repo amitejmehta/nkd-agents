@@ -3,13 +3,12 @@ import asyncio
 import json
 import logging
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
 
-from .anthropic import agent, tool_schema
+from .anthropic import agent
 from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, glob, grep, queue_ctx, read_file, write_file
 from .tty import ESC, Prompt
@@ -22,13 +21,49 @@ TOOLS = (read_file, write_file, edit_file, bash, glob, grep, fetch_url, web_sear
 
 # constants
 MODELS = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001")
-CACHE_WARM_MSG = 'warming cache just respond "okay"'
+COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
+summary that will replace this raw history. The repository/filesystem is the source of truth \
+for anything reconstructable by re-reading files or re-running commands — do not preserve \
+information that is cheap to rediscover from the environment.
+
+Preserve, concretely and specifically (not vague paraphrase):
+- The user's original objective and any requirements/constraints stated along the way, \
+including ones mentioned only once early on.
+- Decisions made and the rationale behind them, especially decisions that changed over time \
+(state the final decision AND that it changed, if relevant to not repeating a mistake).
+- The current plan / next steps.
+- Concrete discoveries about the codebase (file paths, symbols, behaviors) that took effort to \
+find and aren't obvious from a fresh read.
+- Exact list of files modified so far, and what changed in each (not full diffs, just intent).
+- Current test/build status (passing/failing, and which).
+- Approaches that were tried and failed, WHEN the reason they failed matters for not repeating \
+them. Drop failed approaches whose failure reason is irrelevant going forward.
+- Unresolved questions or TODOs.
+- Any fact that would be expensive/slow to rediscover (e.g. required a long investigation, an \
+expensive command, or reading many files to determine).
+
+Deliberately omit:
+- Raw command output, stack traces, or file contents — only extract the conclusion drawn from them.
+- Mechanical tool-call/tool-result chatter that led nowhere.
+- Redundant restatements of the same fact.
+- Hypotheses that were investigated and ruled out — replace with a one-line note of what was \
+ruled out and why, not the investigation itself.
+- Exploration that produced no durable finding.
+- Repeated failed syntax/retries once the correct form was found.
+
+Write the summary as if briefing a new engineer who has access to the repo and shell but was \
+not present for this conversation: they can re-read files and re-run commands, but they were not \
+told the user's intent, the decisions made, or what's already been tried. Be concrete — file paths, \
+function/symbol names, exact commands, and exact error messages (only when the error itself is the \
+important fact) over general description. Do not add commentary about the summarization process \
+itself. Output only the summary."""
 # runtime config (override via env / ~/.nkd-agents/.env)
 NKD_DIR = Path.home() / ".claude" / "nkd"
 load_env((NKD_DIR / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
-MAX_CACHE_WARMS = int(os.environ.get("NKD_MAX_CACHE_WARMS", 1))
+COMPACT_TOKEN_THRESHOLD = int(os.environ.get("NKD_COMPACT_TOKENS", 30000))
+COMPACT_TAIL = int(os.environ.get("NKD_COMPACT_TAIL", 6))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
 COLORS = (
@@ -51,8 +86,6 @@ class CLI:
         self.queue = asyncio.Queue()
         queue_ctx.set(self.queue)
         self.llm_task: asyncio.Task | None = None
-        self.last_message_at: float = 0.0
-        self.cache_warm_count: int = 0
         self.mode = MODES[0]
         self.kwargs = {
             "model": os.environ.get("NKD_MODEL", MODELS[0]),
@@ -76,15 +109,10 @@ class CLI:
 
     def build_system_prompt(self) -> str | None:
         paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
-        parts = [
-            p.read_text(encoding="utf-8")
-            for p in paths
-            if p.exists() and p.stat().st_size > 0
-        ]
-        if not parts:
-            return None
-        parts.append(f"CWD: {Path.cwd()}\nHOME: {Path.home()}")
-        return "\n\n".join(parts).strip()
+        parts = "\n\n".join(
+            p.read_text(encoding="utf-8") for p in paths if p.exists()
+        ).strip()
+        return parts or None
 
     def switch_model(self) -> None:
         self.kwargs["model"] = MODELS[
@@ -118,35 +146,33 @@ class CLI:
             (COLORS.index(self.session.style) + 1) % len(COLORS)
         ]
 
-    async def cache_warmer(self) -> None:
-        while True:
-            await asyncio.sleep(30)
-            idle = time.monotonic() - self.last_message_at
-            if (
-                self.messages
-                and idle >= 270
-                and self.cache_warm_count < MAX_CACHE_WARMS
-                and (not self.llm_task or self.llm_task.done())
-            ):
-                try:
-                    kwargs = self.kwargs.copy()
-                    kwargs["tools"] = [tool_schema(fn) for fn in TOOLS]
-                    kwargs["messages"] = self.messages + [
-                        {"role": "user", "content": CACHE_WARM_MSG}
-                    ]
-                    await self.client.messages.create(**kwargs)
-                    self.last_message_at = time.monotonic()
-                    self.cache_warm_count += 1
-                    logger.info(
-                        f"{DIM}Warmed cache ({self.cache_warm_count}/{MAX_CACHE_WARMS}){RESET}"
-                    )
-                except Exception as e:
-                    logger.warning(f"{DIM}Cache warm failed (will retry): {e}{RESET}")
+    def _approx_tokens(self) -> int:
+        return len(json.dumps(serialize(self.messages))) // 4
+
+    async def compact(self) -> None:
+        if len(self.messages) <= COMPACT_TAIL:
+            return
+        head, tail = (self.messages[:-COMPACT_TAIL], self.messages[-COMPACT_TAIL:])
+        summary = await agent(
+            self.client,
+            messages=[*head, {"role": "user", "content": COMPACT_PROMPT}],
+            model=self.kwargs["model"],
+            max_tokens=MAX_TOKENS,
+            thinking={"type": "disabled"},
+        )
+        self.messages[:] = [
+            {
+                "role": "user",
+                "content": f"[compacted summary of earlier session]\n{summary}",
+            },
+            {"role": "assistant", "content": "Understood, continuing from summary."},
+            *tail,
+        ]
+        logger.info(f"{DIM}Compacted context{RESET}")
 
     async def llm_loop(self) -> None:
         while True:
             self.messages.append(await self.queue.get())
-            self.cache_warm_count = 0
             self.llm_task = asyncio.create_task(
                 agent(
                     self.client,
@@ -159,19 +185,20 @@ class CLI:
             try:
                 await self.llm_task
             except asyncio.CancelledError:
-                print(f"{RED}\n\nInterrupted.\n\n{RESET}")
+                print(f"{RED}\nInterrupted.\n{RESET}")
             except Exception as e:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
                 print()
                 self.llm_task = None
-                self.last_message_at = time.monotonic()
+                if self._approx_tokens() > COMPACT_TOKEN_THRESHOLD:
+                    await self.compact()
 
     async def prompt_loop(self) -> None:
         while True:
             text: str = await self.session.prompt_async("❯ ")
             if text and text.strip():
-                content = f"{START_PHRASE} Mode: {self.mode}. {text.strip()}"
+                content = f"CWD: {Path.cwd()} Mode: {self.mode}. {START_PHRASE} {text.strip()}"
                 await self.queue.put({"role": "user", "content": content})
 
     def save_session(self, path: Path | None = None) -> None:
@@ -183,7 +210,7 @@ class CLI:
         print(f"{DIM}Resume with: nkd -s {path.as_posix()}{RESET}")
 
     async def start(self) -> None:
-        await asyncio.gather(self.llm_loop(), self.prompt_loop(), self.cache_warmer())
+        await asyncio.gather(self.llm_loop(), self.prompt_loop())
 
 
 def main() -> None:

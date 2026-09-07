@@ -8,6 +8,7 @@ from nkd_agents.cli import (
     CLI,
     MODELS,
     MODES,
+    START_PHRASE,
     TOOLS,
 )
 from nkd_agents.tty import ESC
@@ -111,6 +112,36 @@ class TestCycleMode:
         assert cli.mode == MODES[0]
 
 
+class TestPromptLoop:
+    async def test_queues_cwd_mode_and_phrase_prefixed_message(
+        self, cli: CLI, tmp_path
+    ):
+        cli.mode = MODES[1]
+        with patch.object(
+            cli.session,
+            "prompt_async",
+            AsyncMock(side_effect=["hello", asyncio.CancelledError]),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await cli.prompt_loop()
+
+        message = await cli.queue.get()
+        assert message["role"] == "user"
+        assert message["content"] == (
+            f"CWD: {tmp_path} Mode: {MODES[1]}. {START_PHRASE} hello"
+        )
+
+    async def test_skips_blank_input(self, cli: CLI):
+        with patch.object(
+            cli.session,
+            "prompt_async",
+            AsyncMock(side_effect=["   ", asyncio.CancelledError]),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await cli.prompt_loop()
+        assert cli.queue.empty()
+
+
 class TestInterrupt:
     def test_escape_binding(self, cli: CLI):
         assert ESC in cli.session.key_bindings
@@ -192,6 +223,79 @@ class TestLLMLoop:
             assert len(cli.messages) == 2
 
 
+class TestApproxTokens:
+    def test_empty(self, cli: CLI):
+        assert cli._approx_tokens() == 0
+
+    def test_grows_with_messages(self, cli: CLI):
+        cli.messages.append({"role": "user", "content": "x" * 400})
+        assert cli._approx_tokens() > 90
+
+
+class TestCompact:
+    async def test_noop_when_few_messages(self, cli: CLI):
+        cli.messages.append({"role": "user", "content": "hi"})
+        with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_agent:
+            await cli.compact()
+            mock_agent.assert_not_called()
+        assert len(cli.messages) == 1
+
+    async def test_summarizes_head_and_keeps_recent_tail(self, cli: CLI):
+        from nkd_agents.cli import COMPACT_TAIL
+
+        cli.messages.extend({"role": "user", "content": f"msg{i}"} for i in range(10))
+        tail_before = cli.messages[-COMPACT_TAIL:]
+
+        with patch(
+            "nkd_agents.cli.agent", AsyncMock(return_value="summary text")
+        ) as mock_agent:
+            await cli.compact()
+            call_kwargs = mock_agent.call_args.kwargs
+            assert len(call_kwargs["messages"]) == 10 - COMPACT_TAIL + 1
+
+        assert cli.messages[-COMPACT_TAIL:] == tail_before
+        assert "summary text" in cli.messages[0]["content"]
+        assert len(cli.messages) == 2 + COMPACT_TAIL
+
+
+class TestLLMLoopCompactTrigger:
+    async def test_triggers_compact_over_threshold(self, cli: CLI, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKEN_THRESHOLD", 1)
+
+        async def mock_llm(*args, **kwargs):
+            kwargs["messages"].append({"role": "assistant", "content": "hi"})
+
+        with (
+            patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
+        ):
+            await cli.queue.put({"role": "user", "content": "hello"})
+            loop_task = asyncio.create_task(cli.llm_loop())
+            await asyncio.sleep(0.05)
+            loop_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await loop_task
+            mock_compact.assert_called_once()
+
+    async def test_skips_compact_under_threshold(self, cli: CLI, monkeypatch):
+        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKEN_THRESHOLD", 10_000_000)
+
+        async def mock_llm(*args, **kwargs):
+            kwargs["messages"].append({"role": "assistant", "content": "hi"})
+
+        with (
+            patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
+        ):
+            await cli.queue.put({"role": "user", "content": "hello"})
+            loop_task = asyncio.create_task(cli.llm_loop())
+            await asyncio.sleep(0.05)
+            loop_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await loop_task
+            mock_compact.assert_not_called()
+
+
 class TestBuildSystemPrompt:
     def test_neither_exists(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -230,16 +334,6 @@ class TestBuildSystemPrompt:
         result = CLI().build_system_prompt()
         assert result is not None
         assert result.index("global content") < result.index("local content")
-
-    def test_appends_cwd_and_home(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        (tmp_path / "CLAUDE.md").write_text("local content")
-        result = CLI().build_system_prompt()
-        assert result is not None
-        assert f"CWD: {tmp_path}" in result
-        assert f"HOME: {tmp_path}" in result
 
     def test_empty_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
