@@ -91,20 +91,6 @@ Because `nkd` is just a process, headless mode (`-p`) unlocks the full range of 
 
 See the [`subagents`](../skills/subagents) skill.
 
-## Cache Warming
-
-Anthropic cache pricing (5-min TTL default, 1-hr available):
-
-| Operation | Cost Multiplier |
-|-----------|------|
-| Cache write (5-min TTL) | 1.25× |
-| Cache write (1-hr TTL) | 2.0× |
-| Cache read | 0.1× |
-
-The background `cache_warmer` task checks every 30s and, if the session has been idle for ≥ 270s (just before the 5-min TTL), sends the full message history with the prompt `"Sending msg to warm cache. Just respond: 'okay'"`. This refreshes the cache for another 5 minutes. It does this at most `NKD_MAX_CACHE_WARMS` times per turn (default: 2), resetting on each new user message.
-
-Each warm costs 0.1× (a cache read). Break-even vs a fresh write is 12 warms (12 × 0.1× = 1.2× < 1.25×). The default of 2 gives ~15 minutes of coverage for **0.2×** — enough to step away, respond to a ping, or take a quick call and come back without paying for a re-write or 1-hour caching at 2×. Personally, I found 2 to be the right number: beyond ~15 minutes of inactivity I was either done with the session or away long enough that the cache wouldn't have helped. Set `NKD_MAX_CACHE_WARMS` in `~/.nkd-agents/.env` to tune it permanently to your own pattern.
-
 ## Auto-Compact
 
 Before every user message is sent, `nkd` checks if the message history exceeds `NKD_AUTO_COMPACT_THRESHOLD` (default: **50**). When it does, it calls `agent()` with `NKD_COMPACT_MODEL` (default: **`claude-haiku-4-5`**) to summarize the oldest messages, replacing them with a single `<conversation_summary>` user message. The most recent `NKD_AUTO_COMPACT_TARGET` messages (default: **15**) are preserved verbatim.
@@ -138,11 +124,9 @@ All config via environment variables. Set in `~/.nkd-agents/.env` (loaded at sta
 | `NKD_MODEL` | `claude-sonnet-4-6` | Initial model (cycle at runtime via `ctrl+l`) |
 | `NKD_THINKING` | `{"type": "adaptive"}` | JSON thinking config passed to API |
 | `NKD_MAX_TOKENS` | `20000` | Max tokens per response |
-| `NKD_MAX_CACHE_WARMS` | `2` | Max cache warm-ups per turn |
 | `NKD_START_PHRASE` | `"Be brief and exacting."` | Prefix prepended to every user message |
 | `NKD_PLAN_MODE` | `"READ ONLY!"` | Prefix appended in Plan mode |
 | `NKD_SOCRATIC_MODE` | `"ASK, DON'T TELL!"` | Prefix appended in Socratic mode |
-| `NKD_CACHE_WARM_MSG` | `"Sending msg to warm cache. Just respond: \"okay\""` | Message sent during cache warm |
 | `NKD_AUTO_COMPACT_THRESHOLD` | `50` | Auto-compact trigger — when total messages exceed this, summarize old messages (see [Auto-Compact](#auto-compact)) |
 | `NKD_AUTO_COMPACT_TARGET` | `15` | After compaction, preserve this many most-recent messages verbatim |
 | `NKD_COMPACT_MODEL` | `claude-haiku-4-5` | Model used to summarize old messages during auto-compact |
