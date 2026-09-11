@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
@@ -79,11 +78,6 @@ def _has_tool_use(message: object) -> bool:
 
 class CLI:
     def __init__(self) -> None:
-        # dirs
-        nkd_dir = Path.home() / ".claude" / "nkd"
-        self.summaries_path = nkd_dir / "summaries.md"
-        nkd_dir.mkdir(parents=True, exist_ok=True)
-
         # agent
         self.client = AsyncAnthropic(max_retries=4)
         self.messages = []
@@ -173,7 +167,6 @@ class CLI:
             {"role": "assistant", "content": "Understood, continuing from summary."},
             *tail,
         ]
-        self.save_summary(summary)
         logger.info(f"{DIM}Compacted context{RESET}")
 
     async def llm_loop(self) -> None:
@@ -202,11 +195,6 @@ class CLI:
             if text := (await self.session.prompt_async("❯ ")).strip():
                 content = f"CWD: {Path.cwd()} Mode: {self.mode}. {START_PHRASE} {text}"
                 await self.queue.put({"role": "user", "content": content})
-
-    def save_summary(self, summary: str) -> None:
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with self.summaries_path.open("a") as f:
-            f.write(f"\n---\n## {ts} | {Path.cwd()}\n\n{summary}\n")
 
     async def start(self) -> None:
         await asyncio.gather(self.llm_loop(), self.prompt_loop())
