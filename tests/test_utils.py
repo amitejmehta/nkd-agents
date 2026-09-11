@@ -4,12 +4,10 @@ import os
 from typing import Literal
 
 import pytest
-from pydantic import BaseModel
 
 from nkd_agents.utils import (
     extract_function_params,
     load_env,
-    serialize,
 )
 
 
@@ -20,25 +18,34 @@ class TestExtractFunctionParams:
     async def test_basic_types(self):
         """All basic types map correctly."""
 
-        async def func(name: str, count: int, temp: float, enabled: bool, unannotated):
+        async def func(name: str, count: int, temp: float, enabled: bool):
             pass
 
-        params, _ = extract_function_params(func)
+        params = extract_function_params(func)
         assert params["name"]["type"] == "string"
         assert params["count"]["type"] == "integer"
         assert params["temp"]["type"] == "number"
         assert params["enabled"]["type"] == "boolean"
-        assert params["unannotated"]["type"] == "string"
+
+    @pytest.mark.asyncio
+    async def test_unannotated_param_raises(self):
+        """Unannotated parameters are rejected rather than silently treated as strings."""
+
+        async def func(name: str, unannotated):
+            pass
+
+        with pytest.raises(ValueError, match="Unsupported type"):
+            extract_function_params(func)
 
     @pytest.mark.asyncio
     async def test_required_vs_optional(self):
-        """Required params have no defaults; optional params are absent from required_list."""
+        """Defaults never leak into the schema, regardless of whether a param has one."""
 
         async def func(required: str, a: str = "x", b: int = 1, c: str = "y"):
             pass
 
-        params, required_list = extract_function_params(func)
-        assert required_list == ["required"]
+        params = extract_function_params(func)
+        assert set(params) == {"required", "a", "b", "c"}
         assert "default" not in params["required"]
         assert "default" not in params["a"]
         assert "default" not in params["b"]
@@ -56,11 +63,11 @@ class TestExtractFunctionParams:
         ):
             pass
 
-        params, required_list = extract_function_params(func)
+        params = extract_function_params(func)
         assert params["mode"]["enum"] == ["fast", "slow"]
         assert params["level"]["enum"] == [1, 2, 3]
         assert params["temp"]["enum"] == [1.5, 2.5]
-        assert "optional" not in required_list
+        assert params["optional"]["enum"] == ["a", "b"]
 
     @pytest.mark.asyncio
     async def test_unsupported_types(self):
@@ -134,9 +141,8 @@ class TestExtractFunctionParams:
         async def no_params():
             pass
 
-        params, required_list = extract_function_params(no_params)
+        params = extract_function_params(no_params)
         assert len(params) == 0
-        assert len(required_list) == 0
 
     @pytest.mark.asyncio
     async def test_parameter_names_preserved(self):
@@ -145,7 +151,7 @@ class TestExtractFunctionParams:
         async def func(CamelCase: str, snake_case: int, num123: bool):
             pass
 
-        params, _ = extract_function_params(func)
+        params = extract_function_params(func)
         assert "CamelCase" in params
         assert "snake_case" in params
         assert "num123" in params
@@ -200,44 +206,3 @@ class TestLoadEnv:
         assert not any(k.startswith("#") or k.startswith(" ") for k in os.environ)
         del os.environ["REAL2"]
         del os.environ["OTHER2"]
-
-
-class TestSerialize:
-    def test_primitive_passthrough(self):
-        assert serialize("x") == "x"
-        assert serialize(1) == 1
-        assert serialize(None) is None
-        assert serialize(True) is True
-
-    def test_pydantic_model(self):
-        class M(BaseModel):
-            x: int
-
-        assert serialize(M(x=1)) == {"x": 1}
-
-    def test_list_of_primitives(self):
-        assert serialize([1, "a", None]) == [1, "a", None]
-
-    def test_dict_of_primitives(self):
-        assert serialize({"a": 1, "b": "x"}) == {"a": 1, "b": "x"}
-
-    def test_list_containing_model(self):
-        class M(BaseModel):
-            v: str
-
-        assert serialize([M(v="hi")]) == [{"v": "hi"}]
-
-    def test_dict_containing_model(self):
-        class M(BaseModel):
-            v: int
-
-        assert serialize({"k": M(v=2)}) == {"k": {"v": 2}}
-
-    def test_nested_model(self):
-        class Inner(BaseModel):
-            n: int
-
-        class Outer(BaseModel):
-            inner: Inner
-
-        assert serialize(Outer(inner=Inner(n=3))) == {"inner": {"n": 3}}

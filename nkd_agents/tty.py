@@ -14,7 +14,7 @@ Three design choices carry most of the weight; don't undo them without reading t
    construction, so no code defends the placeholder. An earlier version stored the
    label text in `buf` and needed regexes everywhere to keep it intact.
 
-3. The box owns *width* and *color*. `toolbar` and `border` are plain text painted in
+3. The box owns *width* and *color*. `toolbar` is plain text painted in
    `style`; every chrome row is cut to the terminal width. A row that overflows
    wraps, and wrapping on the bottom row scrolls the whole screen - which walks the
    box upward and eats a line of real output.
@@ -102,22 +102,19 @@ class Prompt:
       shift-tab) -> sync callable(prompt) -> None. Built-in editing keys, ctrl-c
       and ctrl-d cannot be overridden.
     toolbar: optional callable() -> str, plain text rendered below the input box.
-    border: character repeated to draw the rules above and below the input.
     style: color for the border, toolbar and the echoed submission, so your lines
-      read apart from the output. Toolbar and border carry no escapes of their own:
-      the box owns color as well as width, and cuts every chrome row to the latter.
+      read apart from the output. Toolbar carries no escapes of its own: the box
+      owns color as well as width, and cuts every chrome row to the latter.
     """
 
     def __init__(
         self,
         key_bindings: dict[str, Callable[["Prompt"], None]] | None = None,
         toolbar: Callable[[], str] | None = None,
-        border: str = "─",
         style: str = DIM,
     ) -> None:
         self.key_bindings = key_bindings or {}
         self.toolbar = toolbar or (lambda: "")
-        self.border = border
         self.style = style
         self.label = ""
         self.buf = ""
@@ -236,7 +233,7 @@ class Prompt:
         # The box never claims row 1, so the scroll region (rows 1..top-1) is always
         # at least one row tall and every index below lands on the screen. The slice
         # is the last resort for a terminal too short to hold even the chrome.
-        rule = chrome(self.border * cols)
+        rule = chrome("─" * cols)
         box = [rule, *self._input_rows(cols), rule, chrome(self.toolbar())][
             : max(0, height - 1)
         ]

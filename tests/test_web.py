@@ -11,7 +11,7 @@ from nkd_agents.web import fetch_url
 @pytest.fixture
 def mock_cwd(tmp_path):
     """Set cwd_ctx to a temp directory."""
-    with patch("nkd_agents.web.cwd_ctx") as mock:
+    with patch("nkd_agents.tools.cwd_ctx") as mock:
         mock.get.return_value = tmp_path
         yield tmp_path
 

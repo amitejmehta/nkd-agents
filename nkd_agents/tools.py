@@ -50,7 +50,7 @@ async def read_file(path: str) -> FileContent:
     ext, size = p.suffix[1:].lower(), p.stat().st_size
     if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and size > 50000:
         raise ValueError(
-            f"File too large ({size:,} bytes) to read directly. Use grep() to search for specific content."
+            f"File too large ({size:,} bytes) to read directly. Use bash() with grep to search for specific content."
         )
     return FileContent(data=p.read_bytes(), ext=ext)
 
@@ -136,75 +136,3 @@ async def bash(command: str, timeout: int = 30) -> str:
         return f"Error: Command timed out after {timeout} seconds"
     out, err = stdout.decode()[:50000].strip(), stderr.decode()[:50000].strip()
     return f"STDOUT: {out}\nSTDERR: {err}\nEXIT CODE: {process.returncode}"
-
-
-async def glob(pattern: str, path: str = ".", include_hidden: bool = False) -> str:
-    """List files matching a glob pattern, relative to path (or cwd).
-
-    Fast file discovery without shelling out. Recursion via '**' is supported.
-
-    Hidden files and directories (any path component starting with '.') are excluded
-    by default — set include_hidden=True to include them (e.g. to search .venv or .git).
-
-    Args:
-        pattern: Glob pattern (e.g. '*.py', 'src/**/*.ts', '**/*.md')
-        path: Optional directory to search in (default: cwd)
-        include_hidden: If True, include hidden files/dirs (default: False)
-
-    Returns:
-        Newline-separated list of matching paths (relative to search dir), or 'No matches found'.
-    """
-    base = resolve(path)
-
-    logger.info(f"Glob: {GREEN}{pattern}{RESET} in {base}")
-
-    def is_hidden(p: Path) -> bool:
-        return any(part.startswith(".") for part in p.parts)
-
-    matches = [
-        str(m.relative_to(base))
-        for m in base.glob(pattern)
-        if m.is_file() and (include_hidden or not is_hidden(m.relative_to(base)))
-    ]
-    result = "\n".join(sorted(matches)) if matches else "No matches found"
-    logger.info(f"Glob: {GREEN}{pattern}{RESET} in {base}\n{result}")
-    return result
-
-
-async def grep(
-    pattern: str,
-    include: str = "*",
-    path: str = ".",
-    context: int = 2,
-    include_hidden: bool = False,
-) -> str:
-    """Search file contents using ripgrep (rg), a much faster alternative to basic `grep`.
-
-    Hidden files and directories are excluded by default — set include_hidden=True to
-    search them (e.g. to search inside .venv or .git).
-
-    Args:
-        pattern: Regex pattern to search for
-        include: Glob to filter files (e.g. '*.py', '*.ts'; default: '*' matches all)
-        path: Optional directory to search in (default: cwd)
-        context: Lines of context around each match (default: 2)
-        include_hidden: If True, include hidden files/dirs (default: False)
-
-    Returns:
-        "STDOUT:\n{matches}\nSTDERR:\n{stderr}\nEXIT CODE: {returncode}". STDOUT and STDERR truncated to 50,000 characters each.
-    """
-    cmd = ["rg", "--line-number", "--heading", f"--context={context}"]
-    if include_hidden:
-        cmd.append("--hidden")
-    cmd.extend(["--glob", include, "--", pattern, path])
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=cwd_ctx.get() or Path.cwd(),
-    )
-    stdout, stderr = await process.communicate()
-    out, err = stdout.decode().strip(), stderr.decode().strip()
-    result = f"STDOUT:\n{out[:50000]}\nSTDERR:\n{err[:50000]}\nEXIT CODE: {process.returncode}"
-    logger.info(f"Grep: {GREEN}{' '.join(cmd)}{RESET}\n{result}")
-    return result

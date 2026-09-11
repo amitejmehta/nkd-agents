@@ -361,11 +361,11 @@ class TestRender:
 
     def test_style_and_border_are_honored(self, screen) -> None:
         p, capsys = screen
-        p.border, p.style = "=", GREEN
+        p.style = GREEN
         p.toolbar = lambda: "busy model (c-l)  think:off (tab)"
         p._render()
         rows = painted(capsys.readouterr().out)
-        assert rows[17] == GREEN + "=" * 10 + RESET
+        assert rows[17] == GREEN + "─" * 10 + RESET
         assert rows[20] == f"{GREEN}busy model{RESET}"
 
     def test_never_writes_a_bare_newline(self, screen) -> None:

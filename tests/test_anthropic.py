@@ -47,7 +47,7 @@ def test_tool_schema():
     assert schema["input_schema"]["type"] == "object"
     assert "query" in schema["input_schema"]["properties"]
     assert "limit" in schema["input_schema"]["properties"]
-    assert schema["input_schema"]["required"] == ["query"]
+    assert set(schema["input_schema"]["required"]) == {"query", "limit"}
     assert schema["strict"] is True
 
 
@@ -135,7 +135,6 @@ async def test_tool_success():
         """Example tool"""
         return f"Result: {arg}"
 
-    tool_dict = {"example_tool": example_tool}
     tool_call = ToolUseBlock(
         type="tool_use",
         id="tool_1",
@@ -143,7 +142,7 @@ async def test_tool_success():
         input={"arg": "test"},
     )
 
-    result = await tool(tool_dict, tool_call)
+    result = await tool(tool_call, [example_tool])
     assert result["type"] == "tool_result"
     assert result["tool_use_id"] == "tool_1"
     assert result["content"][0]["text"] == "Result: test"
@@ -157,7 +156,6 @@ async def test_tool_error_handling():
         """Failing tool"""
         raise ValueError("Something went wrong")
 
-    tool_dict = {"failing_tool": failing_tool}
     tool_call = ToolUseBlock(
         type="tool_use",
         id="tool_1",
@@ -165,7 +163,7 @@ async def test_tool_error_handling():
         input={"arg": "test"},
     )
 
-    result = await tool(tool_dict, tool_call)
+    result = await tool(tool_call, [failing_tool])
     assert result["type"] == "tool_result"
     assert "Error calling tool 'failing_tool'" in result["content"][0]["text"]
     assert "Something went wrong" in result["content"][0]["text"]
@@ -182,7 +180,7 @@ async def test_tool_returns_tool_result_block():
     tool_call = ToolUseBlock(
         type="tool_use", id="tool_1", name="search", input={"query": "test"}
     )
-    result = await tool({"search": search}, tool_call)
+    result = await tool(tool_call, [search])
     assert result["type"] == "tool_result"
     assert result["tool_use_id"] == "tool_1"
     assert result["content"][0]["text"] == "Search results here"
@@ -199,7 +197,7 @@ async def test_tool_returns_content_blocks():
     tool_call = ToolUseBlock(
         type="tool_use", id="tool_1", name="read_file", input={"path": "test.txt"}
     )
-    result = await tool({"read_file": read_file}, tool_call)
+    result = await tool(tool_call, [read_file])
     assert result["type"] == "tool_result"
     assert result["tool_use_id"] == "tool_1"
     assert result["content"] == [{"type": "text", "text": "File content"}]
@@ -217,7 +215,7 @@ async def test_tool_file_content_image():
     tool_call = ToolUseBlock(
         type="tool_use", id="t1", name="read_img", input={"path": "img.jpg"}
     )
-    result = await tool({"read_img": read_img}, tool_call)
+    result = await tool(tool_call, [read_img])
     assert result["content"] == [bytes_to_content(image_data, "jpg")]
     assert result["content"][0]["type"] == "image"
 
@@ -234,7 +232,7 @@ async def test_tool_file_content_pdf():
     tool_call = ToolUseBlock(
         type="tool_use", id="t2", name="read_pdf", input={"path": "doc.pdf"}
     )
-    result = await tool({"read_pdf": read_pdf}, tool_call)
+    result = await tool(tool_call, [read_pdf])
     assert result["content"] == [bytes_to_content(pdf_data, "pdf")]
     assert result["content"][0]["type"] == "document"
 
@@ -251,6 +249,6 @@ async def test_tool_file_content_text():
     tool_call = ToolUseBlock(
         type="tool_use", id="t3", name="read_txt", input={"path": "f.txt"}
     )
-    result = await tool({"read_txt": read_txt}, tool_call)
+    result = await tool(tool_call, [read_txt])
     assert result["content"][0]["type"] == "text"
     assert result["content"][0]["text"] == "hello world"
