@@ -100,35 +100,6 @@ Or `Error: Command timed out after {timeout} seconds` after `SIGKILL`-ing the pr
 
 ---
 
-## `glob`
-
-```python
-async def glob(pattern: str, path: str | None = None, include_hidden: bool = False) -> str
-```
-
-List files matching a glob pattern, relative to `path` (or `cwd`).
-
-- Fast file discovery without shelling out. Recursion via `**` is supported.
-- Hidden files and directories (any path component starting with `.`) are excluded by default — set `include_hidden=True` to include them (e.g. to search `.venv` or `.git`).
-- Returns a newline-separated list of matching paths (relative to the search dir), or `"No matches found"`.
-
----
-
-## `grep`
-
-```python
-async def grep(pattern: str, include: str | None = None, path: str | None = None, context: int = 2, include_hidden: bool = False) -> str
-```
-
-Search file contents using ripgrep (`rg`).
-
-- Hidden files and directories are excluded by default — set `include_hidden=True` to search them (e.g. inside `.venv` or `.git`).
-- `include`: optional glob to filter files (e.g. `'*.py'`, `'*.ts'`).
-- `context`: lines of context around each match (default: 2).
-- Returns ripgrep output with file paths, line numbers, and context. Truncated to 200 matches.
-
----
-
 ## `web_search`
 
 ```python
@@ -164,7 +135,7 @@ async def fetch_url(url: str, save_path: str) -> str
 
 Fetch a webpage, extract clean content with Trafilatura, save as markdown to disk.
 
-Returns `"Saved {N:,} chars to {path}. For long files, start by grepping for keywords."` or an error string.
+Returns `"Saved {N:,} chars to {path}. For long files, start by grepping (bash) for keywords."` or an error string.
 
 - Uses `httpx` for the HTTP request (follows redirects, 30s timeout).
 - `trafilatura.extract()` with `output_format="markdown"`, `include_tables=True`, `favor_recall=True`.

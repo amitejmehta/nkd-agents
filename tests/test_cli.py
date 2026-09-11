@@ -6,10 +6,11 @@ from anthropic.types import MessageParam
 
 from nkd_agents.cli import (
     CLI,
+    FNS,
     MODELS,
     MODES,
     START_PHRASE,
-    TOOLS,
+    _has_tool_use,
 )
 from nkd_agents.tty import ESC
 
@@ -179,7 +180,10 @@ class TestInterrupt:
 
 class TestLLMLoop:
     async def test_processes_queue(self, cli: CLI):
-        with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm:
+        with (
+            patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm,
+            patch.object(cli, "_count_tokens", AsyncMock(return_value=0)),
+        ):
             msg: MessageParam = {
                 "role": "user",
                 "content": [{"type": "text", "text": "hi"}],
@@ -196,7 +200,7 @@ class TestLLMLoop:
             call_kwargs = mock_llm.call_args
             assert call_kwargs.args == (cli.client,)
             assert call_kwargs.kwargs["messages"] is cli.messages
-            assert call_kwargs.kwargs["fns"] == TOOLS
+            assert call_kwargs.kwargs["fns"] == FNS
 
     async def test_survives_cancelled_llm_task(self, cli: CLI):
         call_count = 0
@@ -207,7 +211,10 @@ class TestLLMLoop:
             if call_count == 1:
                 raise asyncio.CancelledError()
 
-        with patch("nkd_agents.cli.agent", side_effect=mock_llm):
+        with (
+            patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch.object(cli, "_count_tokens", AsyncMock(return_value=0)),
+        ):
             await cli.queue.put(
                 {"role": "user", "content": [{"type": "text", "text": "first"}]}
             )
@@ -222,14 +229,42 @@ class TestLLMLoop:
             assert call_count == 2
             assert len(cli.messages) == 2
 
+    async def test_count_tokens_failure_does_not_kill_loop(self, cli: CLI):
+        """A failure counting tokens (e.g. API error) must not crash the loop."""
+        call_count = 0
 
-class TestApproxTokens:
-    def test_empty(self, cli: CLI):
-        assert cli._approx_tokens() == 0
+        async def mock_llm(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
 
-    def test_grows_with_messages(self, cli: CLI):
-        cli.messages.append({"role": "user", "content": "x" * 400})
-        assert cli._approx_tokens() > 90
+        with (
+            patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch.object(
+                cli, "_count_tokens", AsyncMock(side_effect=RuntimeError("boom"))
+            ),
+        ):
+            await cli.queue.put({"role": "user", "content": "first"})
+            await cli.queue.put({"role": "user", "content": "second"})
+            loop_task = asyncio.create_task(cli.llm_loop())
+            await asyncio.sleep(0.05)
+            loop_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await loop_task
+            assert call_count == 2
+
+
+class TestCountTokens:
+    async def test_returns_api_input_tokens(self, cli: CLI):
+        mock_resp = MagicMock(input_tokens=42)
+        with patch.object(
+            cli.client.messages, "count_tokens", AsyncMock(return_value=mock_resp)
+        ) as mock_count:
+            result = await cli._count_tokens()
+        assert result == 42
+        mock_count.assert_called_once()
+        call_kwargs = mock_count.call_args.kwargs
+        assert call_kwargs["messages"] is cli.messages
+        assert "max_tokens" not in call_kwargs
 
 
 class TestCompact:
@@ -257,6 +292,50 @@ class TestCompact:
         assert "summary text" in cli.messages[0]["content"]
         assert len(cli.messages) == 2 + COMPACT_TAIL
 
+    async def test_does_not_split_tool_use_pair_across_boundary(
+        self, cli: CLI, monkeypatch
+    ):
+        """If the naive COMPACT_TAIL boundary would fall between a tool_use and its
+        tool_result, the split must move earlier so the pair stays together."""
+        monkeypatch.setattr("nkd_agents.cli.COMPACT_TAIL", 1)
+        # naive split (len - 1) would put _assistant_tool_use in head and
+        # _user_tool_result alone in tail: must be pushed back by one.
+        cli.messages.extend(
+            [
+                _user_text("earlier"),
+                _assistant_tool_use(),
+                _user_tool_result(),
+            ]
+        )
+
+        with patch(
+            "nkd_agents.cli.agent", AsyncMock(return_value="summary text")
+        ) as mock_agent:
+            await cli.compact()
+            sent = mock_agent.call_args.kwargs["messages"]
+
+        # head (sent for summarization) must not end on a dangling tool_use
+        assert not _has_tool_use(sent[-2])
+        # tail (kept raw) must not start with an orphaned tool_result
+        kept_tail = cli.messages[2:]
+        assert kept_tail[0]["content"][0]["type"] != "tool_result"
+        # the pair itself must have stayed together, in the tail
+        assert kept_tail[0]["content"][0]["type"] == "tool_use"
+        assert kept_tail[1]["content"][0]["type"] == "tool_result"
+
+    async def test_noop_when_entire_history_is_one_unpaired_chain(
+        self, cli: CLI, monkeypatch
+    ):
+        """If walking back the split point hits 0 (e.g. every message is part of a
+        tool_use chain), skip compaction rather than corrupt history."""
+        monkeypatch.setattr("nkd_agents.cli.COMPACT_TAIL", 1)
+        cli.messages.extend([_assistant_tool_use(), _user_tool_result()])
+
+        with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_agent:
+            await cli.compact()
+            mock_agent.assert_not_called()
+        assert len(cli.messages) == 2
+
 
 class TestLLMLoopCompactTrigger:
     async def test_triggers_compact_over_threshold(self, cli: CLI, monkeypatch):
@@ -267,6 +346,7 @@ class TestLLMLoopCompactTrigger:
 
         with (
             patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch.object(cli, "_count_tokens", AsyncMock(return_value=100)),
             patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
         ):
             await cli.queue.put({"role": "user", "content": "hello"})
@@ -285,6 +365,7 @@ class TestLLMLoopCompactTrigger:
 
         with (
             patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch.object(cli, "_count_tokens", AsyncMock(return_value=100)),
             patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
         ):
             await cli.queue.put({"role": "user", "content": "hello"})

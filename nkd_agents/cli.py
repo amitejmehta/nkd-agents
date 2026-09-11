@@ -1,6 +1,4 @@
-import argparse
 import asyncio
-import json
 import logging
 import os
 from datetime import datetime
@@ -8,16 +6,17 @@ from pathlib import Path
 
 from anthropic import AsyncAnthropic
 
-from .anthropic import agent
+from .anthropic import agent, tool_schema
 from .logging import DIM, RED, RESET, configure_logging
-from .tools import bash, edit_file, glob, grep, read_file, write_file
+from .tools import bash, edit_file, read_file, write_file
 from .tty import ESC, Prompt
-from .utils import load_env, serialize
+from .utils import load_env
 from .web import fetch_url, web_search
 
 logger = logging.getLogger(__name__)
 
-TOOLS = (read_file, write_file, edit_file, bash, glob, grep, fetch_url, web_search)
+FNS = (read_file, write_file, edit_file, bash, fetch_url, web_search)
+TOOLS = [tool_schema(fn) for fn in FNS]
 
 # constants
 MODELS = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001")
@@ -58,27 +57,32 @@ function/symbol names, exact commands, and exact error messages (only when the e
 important fact) over general description. Do not add commentary about the summarization process \
 itself. Output only the summary."""
 # runtime config (override via env / ~/.nkd-agents/.env)
-NKD_DIR = Path.home() / ".claude" / "nkd"
-load_env((NKD_DIR / ".env").as_posix())
+load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
 COMPACT_TOKEN_THRESHOLD = int(os.environ.get("NKD_COMPACT_TOKENS", 30000))
-COMPACT_TAIL = int(os.environ.get("NKD_COMPACT_TAIL", 6))
+COMPACT_TAIL = int(os.environ.get("NKD_COMPACT_TAIL", 4))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
-COLORS = (
-    "\x1b[38;5;242m",  # dim grey
-    "\x1b[38;2;255;20;147m",  # neon pink
-    "\x1b[38;5;39m",  # sky blue
-    "\x1b[38;5;114m",  # sage green
-    "\x1b[38;5;214m",  # amber
-)
+
+
+def _has_tool_use(message: object) -> bool:
+    """True if an assistant message contains a tool_use block (i.e. expects a paired
+    tool_result as the very next message — unsafe to split the history right after it)."""
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return False
+    content = message.get("content")
+    if not isinstance(content, list):
+        return False
+    return any(isinstance(b, dict) and b.get("type") == "tool_use" for b in content)
 
 
 class CLI:
     def __init__(self) -> None:
         # dirs
-        (NKD_DIR / "sessions").mkdir(parents=True, exist_ok=True)
+        nkd_dir = Path.home() / ".claude" / "nkd"
+        self.summaries_path = nkd_dir / "summaries.md"
+        nkd_dir.mkdir(parents=True, exist_ok=True)
 
         # agent
         self.client = AsyncAnthropic(max_retries=4)
@@ -100,10 +104,8 @@ class CLI:
                 ESC: lambda p: self.interrupt(),  # esc
                 "\t": lambda p: self.toggle_thinking(),  # tab
                 ESC + "[Z": lambda p: self.cycle_mode(),  # shift-tab
-                "\x14": lambda p: self.cycle_color(),  # ctrl-t
             },
             toolbar=self.toolbar,
-            style=COLORS[0],
         )
 
     def build_system_prompt(self) -> str | None:
@@ -140,18 +142,22 @@ class CLI:
     def cycle_mode(self) -> None:
         self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]
 
-    def cycle_color(self) -> None:
-        self.session.style = COLORS[
-            (COLORS.index(self.session.style) + 1) % len(COLORS)
-        ]
-
-    def _approx_tokens(self) -> int:
-        return len(json.dumps(serialize(self.messages))) // 4
+    async def _count_tokens(self) -> int:
+        kwargs = {k: v for k, v in self.kwargs.items() if k != "max_tokens"}
+        resp = await self.client.messages.count_tokens(
+            messages=self.messages, tools=TOOLS, **kwargs
+        )
+        return resp.input_tokens
 
     async def compact(self) -> None:
         if len(self.messages) <= COMPACT_TAIL:
             return
-        head, tail = (self.messages[:-COMPACT_TAIL], self.messages[-COMPACT_TAIL:])
+        split = len(self.messages) - COMPACT_TAIL
+        while split > 0 and _has_tool_use(self.messages[split - 1]):
+            split -= 1
+        if split <= 0:
+            return
+        head, tail = self.messages[:split], self.messages[split:]
         summary = await agent(
             self.client,
             messages=[*head, {"role": "user", "content": COMPACT_PROMPT}],
@@ -167,19 +173,14 @@ class CLI:
             {"role": "assistant", "content": "Understood, continuing from summary."},
             *tail,
         ]
+        self.save_summary(summary)
         logger.info(f"{DIM}Compacted context{RESET}")
 
     async def llm_loop(self) -> None:
         while True:
             self.messages.append(await self.queue.get())
             self.llm_task = asyncio.create_task(
-                agent(
-                    self.client,
-                    fns=TOOLS,
-                    on_text=lambda s: print(s, end="", flush=True),
-                    messages=self.messages,
-                    **self.kwargs,
-                )
+                agent(self.client, fns=FNS, messages=self.messages, **self.kwargs)
             )
             try:
                 await self.llm_task
@@ -190,49 +191,31 @@ class CLI:
             finally:
                 print()
                 self.llm_task = None
-                if self._approx_tokens() > COMPACT_TOKEN_THRESHOLD:
-                    await self.compact()
+                try:
+                    if await self._count_tokens() > COMPACT_TOKEN_THRESHOLD:
+                        await self.compact()
+                except Exception as e:
+                    logger.exception(f"{RED}Error counting tokens: {e}{RESET}")
 
     async def prompt_loop(self) -> None:
         while True:
-            text: str = await self.session.prompt_async("❯ ")
-            if text and text.strip():
-                content = f"CWD: {Path.cwd()} Mode: {self.mode}. {START_PHRASE} {text.strip()}"
+            if text := (await self.session.prompt_async("❯ ")).strip():
+                content = f"CWD: {Path.cwd()} Mode: {self.mode}. {START_PHRASE} {text}"
                 await self.queue.put({"role": "user", "content": content})
 
-    def save_session(self, path: Path | None = None) -> None:
-        if path is None:
-            path = (
-                NKD_DIR / "sessions" / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
-            )
-        path.write_text(json.dumps(serialize(self.messages), indent=2))
-        print(f"{DIM}Resume with: nkd -s {path.as_posix()}{RESET}")
+    def save_summary(self, summary: str) -> None:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self.summaries_path.open("a") as f:
+            f.write(f"\n---\n## {ts} | {Path.cwd()}\n\n{summary}\n")
 
     async def start(self) -> None:
         await asyncio.gather(self.llm_loop(), self.prompt_loop())
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-s", "--session", type=Path, help="Path to a saved session JSON file"
-    )
-    parser.add_argument(
-        "-p", "--prompt", type=str, help="Run headless with this prompt"
-    )
-    args = parser.parse_args()
-
-    cli = CLI()
-
     try:
         configure_logging(LOG_LEVEL)
-        if args.session:
-            cli.messages[:] = json.loads(args.session.read_text())
-            logger.info(f"Loaded session: {args.session}")
-        print(f"\n\n\n\n\n{DIM}nkd-agents\n\n{RESET}")
-        asyncio.run(cli.start())
+        print(f"\n\n{DIM}nkd-agents\n\n{RESET}")
+        asyncio.run(CLI().start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
-    finally:
-        if cli.messages:
-            cli.save_session(path=args.session)

@@ -22,7 +22,7 @@ dependencies = [
 nkd = "nkd_agents.cli:main"
 
 [project.optional-dependencies]
-cli = [
+web = [
     "playwright>=1.58.0,<2.0.0", # web search with browser automation
     "trafilatura>=2.0.0,<3.0.0", # fetch_url tool
 ]

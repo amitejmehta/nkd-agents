@@ -151,9 +151,7 @@ async def test_tool_success():
         """Search"""
         return f"results for {query}"
 
-    result = await tool(
-        {"search": search}, _tool_call("call_1", "search", '{"query": "x"}')
-    )
+    result = await tool(_tool_call("call_1", "search", '{"query": "x"}'), [search])
     assert result["type"] == "function_call_output"
     assert result["call_id"] == "call_1"
     assert result["output"] == "results for x"
@@ -165,7 +163,7 @@ async def test_tool_error_handling():
         """Bad tool"""
         raise RuntimeError("boom")
 
-    result = await tool({"bad": bad}, _tool_call("call_1", "bad", '{"arg": "x"}'))
+    result = await tool(_tool_call("call_1", "bad", '{"arg": "x"}'), [bad])
     assert result["type"] == "function_call_output"
     assert "Error calling tool 'bad'" in result["output"]
     assert "boom" in result["output"]
@@ -177,9 +175,7 @@ async def test_tool_content_blocks():
         """Read file"""
         return [{"type": "input_text", "text": "file content"}]
 
-    result = await tool(
-        {"read": read}, _tool_call("call_1", "read", '{"path": "f.txt"}')
-    )
+    result = await tool(_tool_call("call_1", "read", '{"path": "f.txt"}'), [read])
     assert result["output"] == [{"type": "input_text", "text": "file content"}]
 
 
@@ -220,9 +216,7 @@ async def test_tool_file_content_image():
         """Read image"""
         return FileContent(data=image_data, ext="jpg")
 
-    result = await tool(
-        {"read_img": read_img}, _tool_call("c1", "read_img", '{"path": "x.jpg"}')
-    )
+    result = await tool(_tool_call("c1", "read_img", '{"path": "x.jpg"}'), [read_img])
     assert result["output"] == [
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
     ]
@@ -238,9 +232,7 @@ async def test_tool_file_content_pdf():
         """Read pdf"""
         return FileContent(data=pdf_data, ext="pdf")
 
-    result = await tool(
-        {"read_pdf": read_pdf}, _tool_call("c2", "read_pdf", '{"path": "x.pdf"}')
-    )
+    result = await tool(_tool_call("c2", "read_pdf", '{"path": "x.pdf"}'), [read_pdf])
     assert result["output"] == [
         {
             "type": "input_file",
@@ -258,7 +250,5 @@ async def test_tool_file_content_text():
         """Read txt"""
         return FileContent(data=b"hello world", ext="txt")
 
-    result = await tool(
-        {"read_txt": read_txt}, _tool_call("c3", "read_txt", '{"path": "f.txt"}')
-    )
+    result = await tool(_tool_call("c3", "read_txt", '{"path": "f.txt"}'), [read_txt])
     assert result["output"] == "hello world"

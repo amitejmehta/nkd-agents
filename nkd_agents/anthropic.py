@@ -38,7 +38,7 @@ def tool_schema(
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
 
-    parameters, required_parameters = extract_function_params(func)
+    parameters = extract_function_params(func)
 
     return {
         "name": func.__name__,
@@ -46,7 +46,7 @@ def tool_schema(
         "input_schema": {
             "type": "object",
             "properties": parameters,
-            "required": required_parameters,
+            "required": list(parameters),
             "additionalProperties": False,
         },
         "strict": True,
@@ -72,15 +72,17 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
 def bytes_to_content(data: bytes, ext: str) -> Content:
     """Convert bytes to Anthropic content blocks based on media type."""
     ext = ext.lower().replace("jpg", "jpeg")
-    b64 = base64.standard_b64encode(data).decode("utf-8")
+
     if ext in ("jpeg", "png", "gif", "webp"):
         media_type = f"image/{ext}"
         assert media_type in ("image/jpeg", "image/png", "image/gif", "image/webp")
+        b64 = base64.standard_b64encode(data).decode("utf-8")
         return {
             "type": "image",
             "source": {"type": "base64", "media_type": media_type, "data": b64},
         }
     elif ext == "pdf":
+        b64 = base64.standard_b64encode(data).decode("utf-8")
         return {
             "type": "document",
             "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
@@ -112,7 +114,6 @@ async def tool(
 async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
     fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]] = (),
-    on_text: Callable[[str], None] | None = None,
     **kwargs: Unpack[MessageCreateParamsBase],
 ) -> str:
     """Run Claude in agentic loop (run until no tool calls, then return text).
@@ -138,21 +139,20 @@ async def agent(
 
         i = 0
         while True:
-            async with client.messages.stream(**kwargs) as stream:
-                async for delta in stream.text_stream:
-                    if on_text:
-                        on_text(delta)
-                resp = await stream.get_final_message()
+            span.set_attribute("iterations", i)
+            with tracer.start_as_current_span(f"turn {i}") as turn_span:
+                turn_span.set_attribute("gen_ai.operation.name", "turn")
+                resp = await client.messages.create(**kwargs)
+                logger.info(f"[{i}] stop_reason={resp.stop_reason}\nusage={resp.usage}")
 
-            logger.info(f"[{i}] stop_reason={resp.stop_reason}\nusage={resp.usage}")
-            text, tool_calls = extract_text_and_tool_calls(resp)
+                text, tool_calls = extract_text_and_tool_calls(resp)
+                results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
 
-            results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
-            kwargs["messages"].append({"role": "assistant", "content": resp.content})
-
-            if not tool_calls:
-                return text
-
-            kwargs["messages"].append({"role": "user", "content": results})
+                kwargs["messages"].append(
+                    {"role": "assistant", "content": resp.content}
+                )
+                if not tool_calls:
+                    return text
+                kwargs["messages"].append({"role": "user", "content": results})
 
             i += 1

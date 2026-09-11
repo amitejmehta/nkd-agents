@@ -98,4 +98,4 @@ async def fetch_url(url: str, save_path: str) -> str:
     file_path.write_text(markdown, encoding="utf-8")
 
     logger.info(f"Saved {len(markdown):,} chars to {file_path}")
-    return f"Saved {len(markdown):,} chars to {file_path}. For long files, start by grepping for keywords."
+    return f"Saved {len(markdown):,} chars to {file_path}. For long files, start by grepping (bash) for keywords."

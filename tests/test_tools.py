@@ -11,8 +11,6 @@ from nkd_agents.tools import (
     bash,
     cwd_ctx,
     edit_file,
-    glob,
-    grep,
     read_file,
     resolve,
     write_file,
@@ -424,101 +422,6 @@ class TestResolve:
         token = cwd_ctx.set(tmp_path)
         try:
             assert resolve("link.txt") == tmp_path / "link.txt"
-        finally:
-            cwd_ctx.reset(token)
-
-
-class TestGlob:
-    @pytest.mark.asyncio
-    async def test_matches_files(self, tmp_path):
-        (tmp_path / "a.py").write_text("")
-        (tmp_path / "b.py").write_text("")
-        (tmp_path / "c.txt").write_text("")
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await glob("*.py", ".")
-            assert "a.py" in result
-            assert "b.py" in result
-            assert "c.txt" not in result
-        finally:
-            cwd_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_no_matches(self, tmp_path):
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await glob("*.rs", ".")
-            assert result == "No matches found"
-        finally:
-            cwd_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_hidden_excluded_by_default(self, tmp_path):
-        (tmp_path / ".hidden.py").write_text("")
-        (tmp_path / "visible.py").write_text("")
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await glob("*.py", ".")
-            assert "visible.py" in result
-            assert ".hidden.py" not in result
-        finally:
-            cwd_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_hidden_included_when_flag_set(self, tmp_path):
-        (tmp_path / ".hidden.py").write_text("")
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await glob("*.py", ".", include_hidden=True)
-            assert ".hidden.py" in result
-        finally:
-            cwd_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_recursive_glob(self, tmp_path):
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        (sub / "deep.py").write_text("")
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await glob("**/*.py", ".")
-            assert "deep.py" in result
-        finally:
-            cwd_ctx.reset(token)
-
-
-@pytest.mark.skipif(not __import__("shutil").which("rg"), reason="rg not installed")
-class TestGrep:
-    @pytest.mark.asyncio
-    async def test_finds_pattern(self, tmp_path):
-        (tmp_path / "file.py").write_text("def hello():\n    pass\n")
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await grep("def hello", path=".")
-            assert "hello" in result
-            assert "EXIT CODE: 0" in result
-        finally:
-            cwd_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_no_match_nonzero_exit(self, tmp_path):
-        (tmp_path / "file.py").write_text("nothing here\n")
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await grep("zzznomatch", path=".")
-            assert "EXIT CODE: 1" in result
-        finally:
-            cwd_ctx.reset(token)
-
-    @pytest.mark.asyncio
-    async def test_file_filter(self, tmp_path):
-        (tmp_path / "a.py").write_text("target_word\n")
-        (tmp_path / "b.txt").write_text("target_word\n")
-        token = cwd_ctx.set(tmp_path)
-        try:
-            result = await grep("target_word", include="*.py", path=".")
-            assert "a.py" in result
-            assert "b.txt" not in result
         finally:
             cwd_ctx.reset(token)
 

@@ -11,7 +11,6 @@ from openai.types.responses import (
     ResponseFormatTextConfigParam,
     ResponseFunctionCallOutputItemListParam,
     ResponseFunctionToolCall,
-    ResponseTextDeltaEvent,
 )
 from openai.types.responses.response_create_params import (
     ResponseCreateParamsBase,
@@ -49,7 +48,7 @@ def tool_schema(
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
 
-    parameters, _ = extract_function_params(func)
+    parameters = extract_function_params(func)
 
     return {
         "type": "function",
@@ -58,7 +57,7 @@ def tool_schema(
         "parameters": {
             "type": "object",
             "properties": parameters,
-            "required": list[str](parameters.keys()),
+            "required": list(parameters),
             "additionalProperties": False,
         },
         "strict": True,
@@ -92,10 +91,11 @@ def bytes_to_content(
 ) -> str | ResponseFunctionCallOutputItemListParam:
     """Convert bytes to OpenAI tool output format."""
     ext = ext.lower().replace("jpg", "jpeg")
-    b64 = base64.standard_b64encode(data).decode("utf-8")
     if ext in ("jpeg", "png", "gif", "webp"):
+        b64 = base64.standard_b64encode(data).decode("utf-8")
         return [{"type": "input_image", "image_url": f"data:image/{ext};base64,{b64}"}]
     if ext == "pdf":
+        b64 = base64.standard_b64encode(data).decode("utf-8")
         return [
             {
                 "type": "input_file",
@@ -138,7 +138,6 @@ async def agent(
             ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
         ]
     ] = (),
-    on_text: Callable[[str], None] | None = None,
     **kwargs: Unpack[ResponseCreateParamsBase],
 ) -> str:
     """Run GPT in agentic loop (run until no tool calls, then return text).
@@ -166,19 +165,17 @@ async def agent(
 
         i = 0
         while True:
-            async with client.responses.stream(**kwargs) as stream:
-                async for event in stream:
-                    if on_text and isinstance(event, ResponseTextDeltaEvent):
-                        on_text(event.delta)
-                resp = await stream.get_final_response()
+            span.set_attribute("iterations", i)
+            with tracer.start_as_current_span(f"turn {i}") as turn_span:
+                turn_span.set_attribute("gen_ai.operation.name", "turn")
+                resp = await client.responses.create(**kwargs)
+                logger.info(f"[{i}] usage={resp.usage}")
 
-            logger.info(f"[{i}] usage={resp.usage}")
-            text, tool_calls = extract_text_and_tool_calls(resp)
+                text, tool_calls = extract_text_and_tool_calls(resp)
+                results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
 
-            results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
-            kwargs["input"] += resp.output + results  # type: ignore[assignment]
-
-            if not tool_calls:
-                return text
+                kwargs["input"] += resp.output + results  # type: ignore[assignment]
+                if not tool_calls:
+                    return text
 
             i += 1
