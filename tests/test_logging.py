@@ -75,6 +75,12 @@ def test_configure_logging_silences_httpx():
     assert logging.getLogger("httpx").level == logging.WARNING
 
 
+def test_configure_logging_silences_httpx2():
+    """Test configure_logging sets httpx2 logger to WARNING (openai>=3.0 default client)"""
+    configure_logging()
+    assert logging.getLogger("httpx2").level == logging.WARNING
+
+
 class TestDisplayDiff:
     """Test display_diff functionality."""
 

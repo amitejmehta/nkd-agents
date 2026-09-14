@@ -104,15 +104,12 @@ class CLI:
 
     def build_system_prompt(self) -> str | None:
         paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
-        parts = "\n\n".join(
-            p.read_text(encoding="utf-8") for p in paths if p.exists()
-        ).strip()
-        return parts or None
+        parts = [p.read_text(encoding="utf-8").strip() for p in paths if p.exists()]
+        return "\n\n".join(parts).strip() or None
 
     def switch_model(self) -> None:
-        self.kwargs["model"] = MODELS[
-            (MODELS.index(self.kwargs["model"]) + 1) % len(MODELS)
-        ]
+        next_model_idx = (MODELS.index(self.kwargs["model"]) + 1) % len(MODELS)
+        self.kwargs["model"] = MODELS[next_model_idx]
 
     def toggle_thinking(self) -> None:
         on = {"type": "adaptive", "display": "summarized"}
@@ -136,7 +133,7 @@ class CLI:
     def cycle_mode(self) -> None:
         self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]
 
-    async def _count_tokens(self) -> int:
+    async def count_tokens(self) -> int:
         kwargs = {k: v for k, v in self.kwargs.items() if k != "max_tokens"}
         resp = await self.client.messages.count_tokens(
             messages=self.messages, tools=TOOLS, **kwargs
@@ -185,7 +182,7 @@ class CLI:
                 print()
                 self.llm_task = None
                 try:
-                    if await self._count_tokens() > COMPACT_TOKEN_THRESHOLD:
+                    if await self.count_tokens() > COMPACT_TOKEN_THRESHOLD:
                         await self.compact()
                 except Exception as e:
                     logger.exception(f"{RED}Error counting tokens: {e}{RESET}")
