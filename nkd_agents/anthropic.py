@@ -140,19 +140,15 @@ async def agent(
         i = 0
         while True:
             span.set_attribute("iterations", i)
-            with tracer.start_as_current_span(f"turn {i}") as turn_span:
-                turn_span.set_attribute("gen_ai.operation.name", "turn")
-                resp = await client.messages.create(**kwargs)
-                logger.info(f"[{i}] stop_reason={resp.stop_reason}\nusage={resp.usage}")
+            resp = await client.messages.create(**kwargs)
+            logger.info(f"[{i}] stop_reason={resp.stop_reason}\nusage={resp.usage}")
 
-                text, tool_calls = extract_text_and_tool_calls(resp)
-                results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
+            text, tool_calls = extract_text_and_tool_calls(resp)
+            results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
 
-                kwargs["messages"].append(
-                    {"role": "assistant", "content": resp.content}
-                )
-                if not tool_calls:
-                    return text
-                kwargs["messages"].append({"role": "user", "content": results})
+            kwargs["messages"].append({"role": "assistant", "content": resp.content})
+            if not tool_calls:
+                return text
+            kwargs["messages"].append({"role": "user", "content": results})
 
             i += 1

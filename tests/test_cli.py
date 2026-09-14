@@ -182,7 +182,7 @@ class TestLLMLoop:
     async def test_processes_queue(self, cli: CLI):
         with (
             patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm,
-            patch.object(cli, "_count_tokens", AsyncMock(return_value=0)),
+            patch.object(cli, "count_tokens", AsyncMock(return_value=0)),
         ):
             msg: MessageParam = {
                 "role": "user",
@@ -213,7 +213,7 @@ class TestLLMLoop:
 
         with (
             patch("nkd_agents.cli.agent", side_effect=mock_llm),
-            patch.object(cli, "_count_tokens", AsyncMock(return_value=0)),
+            patch.object(cli, "count_tokens", AsyncMock(return_value=0)),
         ):
             await cli.queue.put(
                 {"role": "user", "content": [{"type": "text", "text": "first"}]}
@@ -240,7 +240,7 @@ class TestLLMLoop:
         with (
             patch("nkd_agents.cli.agent", side_effect=mock_llm),
             patch.object(
-                cli, "_count_tokens", AsyncMock(side_effect=RuntimeError("boom"))
+                cli, "count_tokens", AsyncMock(side_effect=RuntimeError("boom"))
             ),
         ):
             await cli.queue.put({"role": "user", "content": "first"})
@@ -259,7 +259,7 @@ class TestCountTokens:
         with patch.object(
             cli.client.messages, "count_tokens", AsyncMock(return_value=mock_resp)
         ) as mock_count:
-            result = await cli._count_tokens()
+            result = await cli.count_tokens()
         assert result == 42
         mock_count.assert_called_once()
         call_kwargs = mock_count.call_args.kwargs
@@ -346,7 +346,7 @@ class TestLLMLoopCompactTrigger:
 
         with (
             patch("nkd_agents.cli.agent", side_effect=mock_llm),
-            patch.object(cli, "_count_tokens", AsyncMock(return_value=100)),
+            patch.object(cli, "count_tokens", AsyncMock(return_value=100)),
             patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
         ):
             await cli.queue.put({"role": "user", "content": "hello"})
@@ -365,7 +365,7 @@ class TestLLMLoopCompactTrigger:
 
         with (
             patch("nkd_agents.cli.agent", side_effect=mock_llm),
-            patch.object(cli, "_count_tokens", AsyncMock(return_value=100)),
+            patch.object(cli, "count_tokens", AsyncMock(return_value=100)),
             patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
         ):
             await cli.queue.put({"role": "user", "content": "hello"})

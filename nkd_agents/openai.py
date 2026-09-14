@@ -13,7 +13,7 @@ from openai.types.responses import (
     ResponseFunctionToolCall,
 )
 from openai.types.responses.response_create_params import (
-    ResponseCreateParamsBase,
+    ResponseCreateParamsNonStreaming,
 )
 from openai.types.responses.response_input_item_param import FunctionCallOutput
 from opentelemetry import trace
@@ -138,7 +138,7 @@ async def agent(
             ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
         ]
     ] = (),
-    **kwargs: Unpack[ResponseCreateParamsBase],
+    **kwargs: Unpack[ResponseCreateParamsNonStreaming],
 ) -> str:
     """Run GPT in agentic loop (run until no tool calls, then return text).
 
@@ -155,27 +155,25 @@ async def agent(
     """
     if not isinstance(kwargs.get("input", None), list):
         raise ValueError("input is mutated and must be a list")
+    if "model" not in kwargs:
+        raise ValueError("model is required")
     if "tools" not in kwargs:
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
 
-    with tracer.start_as_current_span(
-        f"invoke_agent {kwargs.get('model', '')}"
-    ) as span:
+    with tracer.start_as_current_span(f"invoke_agent {kwargs['model']}") as span:
         span.set_attribute("gen_ai.operation.name", "invoke_agent")
 
         i = 0
         while True:
             span.set_attribute("iterations", i)
-            with tracer.start_as_current_span(f"turn {i}") as turn_span:
-                turn_span.set_attribute("gen_ai.operation.name", "turn")
-                resp = await client.responses.create(**kwargs)
-                logger.info(f"[{i}] usage={resp.usage}")
+            resp = await client.responses.create(**kwargs)
+            logger.info(f"[{i}] usage={resp.usage}")
 
-                text, tool_calls = extract_text_and_tool_calls(resp)
-                results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
+            text, tool_calls = extract_text_and_tool_calls(resp)
+            results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
 
-                kwargs["input"] += resp.output + results  # type: ignore[assignment]
-                if not tool_calls:
-                    return text
+            kwargs["input"] += resp.output + results  # type: ignore[assignment]
+            if not tool_calls:
+                return text
 
             i += 1
