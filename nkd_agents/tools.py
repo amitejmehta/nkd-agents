@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -131,7 +132,10 @@ async def bash(command: str, timeout: int = 30) -> str:
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        os.killpg(process.pid, signal.SIGKILL)  # pgid == pid (start_new_session)
+        with contextlib.suppress(
+            ProcessLookupError
+        ):  # already exited before we could kill it
+            os.killpg(process.pid, signal.SIGKILL)  # pgid == pid (start_new_session)
         await process.communicate()
         return f"Error: Command timed out after {timeout} seconds"
     out, err = stdout.decode()[:50000].strip(), stderr.decode()[:50000].strip()

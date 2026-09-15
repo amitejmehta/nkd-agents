@@ -357,6 +357,14 @@ class TestBash:
         assert result == "Error: Command timed out after 0.1 seconds"
 
     @pytest.mark.asyncio
+    async def test_bash_timeout_process_already_exited(self):
+        """If the process exits between the timeout firing and killpg(), the
+        ProcessLookupError is swallowed and the clean timeout message still returns."""
+        with patch("os.killpg", side_effect=ProcessLookupError):
+            result = await bash("sleep 10", timeout=0.1)
+        assert result == "Error: Command timed out after 0.1 seconds"
+
+    @pytest.mark.asyncio
     async def test_bash_background_via_shell(self):
         """Background processes are run via & in the command string."""
         result = await bash("echo hello &")
