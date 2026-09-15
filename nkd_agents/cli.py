@@ -5,7 +5,7 @@ from pathlib import Path
 
 from anthropic import AsyncAnthropic
 
-from .anthropic import agent, tool_schema
+from .anthropic import agent, extract_text_and_tool_calls, tool_schema
 from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, write_file
 from .tty import ESC, Prompt
@@ -59,10 +59,18 @@ itself. Output only the summary."""
 load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
-COMPACT_TOKEN_THRESHOLD = int(os.environ.get("NKD_COMPACT_TOKENS", 30000))
+COMPACT_TOKEN_THRESHOLD = int(os.environ.get("NKD_COMPACT_TOKENS", 20000))
 COMPACT_TAIL = int(os.environ.get("NKD_COMPACT_TAIL", 4))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
+
+
+def _block_type(block: object) -> str | None:
+    """Get a content block's type whether it's a plain dict (tool results we build
+    ourselves) or an Anthropic SDK object (assistant turns store raw resp.content)."""
+    if isinstance(block, dict):
+        return block.get("type")
+    return getattr(block, "type", None)
 
 
 def _has_tool_use(message: object) -> bool:
@@ -73,7 +81,7 @@ def _has_tool_use(message: object) -> bool:
     content = message.get("content")
     if not isinstance(content, list):
         return False
-    return any(isinstance(b, dict) and b.get("type") == "tool_use" for b in content)
+    return any(_block_type(b) == "tool_use" for b in content)
 
 
 class CLI:
@@ -149,13 +157,13 @@ class CLI:
         if split <= 0:
             return
         head, tail = self.messages[:split], self.messages[split:]
-        summary = await agent(
-            self.client,
+        resp = await self.client.messages.create(
             messages=[*head, {"role": "user", "content": COMPACT_PROMPT}],
-            model=self.kwargs["model"],
-            max_tokens=MAX_TOKENS,
+            model="claude-haiku-4-5",
+            max_tokens=COMPACT_TOKEN_THRESHOLD // 10,
             thinking={"type": "disabled"},
         )
+        summary, _ = extract_text_and_tool_calls(resp)
         self.messages[:] = [
             {
                 "role": "user",
@@ -185,7 +193,7 @@ class CLI:
                     if await self.count_tokens() > COMPACT_TOKEN_THRESHOLD:
                         await self.compact()
                 except Exception as e:
-                    logger.exception(f"{RED}Error counting tokens: {e}{RESET}")
+                    logger.exception(f"{RED}Error compacting tokens: {e}{RESET}")
 
     async def prompt_loop(self) -> None:
         while True:
