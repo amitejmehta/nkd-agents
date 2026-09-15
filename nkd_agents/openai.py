@@ -153,8 +153,8 @@ async def agent(
     - input is mutated in-place after each completed turn — callers see updates
       immediately, so interrupts preserve all fully-committed turns.
     """
-    if not isinstance(kwargs.get("input", None), list):
-        raise ValueError("input is mutated and must be a list")
+    if not kwargs.get("input") or not isinstance(kwargs.get("input"), list):
+        raise ValueError("input must be provided and must be a list")
     if "model" not in kwargs:
         raise ValueError("model is required")
     if "tools" not in kwargs:
