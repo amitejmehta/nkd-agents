@@ -10,7 +10,6 @@ from nkd_agents.cli import (
     MODELS,
     MODES,
     START_PHRASE,
-    _has_tool_use,
 )
 from nkd_agents.tty import ESC
 
@@ -267,39 +266,40 @@ class TestCountTokens:
         assert "max_tokens" not in call_kwargs
 
 
+def _mock_create_response(text: str) -> MagicMock:
+    block = MagicMock(type="text", text=text)
+    return MagicMock(content=[block])
+
+
 class TestCompact:
-    async def test_noop_when_few_messages(self, cli: CLI):
-        cli.messages.append({"role": "user", "content": "hi"})
-        with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_agent:
+    async def test_noop_when_no_messages(self, cli: CLI):
+        with patch.object(
+            cli.client.messages, "create", new_callable=AsyncMock
+        ) as mock_create:
             await cli.compact()
-            mock_agent.assert_not_called()
-        assert len(cli.messages) == 1
+            mock_create.assert_not_called()
+        assert cli.messages == []
 
-    async def test_summarizes_head_and_keeps_recent_tail(self, cli: CLI):
-        from nkd_agents.cli import COMPACT_TAIL
-
+    async def test_summarizes_entire_history(self, cli: CLI):
         cli.messages.extend({"role": "user", "content": f"msg{i}"} for i in range(10))
-        tail_before = cli.messages[-COMPACT_TAIL:]
 
-        with patch(
-            "nkd_agents.cli.agent", AsyncMock(return_value="summary text")
-        ) as mock_agent:
+        with patch.object(
+            cli.client.messages,
+            "create",
+            AsyncMock(return_value=_mock_create_response("summary text")),
+        ) as mock_create:
             await cli.compact()
-            call_kwargs = mock_agent.call_args.kwargs
-            assert len(call_kwargs["messages"]) == 10 - COMPACT_TAIL + 1
+            call_kwargs = mock_create.call_args.kwargs
+            # full history plus the trailing compact-instruction message
+            assert len(call_kwargs["messages"]) == 11
 
-        assert cli.messages[-COMPACT_TAIL:] == tail_before
+        assert len(cli.messages) == 2
         assert "summary text" in cli.messages[0]["content"]
-        assert len(cli.messages) == 2 + COMPACT_TAIL
+        assert cli.messages[1]["role"] == "assistant"
 
-    async def test_does_not_split_tool_use_pair_across_boundary(
-        self, cli: CLI, monkeypatch
-    ):
-        """If the naive COMPACT_TAIL boundary would fall between a tool_use and its
-        tool_result, the split must move earlier so the pair stays together."""
-        monkeypatch.setattr("nkd_agents.cli.COMPACT_TAIL", 1)
-        # naive split (len - 1) would put _assistant_tool_use in head and
-        # _user_tool_result alone in tail: must be pushed back by one.
+    async def test_handles_tool_use_pairs_without_splitting(self, cli: CLI):
+        """Since the whole history is summarized (no tail split), tool_use/tool_result
+        pairs never need special handling."""
         cli.messages.extend(
             [
                 _user_text("earlier"),
@@ -308,33 +308,15 @@ class TestCompact:
             ]
         )
 
-        with patch(
-            "nkd_agents.cli.agent", AsyncMock(return_value="summary text")
-        ) as mock_agent:
+        with patch.object(
+            cli.client.messages,
+            "create",
+            AsyncMock(return_value=_mock_create_response("summary text")),
+        ):
             await cli.compact()
-            sent = mock_agent.call_args.kwargs["messages"]
 
-        # head (sent for summarization) must not end on a dangling tool_use
-        assert not _has_tool_use(sent[-2])
-        # tail (kept raw) must not start with an orphaned tool_result
-        kept_tail = cli.messages[2:]
-        assert kept_tail[0]["content"][0]["type"] != "tool_result"
-        # the pair itself must have stayed together, in the tail
-        assert kept_tail[0]["content"][0]["type"] == "tool_use"
-        assert kept_tail[1]["content"][0]["type"] == "tool_result"
-
-    async def test_noop_when_entire_history_is_one_unpaired_chain(
-        self, cli: CLI, monkeypatch
-    ):
-        """If walking back the split point hits 0 (e.g. every message is part of a
-        tool_use chain), skip compaction rather than corrupt history."""
-        monkeypatch.setattr("nkd_agents.cli.COMPACT_TAIL", 1)
-        cli.messages.extend([_assistant_tool_use(), _user_tool_result()])
-
-        with patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_agent:
-            await cli.compact()
-            mock_agent.assert_not_called()
         assert len(cli.messages) == 2
+        assert "summary text" in cli.messages[0]["content"]
 
 
 class TestLLMLoopCompactTrigger:

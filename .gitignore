@@ -177,3 +177,4 @@ scratch.*
 .cursor
 .claude
 prompts/
+docs/decisions.md

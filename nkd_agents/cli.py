@@ -59,29 +59,9 @@ itself. Output only the summary."""
 load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
-COMPACT_TOKEN_THRESHOLD = int(os.environ.get("NKD_COMPACT_TOKENS", 20000))
-COMPACT_TAIL = int(os.environ.get("NKD_COMPACT_TAIL", 4))
+COMPACT_TOKENS = int(os.environ.get("NKD_COMPACT_TOKENS", 20000))
 START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
-
-
-def _block_type(block: object) -> str | None:
-    """Get a content block's type whether it's a plain dict (tool results we build
-    ourselves) or an Anthropic SDK object (assistant turns store raw resp.content)."""
-    if isinstance(block, dict):
-        return block.get("type")
-    return getattr(block, "type", None)
-
-
-def _has_tool_use(message: object) -> bool:
-    """True if an assistant message contains a tool_use block (i.e. expects a paired
-    tool_result as the very next message — unsafe to split the history right after it)."""
-    if not isinstance(message, dict) or message.get("role") != "assistant":
-        return False
-    content = message.get("content")
-    if not isinstance(content, list):
-        return False
-    return any(_block_type(b) == "tool_use" for b in content)
 
 
 class CLI:
@@ -149,18 +129,12 @@ class CLI:
         return resp.input_tokens
 
     async def compact(self) -> None:
-        if len(self.messages) <= COMPACT_TAIL:
+        if not self.messages:
             return
-        split = len(self.messages) - COMPACT_TAIL
-        while split > 0 and _has_tool_use(self.messages[split - 1]):
-            split -= 1
-        if split <= 0:
-            return
-        head, tail = self.messages[:split], self.messages[split:]
         resp = await self.client.messages.create(
-            messages=[*head, {"role": "user", "content": COMPACT_PROMPT}],
+            messages=[*self.messages, {"role": "user", "content": COMPACT_PROMPT}],
             model="claude-haiku-4-5",
-            max_tokens=COMPACT_TOKEN_THRESHOLD // 10,
+            max_tokens=COMPACT_TOKENS // 10,
             thinking={"type": "disabled"},
         )
         summary, _ = extract_text_and_tool_calls(resp)
@@ -170,9 +144,7 @@ class CLI:
                 "content": f"[compacted summary of earlier session]\n{summary}",
             },
             {"role": "assistant", "content": "Understood, continuing from summary."},
-            *tail,
         ]
-        logger.info(f"{DIM}Compacted context{RESET}")
 
     async def llm_loop(self) -> None:
         while True:
@@ -187,10 +159,9 @@ class CLI:
             except Exception as e:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
-                print()
                 self.llm_task = None
                 try:
-                    if await self.count_tokens() > COMPACT_TOKEN_THRESHOLD:
+                    if await self.count_tokens() > COMPACT_TOKENS:
                         await self.compact()
                 except Exception as e:
                     logger.exception(f"{RED}Error compacting tokens: {e}{RESET}")
