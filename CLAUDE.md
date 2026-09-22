@@ -10,6 +10,7 @@
   pytest tests/ -v --cov=nkd_agents --cov-report=term-missing 2>&1 | tail -20
   ```
 - Before refactoring `tty.py`, confirm the tests can still fail — coverage alone doesn't prove that: `python scripts/tty_mutants.py`
+- No `docs/` in the repo: the codebase is small enough that an LLM reading the code directly is faster and more reliable than maintaining docs that quickly go stale.
 - After framework changes (e.g. `anthropic.py`/`openai.py`), run the examples to verify:
   ```bash
   for f in examples/anthropic/test_*.py; do python3 -m "$(echo "${{f%.py}}" | tr / .)" & done; wait
