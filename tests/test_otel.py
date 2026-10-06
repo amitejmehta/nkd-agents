@@ -12,7 +12,7 @@ from openai.types.responses import (
 )
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import set_tracer_provider
+from opentelemetry.trace import StatusCode, set_tracer_provider
 
 from nkd_agents import anthropic, openai
 
@@ -204,6 +204,8 @@ async def test_anthropic_execute_tool_spans(otel_setup):
     assert len(tool_spans) == 1
     assert tool_spans[0].name == "execute_tool get_weather"
     assert tool_spans[0].attributes["gen_ai.operation.name"] == "execute_tool"
+    assert tool_spans[0].attributes["gen_ai.tool.name"] == "get_weather"
+    assert tool_spans[0].attributes["gen_ai.tool.call.id"] == "tool_1"
 
     # Verify parenting
     agent_span = [s for s in spans if s.name.startswith("invoke_agent")][0]
@@ -238,6 +240,36 @@ async def test_anthropic_multiple_tools_parallel(otel_setup):
     spans = _spans(otel_setup)
     tool_spans = [s for s in spans if s.name.startswith("execute_tool")]
     assert len(tool_spans) == 2
+
+
+async def failing_tool() -> str:
+    """Always fails."""
+    raise ValueError("boom")
+
+
+@pytest.mark.asyncio
+async def test_anthropic_execute_tool_error_span(otel_setup):
+    tool_call = ToolUseBlock(
+        type="tool_use", id="tool_1", name="failing_tool", input={}
+    )
+    client = _anthropic_client(
+        _anthropic_message("Calling.", [tool_call]),
+        _anthropic_message("Done"),
+    )
+    input = [{"role": "user", "content": "go"}]
+
+    await anthropic.agent(
+        client,
+        messages=input,
+        fns=[failing_tool],
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+    )
+
+    span = [s for s in _spans(otel_setup) if s.name.startswith("execute_tool")][0]
+    assert span.attributes["error.type"] == "ValueError"
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.status.description == "boom"
 
 
 # ── OpenAI tests ─────────────────────────────────────────────
@@ -294,6 +326,8 @@ async def test_openai_execute_tool_spans(otel_setup):
     assert len(tool_spans) == 1
     assert tool_spans[0].name == "execute_tool get_weather"
     assert tool_spans[0].attributes["gen_ai.operation.name"] == "execute_tool"
+    assert tool_spans[0].attributes["gen_ai.tool.name"] == "get_weather"
+    assert tool_spans[0].attributes["gen_ai.tool.call.id"] == "call_1"
 
     agent_span = [s for s in spans if s.name.startswith("invoke_agent")][0]
     assert tool_spans[0].parent.span_id == agent_span.context.span_id
@@ -317,6 +351,23 @@ async def test_openai_multiple_tools_parallel(otel_setup):
     spans = _spans(otel_setup)
     tool_spans = [s for s in spans if s.name.startswith("execute_tool")]
     assert len(tool_spans) == 2
+
+
+@pytest.mark.asyncio
+async def test_openai_execute_tool_error_span(otel_setup):
+    tc = _openai_tool_call("call_1", "failing_tool")
+    client = _openai_client(
+        _openai_response("Calling.", [tc]),
+        _openai_response("Done"),
+    )
+    input = [{"role": "user", "content": "go"}]
+
+    await openai.agent(client, input=input, fns=[failing_tool], model="gpt-4o")
+
+    span = [s for s in _spans(otel_setup) if s.name.startswith("execute_tool")][0]
+    assert span.attributes["error.type"] == "ValueError"
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.status.description == "boom"
 
 
 # ── Subagent nesting test ────────────────────────────────────

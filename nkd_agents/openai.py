@@ -112,12 +112,16 @@ async def tool(
 ) -> FunctionCallOutput:
     with tracer.start_as_current_span(f"execute_tool {tool_call.name}") as span:
         span.set_attribute("gen_ai.operation.name", "execute_tool")
+        span.set_attribute("gen_ai.tool.name", tool_call.name)
+        span.set_attribute("gen_ai.tool.call.id", tool_call.call_id)
         try:
             fn = next(fn for fn in fns if fn.__name__ == tool_call.name)
             result = await fn(**json.loads(tool_call.arguments))
         except Exception as e:
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
+            span.set_attribute("error.type", type(e).__name__)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
         if isinstance(result, FileContent):
             result = bytes_to_content(result.data, result.ext)
         return {
