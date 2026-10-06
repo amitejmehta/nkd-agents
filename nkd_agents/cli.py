@@ -138,7 +138,7 @@ class CLI:
         mode = self.mode.split(" (")[0]
         model = self.kwargs["model"].split("claude-")[1]
         think = "✓" if self.kwargs.get("thinking") == ADAPTIVE else "✗"
-        return f" {busy} {mode} (s-tab) {model} (c-l) think:{think} (tab)"
+        return f" {busy} {mode} (shift-tab) {model} (ctrl-l) think:{think} (tab)"
 
     def cycle_mode(self) -> None:
         self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]

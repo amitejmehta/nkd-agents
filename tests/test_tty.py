@@ -346,12 +346,12 @@ class TestRender:
         whole screen and the box walks upward. Clipping is what makes the painted
         height equal the computed height, which every other calculation assumes."""
         p, capsys = screen
-        p.toolbar = lambda: "model (c-l)  mode (s-tab)  think:off (tab)"
+        p.toolbar = lambda: "model (ctrl-l)  mode (shift-tab)  think:off (tab)"
         type_(p, "abcdefghijklmnop")
         p._render()
         rows = painted(capsys.readouterr().out)
         assert rows and all(cells(text) <= self.COLS for text in rows.values())
-        assert rows[20] == dim("model (c-l")  # the toolbar is cut, not wrapped
+        assert rows[20] == dim("model (ctr")  # the toolbar is cut, not wrapped
 
     def test_toolbar_newline_cannot_scroll_the_screen(self, screen) -> None:
         p, capsys = screen
@@ -362,7 +362,7 @@ class TestRender:
     def test_style_and_border_are_honored(self, screen) -> None:
         p, capsys = screen
         p.style = GREEN
-        p.toolbar = lambda: "busy model (c-l)  think:off (tab)"
+        p.toolbar = lambda: "busy model (ctrl-l)  think:off (tab)"
         p._render()
         rows = painted(capsys.readouterr().out)
         assert rows[17] == GREEN + "─" * 10 + RESET
