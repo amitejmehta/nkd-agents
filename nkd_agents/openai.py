@@ -74,12 +74,12 @@ def extract_text_and_tool_calls(
         if item.type == "reasoning":
             for content in item.summary:
                 if content.type == "summary_text":
-                    logger.info(f"{response.model} Reasoning: {content.text}")
+                    logger.info(f"Reasoning: {content.text}")
         if item.type == "message":
             for content in item.content:
                 if content.type == "output_text":
                     text += content.text
-                    logger.info(f"{response.model}: {content.text}")
+                    logger.info(content.text)
         elif item.type == "function_call":
             tool_calls.append(item)
 
@@ -157,7 +157,7 @@ async def agent(
         raise ValueError("input must be provided and must be a list")
     if "model" not in kwargs:
         raise ValueError("model is required")
-    if "tools" not in kwargs:
+    if not kwargs.get("tools"):
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
 
     with tracer.start_as_current_span(f"invoke_agent {kwargs['model']}") as span:
@@ -167,7 +167,7 @@ async def agent(
         while True:
             span.set_attribute("iterations", i)
             resp = await client.responses.create(**kwargs)
-            logger.info(f"[{i}] usage={resp.usage}")
+            logger.info(f"turn {i} · {resp.status} · {resp.usage}")
 
             text, tool_calls = extract_text_and_tool_calls(resp)
             results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])

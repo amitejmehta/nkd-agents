@@ -59,10 +59,10 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
 
     for block in response.content:
         if block.type == "thinking":
-            logger.info(f"{response.model}: Thinking: {block.thinking}")
+            logger.info(f"Thinking: {block.thinking}")
         if block.type == "text":
             text += block.text
-            logger.info(f"{response.model}: {block.text}")
+            logger.info(block.text)
         elif block.type == "tool_use":
             tool_calls.append(block)
 
@@ -104,6 +104,8 @@ async def tool(
         except Exception as e:
             result = f"Error calling tool '{tool_call.name}': {e}"
             logger.warning(result)
+            span.set_attribute("error", str(e))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
         if isinstance(result, FileContent):
             result = [bytes_to_content(result.data, result.ext)]
         if isinstance(result, str):
@@ -129,9 +131,9 @@ async def agent(
     """
     if not isinstance(kwargs["messages"], list):
         raise ValueError("messages is mutated in-place as history and must be a list")
-    if "tools" not in kwargs:
+    if not kwargs.get("tools"):
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
-    if kwargs["tools"]:
+    if kwargs.get("tools"):
         kwargs.setdefault("cache_control", {"type": "ephemeral"})
 
     with tracer.start_as_current_span(f"invoke_agent {kwargs['model']}") as span:
@@ -141,7 +143,7 @@ async def agent(
         while True:
             span.set_attribute("iterations", i)
             resp = await client.messages.create(**kwargs)
-            logger.info(f"[{i}] stop_reason={resp.stop_reason}\nusage={resp.usage}")
+            logger.info(f"turn {i} · {resp.stop_reason} · {resp.usage}")
 
             text, tool_calls = extract_text_and_tool_calls(resp)
             results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])

@@ -1,3 +1,6 @@
+import logging
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from anthropic.types import (
     Message,
@@ -9,6 +12,7 @@ from anthropic.types import (
 from pydantic import BaseModel
 
 from nkd_agents.anthropic import (
+    agent,
     bytes_to_content,
     extract_text_and_tool_calls,
     output_format,
@@ -252,3 +256,109 @@ async def test_tool_file_content_text():
     result = await tool(tool_call, [read_txt])
     assert result["content"][0]["type"] == "text"
     assert result["content"][0]["text"] == "hello world"
+
+
+def _client(*responses: Message) -> MagicMock:
+    client = MagicMock()
+    client.messages.create = AsyncMock(side_effect=list(responses))
+    return client
+
+
+def _message(content, stop_reason="end_turn") -> Message:
+    return Message(
+        id="msg_1",
+        type="message",
+        role="assistant",
+        content=content,
+        model="claude-3-5-sonnet-20241022",
+        stop_reason=stop_reason,
+        usage=Usage(input_tokens=10, output_tokens=5),
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_logs_turn_format(caplog):
+    """Each turn logs `turn {i} · {stop_reason} · {usage}`."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    client = _client(
+        _message(
+            [ToolUseBlock(type="tool_use", id="t1", name="echo", input={"text": "x"})],
+            "tool_use",
+        ),
+        _message([TextBlock(type="text", text="done")]),
+    )
+    with caplog.at_level(logging.INFO, logger="nkd_agents.anthropic"):
+        await agent(
+            client,
+            [echo],
+            model="m",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines[0].startswith("turn 0 · tool_use · ")
+    assert lines[1].startswith("turn 1 · end_turn · ")
+    assert "Usage(" in lines[0] or "input_tokens=10" in lines[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", [None, []])
+async def test_agent_empty_tools_falls_back_to_fns(empty):
+    """tools=None or tools=[] still gets schemas from fns."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    client = _client(_message([TextBlock(type="text", text="done")]))
+    await agent(
+        client,
+        [echo],
+        model="m",
+        max_tokens=10,
+        messages=[{"role": "user", "content": "hi"}],
+        tools=empty,
+    )
+    sent = client.messages.create.call_args.kwargs
+    assert [t["name"] for t in sent["tools"]] == ["echo"]
+    assert sent["cache_control"] == {"type": "ephemeral"}
+
+
+@pytest.mark.asyncio
+async def test_agent_explicit_tools_preserved():
+    """Non-empty caller-supplied tools are not overwritten by fns."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    custom = [tool_schema(echo) | {"name": "custom"}]
+    client = _client(_message([TextBlock(type="text", text="done")]))
+    await agent(
+        client,
+        [echo],
+        model="m",
+        max_tokens=10,
+        messages=[{"role": "user", "content": "hi"}],
+        tools=custom,
+    )
+    assert client.messages.create.call_args.kwargs["tools"] == custom
+
+
+@pytest.mark.asyncio
+async def test_agent_no_tools_no_cache_control():
+    """No fns and no tools: no cache_control is set."""
+    client = _client(_message([TextBlock(type="text", text="done")]))
+    await agent(
+        client,
+        model="m",
+        max_tokens=10,
+        messages=[{"role": "user", "content": "hi"}],
+    )
+    sent = client.messages.create.call_args.kwargs
+    assert sent["tools"] == []
+    assert "cache_control" not in sent
