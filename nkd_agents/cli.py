@@ -5,24 +5,37 @@ from pathlib import Path
 
 from anthropic import AsyncAnthropic
 
-from .anthropic import agent, extract_text_and_tool_calls, tool_schema
+from .anthropic import agent, tool_schema
 from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, write_file
 from .tty import ESC, Prompt
 from .utils import load_env
-from .web import fetch_url, web_search
 
 logger = logging.getLogger(__name__)
 
-FNS = (read_file, write_file, edit_file, bash, fetch_url, web_search)
+try:
+    from .web import fetch_url, web_search
+
+    FNS = (read_file, write_file, edit_file, bash, fetch_url, web_search)
+except ImportError:
+    logger.warning("web search tools not available")
+    FNS = (read_file, write_file, edit_file, bash)
+
 TOOLS = [tool_schema(fn) for fn in FNS]
 
 # constants
-MODELS = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001")
+MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-4-5")
+ADAPTIVE = {"type": "adaptive", "display": "summarized"}
+BETWEEN_TOOLS = {"type": "between_tools"}
 COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
 summary that will replace this raw history. The repository/filesystem is the source of truth \
 for anything reconstructable by re-reading files or re-running commands — do not preserve \
 information that is cheap to rediscover from the environment.
+
+If the transcript begins with a "[compacted summary of earlier session]" message, it is a prior \
+summary of even earlier work. Carry forward all of its still-relevant facts verbatim in substance \
+(objective, constraints, decisions, files modified, discoveries); only drop items the later \
+transcript has made obsolete. Merge it with the new work into one coherent summary.
 
 Preserve, concretely and specifically (not vague paraphrase):
 - The user's original objective and any requirements/constraints stated along the way, \
@@ -75,8 +88,8 @@ class CLI:
         self.kwargs = {
             "model": os.environ.get("NKD_MODEL", MODELS[0]),
             "max_tokens": MAX_TOKENS,
-            "thinking": {"type": "disabled"},
         }
+        self.reset_thinking()
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
 
@@ -98,11 +111,19 @@ class CLI:
     def switch_model(self) -> None:
         next_model_idx = (MODELS.index(self.kwargs["model"]) + 1) % len(MODELS)
         self.kwargs["model"] = MODELS[next_model_idx]
+        self.reset_thinking()
+
+    def reset_thinking(self) -> None:
+        self.kwargs.pop("thinking", None)
+        if self.kwargs["model"] == "claude-sonnet-5-5":
+            self.kwargs["thinking"] = BETWEEN_TOOLS
+        elif self.kwargs["model"] == "claude-opus-5-5":
+            self.kwargs["thinking"] = ADAPTIVE
 
     def toggle_thinking(self) -> None:
-        on = {"type": "adaptive", "display": "summarized"}
-        off = {"type": "disabled"}
-        self.kwargs["thinking"] = on if self.kwargs["thinking"] == off else off
+        if self.kwargs["model"] == "claude-sonnet-5-5":
+            on = self.kwargs["thinking"] == BETWEEN_TOOLS
+            self.kwargs["thinking"] = ADAPTIVE if on else BETWEEN_TOOLS
 
     def interrupt(self) -> None:
         if self.session.buf:
@@ -110,12 +131,13 @@ class CLI:
             return
         if self.llm_task and not self.llm_task.done():
             self.llm_task.cancel()
+            print(f"{RED}\nInterrupted.\n{RESET}")
 
     def toolbar(self) -> str:
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
         mode = self.mode.split(" (")[0]
         model = self.kwargs["model"].split("claude-")[1]
-        think = "✓" if self.kwargs["thinking"]["type"] == "adaptive" else "✗"
+        think = "✓" if self.kwargs.get("thinking") == ADAPTIVE else "✗"
         return f" {busy} {mode} (s-tab) {model} (c-l) think:{think} (tab)"
 
     def cycle_mode(self) -> None:
@@ -131,13 +153,13 @@ class CLI:
     async def compact(self) -> None:
         if not self.messages:
             return
-        resp = await self.client.messages.create(
+        summary = await agent(
+            self.client,
             messages=[*self.messages, {"role": "user", "content": COMPACT_PROMPT}],
             model="claude-haiku-4-5",
             max_tokens=COMPACT_TOKENS // 10,
             thinking={"type": "disabled"},
         )
-        summary, _ = extract_text_and_tool_calls(resp)
         self.messages[:] = [
             {
                 "role": "user",
@@ -155,7 +177,7 @@ class CLI:
             try:
                 await self.llm_task
             except asyncio.CancelledError:
-                print(f"{RED}\nInterrupted.\n{RESET}")
+                pass
             except Exception as e:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
@@ -178,8 +200,12 @@ class CLI:
 
 def main() -> None:
     try:
-        configure_logging(LOG_LEVEL)
+        configure_logging(LOG_LEVEL, metadata=False)
         print(f"\n\n{DIM}nkd-agents\n\n{RESET}")
         asyncio.run(CLI().start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
+
+
+if __name__ == "__main__":
+    main()

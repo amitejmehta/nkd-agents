@@ -57,6 +57,19 @@ def test_configure_logging_sets_level():
     assert logging.root.level == logging.WARNING
 
 
+def test_configure_logging_metadata_off(capsys):
+    """Test configure_logging(metadata=False) omits prefix but keeps context."""
+    configure_logging(metadata=False)
+    logging_ctx.set({"key": "value"})
+    logging.getLogger(__name__).info("hello")
+    err = capsys.readouterr().err
+    assert "hello" in err
+    assert "key" in err
+    for omitted in ("test_logging", "INFO"):
+        assert omitted not in err
+    logging_ctx.set({})
+
+
 def test_configure_logging_adds_filter():
     """Test configure_logging adds ContextFilter to handler"""
     configure_logging()
@@ -88,4 +101,4 @@ class TestDisplayDiff:
         """display_diff logs colored diff output."""
         caplog.set_level(logging.INFO)
         display_diff("old\nline1\nline2", "new\nline1\nline3", "test.txt")
-        assert "Update: test.txt" in caplog.text
+        assert "± test.txt" in caplog.text

@@ -171,7 +171,7 @@ class TestBoxIntegrity:
     def test_overflowing_toolbar_would_destroy_output(self) -> None:
         """The consequence behind test_no_row_ever_exceeds_cols: without the clip,
         the toolbar wraps and its tail lands on a line of real output."""
-        t = Term(cols=20, toolbar=" claude-sonnet-5 (c-l)  think:off (tab)")
+        t = Term(cols=20, toolbar=" claude-sonnet-5-5 (c-l)  think:off (tab)")
         t.feed("".join(f"output {i}\r\n" for i in range(4)))
         t.render()
         t.type("h")

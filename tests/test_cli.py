@@ -56,7 +56,7 @@ class TestInit:
     def test_defaults(self, cli: CLI):
         assert cli.kwargs["model"] == MODELS[0]
         assert cli.kwargs["max_tokens"] > 0
-        assert cli.kwargs["thinking"] == {"type": "disabled"}
+        assert cli.kwargs["thinking"] == {"type": "between_tools"}
         assert cli.messages == []
         assert cli.llm_task is None
 
@@ -92,12 +92,34 @@ class TestSwitchModel:
 
 
 class TestToggleThinking:
-    def test_toggles(self, cli: CLI):
-        assert cli.kwargs["thinking"]["type"] == "disabled"
+    def test_sonnet_5_5_toggles(self, cli: CLI):
+        assert cli.kwargs["model"] == "claude-sonnet-5-5"
+        assert cli.kwargs["thinking"] == {"type": "between_tools"}
         cli.toggle_thinking()
         assert cli.kwargs["thinking"]["type"] == "adaptive"
         cli.toggle_thinking()
-        assert cli.kwargs["thinking"]["type"] == "disabled"
+        assert cli.kwargs["thinking"] == {"type": "between_tools"}
+
+    def test_opus_5_5_never_disabled(self, cli: CLI):
+        cli.switch_model()
+        assert cli.kwargs["model"] == "claude-opus-5-5"
+        assert cli.kwargs["thinking"]["type"] == "adaptive"
+        cli.toggle_thinking()
+        assert cli.kwargs["thinking"]["type"] == "adaptive"
+
+    def test_haiku_4_5_omits_thinking(self, cli: CLI):
+        cli.switch_model()
+        cli.switch_model()
+        assert cli.kwargs["model"] == "claude-haiku-4-5"
+        assert "thinking" not in cli.kwargs
+        cli.toggle_thinking()
+        assert "thinking" not in cli.kwargs
+
+    def test_switch_model_resets_thinking(self, cli: CLI):
+        cli.toggle_thinking()
+        for _ in range(len(MODELS)):
+            cli.switch_model()
+        assert cli.kwargs["thinking"] == {"type": "between_tools"}
 
 
 class TestCycleMode:
@@ -290,8 +312,8 @@ class TestCompact:
         ) as mock_create:
             await cli.compact()
             call_kwargs = mock_create.call_args.kwargs
-            # full history plus the trailing compact-instruction message
-            assert len(call_kwargs["messages"]) == 11
+            # full history, the compact instruction, then agent()'s appended reply
+            assert len(call_kwargs["messages"]) == 12
 
         assert len(cli.messages) == 2
         assert "summary text" in cli.messages[0]["content"]
@@ -321,7 +343,7 @@ class TestCompact:
 
 class TestLLMLoopCompactTrigger:
     async def test_triggers_compact_over_threshold(self, cli: CLI, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKEN_THRESHOLD", 1)
+        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKENS", 1)
 
         async def mock_llm(*args, **kwargs):
             kwargs["messages"].append({"role": "assistant", "content": "hi"})
@@ -340,7 +362,7 @@ class TestLLMLoopCompactTrigger:
             mock_compact.assert_called_once()
 
     async def test_skips_compact_under_threshold(self, cli: CLI, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKEN_THRESHOLD", 10_000_000)
+        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKENS", 10_000_000)
 
         async def mock_llm(*args, **kwargs):
             kwargs["messages"].append({"role": "assistant", "content": "hi"})

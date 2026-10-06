@@ -13,16 +13,16 @@ logger = logging.getLogger(__name__)
 
 
 # Working directory for tools. When None (default), paths resolve against the
-# Python process cwd with no restrictions. When set to a Path, all tool calls
+# Python process cwd with no restrictions. When set to a Path, read/write/edit
 # are sandboxed to that directory: absolute paths and symlink escapes are
-# rejected, and relative paths resolve against it.
+# rejected, and relative paths resolve against it. For bash, just sets the cwd.
 cwd_ctx = ContextVar[Path | None]("cwd_ctx", default=None)
 
 
 def resolve(path: str) -> Path:
     """Resolve path against cwd_ctx, enforcing sandbox if cwd_ctx is set."""
     sandbox = cwd_ctx.get()
-    p = Path(path)
+    p = Path(path).expanduser() if sandbox is None else Path(path)
     if sandbox is None:
         return p if p.is_absolute() else Path.cwd() / p
     if p.is_absolute():
@@ -47,7 +47,7 @@ async def read_file(path: str) -> FileContent:
     """Read and return the contents of a file at the given path. Only works with files, not directories.
     Supports image (jpg, jpeg, png, gif, webp), PDF, and all text files."""
     p = resolve(path)
-    logger.info(f"\nReading: {GREEN}{p}{RESET}\n")
+    logger.info(f"{DIM}<{RESET} {GREEN}{p}{RESET}")
     ext, size = p.suffix[1:].lower(), p.stat().st_size
     if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and size > 50000:
         raise ValueError(
@@ -113,7 +113,7 @@ async def edit_file(
 
 async def bash(command: str, timeout: int = 30) -> str:
     """Execute a bash command and return the results.
-    STDOUT is truncated to 50,000 characters.
+    STDOUT/STDERR are truncated to 50,000 characters.
 
     Returns "STDOUT: {stdout}\nSTDERR: {stderr}\nEXIT CODE: {returncode}", or
     "Error: Command timed out after {timeout} seconds" (process group is SIGKILLed).
@@ -132,9 +132,7 @@ async def bash(command: str, timeout: int = 30) -> str:
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        with contextlib.suppress(
-            ProcessLookupError
-        ):  # already exited before we could kill it
+        with contextlib.suppress(ProcessLookupError):  # exited before we could kill it
             os.killpg(process.pid, signal.SIGKILL)  # pgid == pid (start_new_session)
         await process.communicate()
         return f"Error: Command timed out after {timeout} seconds"

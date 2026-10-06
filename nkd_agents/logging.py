@@ -21,12 +21,11 @@ class ContextFilter(logging.Filter):
         return True
 
 
-def configure_logging(level: int = logging.INFO) -> None:
-    if IS_TTY:
-        # ANSI codes: \033[1m = bold, \033[2m = dim, \033[38;5;N = 256 color, \033[0m = reset
-        fmt = "\n\033[38;5;65m%(asctime)s\033[38;5;102m | %(levelname)s\033[0m\033[38;5;103m | %(name)s:%(funcName)s:%(lineno)s\033[38;5;255m - %(message)s\033[38;5;242m%(context)s\033[0m"
-    else:
-        fmt = "%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)s - %(message)s%(context)s"
+def configure_logging(level: int = logging.INFO, metadata: bool = True) -> None:
+    prefix = "%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)s - "
+    if not metadata:
+        prefix = ""
+    fmt = f"\n{DIM}{prefix}{RESET}%(message)s{RESET}{DIM}%(context)s{RESET}"
     handler = logging.StreamHandler(sys.stderr)
     handler.addFilter(ContextFilter())
     logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
@@ -36,11 +35,11 @@ def configure_logging(level: int = logging.INFO) -> None:
 
 def display_diff(old: str, new: str, path: str) -> None:
     """Display a colorized unified diff in the console."""
-    diff = difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm="")
+    diff = list(difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm=""))
 
-    lines = [f"\nUpdate: {path}"]
-    for line in diff:
+    lines = [f"{DIM}±{RESET} {path}"]
+    for line in diff[2:]:
         color = GREEN if line[0] == "+" else RED if line[0] == "-" else ""
-        lines.append(f"{color}{line}{RESET}")
+        lines.append(f"  {color}{line}{RESET}")
 
     logger.info("\n".join(lines))

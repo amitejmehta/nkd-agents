@@ -1,4 +1,6 @@
 import base64
+import logging
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from openai.types.responses import (
@@ -12,6 +14,7 @@ from openai.types.responses.response_reasoning_item import Summary
 from pydantic import BaseModel
 
 from nkd_agents.openai import (
+    agent,
     bytes_to_content,
     extract_text_and_tool_calls,
     output_format,
@@ -252,3 +255,84 @@ async def test_tool_file_content_text():
 
     result = await tool(_tool_call("c3", "read_txt", '{"path": "f.txt"}'), [read_txt])
     assert result["output"] == "hello world"
+
+
+def _client(*responses: Response) -> MagicMock:
+    client = MagicMock()
+    client.responses.create = AsyncMock(side_effect=list(responses))
+    return client
+
+
+def _text_msg(text: str) -> ResponseOutputMessage:
+    return ResponseOutputMessage(
+        id="msg_1",
+        type="message",
+        role="assistant",
+        status="completed",
+        content=[ResponseOutputText(type="output_text", text=text, annotations=[])],
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_logs_turn_format(caplog):
+    """Each turn logs `turn {i} · {status} · {usage}`."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    client = _client(
+        _response([_tool_call("c1", "echo", '{"text": "x"}')]),
+        _response([_text_msg("done")]),
+    )
+    with caplog.at_level(logging.INFO, logger="nkd_agents.openai"):
+        await agent(
+            client,
+            [echo],
+            model="m",
+            input=[{"role": "user", "content": "hi"}],
+        )
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines[0].startswith("turn 0 · completed · ")
+    assert lines[1].startswith("turn 1 · completed · ")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", [None, []])
+async def test_agent_empty_tools_falls_back_to_fns(empty):
+    """tools=None or tools=[] still gets schemas from fns."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    client = _client(_response([_text_msg("done")]))
+    await agent(
+        client,
+        [echo],
+        model="m",
+        input=[{"role": "user", "content": "hi"}],
+        tools=empty,
+    )
+    sent = client.responses.create.call_args.kwargs
+    assert [t["name"] for t in sent["tools"]] == ["echo"]
+
+
+@pytest.mark.asyncio
+async def test_agent_explicit_tools_preserved():
+    """Non-empty caller-supplied tools are not overwritten by fns."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    custom = [tool_schema(echo) | {"name": "custom"}]
+    client = _client(_response([_text_msg("done")]))
+    await agent(
+        client,
+        [echo],
+        model="m",
+        input=[{"role": "user", "content": "hi"}],
+        tools=custom,
+    )
+    assert client.responses.create.call_args.kwargs["tools"] == custom
