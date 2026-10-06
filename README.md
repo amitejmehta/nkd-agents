@@ -32,7 +32,7 @@ I built the framework for control of low-level primitives with little overhead �
 - No `grep`/`glob` as standalone tools. **Built, then removed.** Fully subsumed by `bash` (`rg`, `find`/`ls`) — an eval harness showed no accuracy or turn-count benefit from a dedicated `glob` tool, and the model fell back to `bash` even when `glob` was offered.
 - No background bash. **Built, then removed.** The rule was: background a command iff its result isn't on the critical path of the next action — in practice that was rare enough not to justify the complexity.
 - No cache warming. **Built, then removed.** It auto-warmed the cache after each turn since Anthropic's cache TTL is only 5 minutes — but aggressive auto-compact already keeps context small enough that cache misses are cheap regardless.
-- No dedicated sub-agent tool. **Built, then removed.** Once auto-compact handles context hygiene, the only reason left to delegate is independence/parallelism — `nkd -p "<prompt>"` already spawns a fresh agent process for that (see the [`subagents`](skills/subagents) skill). A dedicated tool would just make over-delegation easier to reach for.
+- No sub-agents, no headless mode. **Built, then removed.** Once auto-compact handles context hygiene, the only reason left to delegate is independence/parallelism — and a new terminal gives both, with you as the explicit channel and no risk of the parent leaking context into the child. Delegation tools just make over-delegation easier to reach for.
 
 The rest of this README is the actual documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
