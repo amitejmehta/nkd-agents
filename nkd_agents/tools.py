@@ -20,7 +20,6 @@ cwd_ctx = ContextVar[Path | None]("cwd_ctx", default=None)
 
 
 def resolve(path: str) -> Path:
-    """Resolve path against cwd_ctx, enforcing sandbox if cwd_ctx is set."""
     sandbox = cwd_ctx.get()
     p = Path(path).expanduser() if sandbox is None else Path(path)
     if sandbox is None:

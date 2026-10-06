@@ -5,7 +5,6 @@ from typing import Any, Callable, Literal, get_args, get_origin
 
 
 def load_env(path: str = ".env") -> None:
-    """Load environment variables from a .env file."""
     if not Path(path).exists():
         return
     for line in Path(path).read_text().splitlines():
@@ -30,9 +29,6 @@ def _process_literal(args: list[Any], param_sig: str) -> dict[str, Any]:
 
 
 def process_param_annotation(annotation: Any, param_sig: str) -> dict[str, Any]:
-    """Convert a parameter annotation to JSON schema.
-    Supports: str, int, float, bool, Literal of core types.
-    """
     origin, args = get_origin(annotation), get_args(annotation)
     if origin is Literal:
         return _process_literal(list(args), param_sig)
@@ -44,14 +40,6 @@ def process_param_annotation(annotation: Any, param_sig: str) -> dict[str, Any]:
 def extract_function_params(
     func: Callable[..., Any],
 ) -> dict[str, dict[str, Any]]:
-    """Extract parameter schema and required list from a function signature.
-    Supports: str, int, float, bool, Literal of core types.
-
-    Returns:
-        tuple: (params_dict, required_list)
-            - params_dict: Maps parameter names to their type definitions
-            - required_list: List of required parameter names (no defaults)
-    """
     params = {}
 
     for param in inspect.signature(func).parameters.values():

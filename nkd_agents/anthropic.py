@@ -26,7 +26,6 @@ tracer = trace.get_tracer("nkd-agents.anthropic")
 
 
 def output_format(model: type[BaseModel]) -> JSONOutputFormatParam:
-    """Build the JSON schema format block for use in output_config."""
     schema = transform_schema(model.model_json_schema())
     return {"type": "json_schema", "schema": schema}
 
@@ -34,7 +33,6 @@ def output_format(model: type[BaseModel]) -> JSONOutputFormatParam:
 def tool_schema(
     func: Callable[..., Awaitable[str | FileContent | Iterable[Content]]],
 ) -> ToolParam:
-    """Convert a function to Anthropic's tool JSON schema."""
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
 
@@ -54,7 +52,6 @@ def tool_schema(
 
 
 def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlock]]:
-    """Extract text and tool calls from an Anthropic message."""
     text, tool_calls = "", []
 
     for block in response.content:
@@ -70,7 +67,6 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
 
 
 def bytes_to_content(data: bytes, ext: str) -> Content:
-    """Convert bytes to Anthropic content blocks based on media type."""
     ext = ext.lower().replace("jpg", "jpeg")
 
     if ext in ("jpeg", "png", "gif", "webp"):
@@ -118,17 +114,6 @@ async def agent(
     fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]] = (),
     **kwargs: Unpack[MessageCreateParamsBase],
 ) -> str:
-    """Run Claude in agentic loop (run until no tool calls, then return text).
-
-    Args:
-        client: Anthropic client instance
-        fns: Optional list of async tool functions
-        **kwargs: API parameters (messages, model, max_tokens, system, temperature, etc.)
-
-    - Tools must be async functions that return a string OR list of Anthropic content blocks.
-    - messages is mutated in-place after each completed turn — callers see updates
-      immediately, so interrupts preserve all fully-committed turns.
-    """
     if not isinstance(kwargs["messages"], list):
         raise ValueError("messages is mutated in-place as history and must be a list")
     if not kwargs.get("tools"):

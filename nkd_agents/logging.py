@@ -34,7 +34,6 @@ def configure_logging(level: int = logging.INFO, metadata: bool = True) -> None:
 
 
 def display_diff(old: str, new: str, path: str) -> None:
-    """Display a colorized unified diff in the console."""
     diff = list(difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm=""))
 
     lines = [f"{DIM}±{RESET} {path}"]
