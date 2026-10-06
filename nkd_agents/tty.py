@@ -143,19 +143,16 @@ class Prompt:
         return f"[Paste #{n + 1}, {lines} line{'s' * (lines > 1)}]"
 
     def _display(self, s: str) -> str:
-        """`s` with each paste character replaced by its `[Paste #n, k lines]` label."""
         return "".join(
             c if (n := self._paste_idx(c)) is None else self._label(n) for c in s
         )
 
     def _expand(self) -> str:
-        """Buffer with paste characters replaced by their pasted text."""
         return "".join(
             c if (n := self._paste_idx(c)) is None else self.pastes[n] for c in self.buf
         )
 
     def _seek(self, direction: int, word: bool) -> int:
-        """Cursor position after moving one char or one word."""
         if not word:
             return max(0, min(len(self.buf), self.cursor + direction))
         if direction < 0:
@@ -192,7 +189,6 @@ class Prompt:
         sys.stdout.flush()
 
     def _input_rows(self, cols: int) -> list[str]:
-        """Wrap label+buf into terminal rows, with a reverse-video fake cursor."""
         text = self.label + self._display(self.buf)
         offset = len(self.label) + len(self._display(self.buf[: self.cursor]))
         rows = [text[j : j + cols] for j in range(0, len(text) + 1, cols)]
@@ -203,30 +199,12 @@ class Prompt:
         return rows
 
     def _room(self, rows: int) -> None:
-        """Put `rows` empty rows below the cursor, leaving the cursor where it was.
-
-        The only way space is ever made. Idempotent: once the cursor is `rows` from
-        the bottom the indexes just walk down and back; if the box grew, the last
-        ones scroll output up by exactly the shortfall. \\x1b[r first, or they would
-        scroll inside the previous render's region. \\x1b[0A would move 1, not 0.
-
-        Two things real terminals do that pyte does not, so no screen test can catch
-        either; tests/test_tty.py pins the exact bytes instead:
-        - DECSTBM (\\x1b[r, with or without params) homes the cursor to (1,1). Without
-          the \\x1b7/\\x1b8 around it the cursor would end up at the top of the screen
-          and every print() after this render would overwrite output from row 1.
-        - The tty layer still has OPOST|ONLCR on, so a "\\n" would go out as CR+LF
-          and move the cursor to column 1, truncating any output line written without
-          a trailing newline. \\x1bD (IND) scrolls the same but never carriage-returns.
-        """
         self._write(
             SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows + up(rows)
         )
         self._rows = rows
 
     def _layout(self, cols: int, height: int) -> tuple[list[str], int]:
-        """Box rows and the 1-based screen row they start on. Pure: no I/O."""
-
         def chrome(s: str) -> str:
             return self.style + s.replace("\n", " ")[:cols] + RESET
 
@@ -265,12 +243,6 @@ class Prompt:
     # -- input --------------------------------------------------------------
 
     async def _fill(self) -> None:
-        """Wait for stdin, then append everything it has to `_pending`.
-
-        add_reader, not run_in_executor: a worker thread blocked in os.read cannot
-        be cancelled, and the default executor joins its threads at exit, so ctrl-c
-        would hang until a second one. A reader is just removed.
-        """
         loop = asyncio.get_running_loop()
         readable = loop.create_future()
         loop.add_reader(self.fd, readable.set_result, None)
@@ -301,7 +273,6 @@ class Prompt:
 
     @contextlib.contextmanager
     def _raw(self) -> Iterator[None]:
-        """cbreak mode, enter as \\r (ICRNL off), hidden cursor, bracketed paste."""
         old = termios.tcgetattr(self.fd)
         tty.setcbreak(self.fd)  # no echo, no line buffering; ctrl-c still a keystroke
         mode = termios.tcgetattr(self.fd)
@@ -331,8 +302,6 @@ class Prompt:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, old)
 
     async def prompt_async(self, label: str = "❯ ") -> str:
-        """The submitted line, expanded. Echoed on a line of its own: the leading
-        "\\n" ends whatever a concurrent writer left half-written."""
         self.buf, self.cursor, self.pastes, self.label = "", 0, [], label
         self._rows = 0  # the last box was erased at teardown; nothing to reclaim
         with self._raw():

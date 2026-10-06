@@ -28,7 +28,6 @@ tracer = trace.get_tracer("nkd-agents.openai")
 
 
 def output_format(model: type[BaseModel]) -> ResponseFormatTextConfigParam:
-    """Build the JSON schema format block with strict=True for use in text= kwarg."""
     schema = model.model_json_schema()
     schema["additionalProperties"] = False
     return {
@@ -44,7 +43,6 @@ def tool_schema(
         ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
     ],
 ) -> FunctionToolParam:
-    """Convert a function to OpenAI's tool JSON schema"""
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
 
@@ -67,7 +65,6 @@ def tool_schema(
 def extract_text_and_tool_calls(
     response: Response,
 ) -> tuple[str, list[ResponseFunctionToolCall]]:
-    """Extract text and tool calls from an OpenAI response."""
     text, tool_calls = "", []
 
     for item in response.output:
@@ -89,7 +86,6 @@ def extract_text_and_tool_calls(
 def bytes_to_content(
     data: bytes, ext: str
 ) -> str | ResponseFunctionCallOutputItemListParam:
-    """Convert bytes to OpenAI tool output format."""
     ext = ext.lower().replace("jpg", "jpeg")
     if ext in ("jpeg", "png", "gif", "webp"):
         b64 = base64.standard_b64encode(data).decode("utf-8")
@@ -140,19 +136,6 @@ async def agent(
     ] = (),
     **kwargs: Unpack[ResponseCreateParamsNonStreaming],
 ) -> str:
-    """Run GPT in agentic loop (run until no tool calls, then return text).
-
-    Args:
-        client: OpenAI client instance
-        fns: Optional list of async tool functions
-        **kwargs: API parameters (input, model, temperature, reasoning, etc.)
-
-    - Tools must be async functions that return a string OR list of OpenAI content blocks.
-    - Tools should handle their own errors and return descriptive, concise error strings.
-    - input must be a list[ResponseInputItemParam]. Passing a string raises ValueError.
-    - input is mutated in-place after each completed turn — callers see updates
-      immediately, so interrupts preserve all fully-committed turns.
-    """
     if not kwargs.get("input") or not isinstance(kwargs.get("input"), list):
         raise ValueError("input must be provided and must be a list")
     if "model" not in kwargs:
