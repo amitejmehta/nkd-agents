@@ -16,12 +16,12 @@ from .tools import resolve
 logger = logging.getLogger(__name__)
 
 
-async def web_search(query: str, max_results: int = 5) -> str:
+async def web_search(query: str, max_results: int) -> str:
     """Search the web and return results.
 
     Args:
         query: Search query string
-        max_results: Maximum number of results to return (default: 5)
+        max_results: Maximum number of results to return (use 5 unless more are needed)
 
     Returns:
         Formatted string with titles, URLs, and snippets

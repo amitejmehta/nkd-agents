@@ -76,7 +76,7 @@ def test_output_format():
 
 
 def test_tool_schema():
-    async def search(query: str, limit: int = 10) -> str:
+    async def search(query: str, limit: int) -> str:
         """Search for something"""
         return ""
 

@@ -77,7 +77,7 @@ async def edit_file(
     path: str,
     old_str: str,
     new_str: str,
-    count: int = 1,
+    replace_all: bool,
 ) -> str:
     """Edit an existing file by replacing old_str with new_str.
 
@@ -85,8 +85,9 @@ async def edit_file(
         path: Path to the file
         old_str: String to search for and replace
         new_str: String to replace with
-        count: Occurrences of old_str in the file to replace. Must be a positive integer or -1 (replace all).
-               count=1 (default) replaces only the first; count=2 the first two; count=-1 all.
+        replace_all: If true, replace every occurrence of old_str. If false, old_str must
+                     occur exactly once (add surrounding context to make it unique).
+                     Use false unless every occurrence should change.
 
     Returns "Success: Updated {path}" or raises ValueError.
     """
@@ -94,24 +95,31 @@ async def edit_file(
 
     if not p.exists():
         raise ValueError(f"File '{path}' not found")
+    if not old_str:
+        raise ValueError("old_str must not be empty")
 
     content = p.read_text(encoding="utf-8")
 
-    if count == 0 or count < -1:
-        raise ValueError("count must be a positive integer or -1 (replace all)")
     if old_str not in content:
         raise ValueError("old_str not found in file content")
     if old_str == new_str:
         raise ValueError("old_str and new_str must be different")
-    edited_content = content.replace(old_str, new_str, count)
+    occurrences = content.count(old_str)
+    if not replace_all and occurrences > 1:
+        raise ValueError(
+            f"old_str is not unique: found {occurrences} occurrences. Add surrounding "
+            "context to make it unique, or pass replace_all=true."
+        )
+    edited_content = content.replace(old_str, new_str, -1 if replace_all else 1)
 
     display_diff(content, edited_content, str(p))
     p.write_text(edited_content, encoding="utf-8")
     return f"Success: Updated {p}"
 
 
-async def bash(command: str, timeout: int = 30) -> str:
+async def bash(command: str, timeout: int) -> str:
     """Execute a bash command and return the results.
+    timeout is in seconds; use 30 unless the command is known to run longer.
     STDOUT/STDERR are truncated to 50,000 characters.
 
     Returns "STDOUT: {stdout}\nSTDERR: {stderr}\nEXIT CODE: {returncode}", or

@@ -15,9 +15,9 @@ I built the CLI to understand the [tool](https://code.claude.com/docs/en/overvie
 
 - `agent()` is a thin wrapper: every `**kwarg` passes through verbatim to `client.messages.create()`/`client.responses.create()`, no translation/wrapping layer — typed against the provider SDK's own `TypedDict`s, so full type safety comes for free.
 - Tools within a turn run concurrently via `asyncio.gather()`; request-scoped state (e.g. current working directory) threads in via `contextvars.ContextVar`, which each coroutine inherits automatically.
-- Auto schema gen from a docstring and type annotations, no DSL — `tool_schema(func)` supports `str`, `int`, `float`, `bool`, `Literal[...]`, `T | None`; `Literal` also constrains token generation to the enum's choices, which a plain string can't. Override with a custom `tools=` (the SDK's own type) if you need more.
+- Auto schema gen from a docstring and type annotations, no DSL — `tool_schema(func)` supports `str`, `int`, `float`, `bool`, `Literal[...]`; `Literal` also constrains token generation to the enum's choices, which a plain string can't. Schemas are always `strict` with every param `required`, so the model writes every value on every call and tool functions can't have default values (they raise); put guidance like "use 30 unless..." in the docstring. Override with a custom `tools=` (the SDK's own type) if you need more.
 - `messages`/`input` mutated in-place, atomically, after each completed turn — an interrupt never leaves an orphaned `tool_use` block.
-- Two OTel spans, `agent_run` and `tool_call` — no dedicated LLM-call span since tracing providers' auto-instrumentation already covers the SDK call.
+- Two OTel spans following the GenAI semconv, `invoke_agent` and `execute_tool` (with `gen_ai.tool.name`, `gen_ai.tool.call.id`, `error.type`) — no dedicated LLM-call span since tracing providers' auto-instrumentation already covers the SDK call.
 
 I built the framework for control of low-level primitives with little overhead — no schema DSL, no message-object wrapping, no hidden retries, full access to the underlying SDK.
 
@@ -25,7 +25,7 @@ I built the framework for control of low-level primitives with little overhead �
 
 - Fast as hell: `Be brief and exacting` prepended to every user message, not stated once in the system prompt, to steer behavior reliably over long contexts (customize via `NKD_START_PHRASE`).
 - Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels, not separate code paths — customize the list, the mode name alone is enough signal for the model to shift behavior.
-- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. Sub-agents prevent pollution up front; this cleans up after the fact, with a much smaller failure surface (one LLM call, directly evalable) than mid-trajectory delegation decisions.
+- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. Cleaning up after the fact has a much smaller failure surface (one LLM call, directly evalable) than mid-trajectory delegation decisions, which is why there are no sub-agents.
 - No `prompt_toolkit`: `tty.py` ships a minimal async, responsive prompt handler; the CLI is async end to end, so you can queue a message while the model is still responding.
 - No edit approval: full autonomy by default, no per-edit approval prompts (same paradigm as `claude --dangerously-skip-permissions`) — use `nkd-sandbox` (Docker) for a safety boundary instead.
 - No streaming: relies on quick responses (via start phrase + think toggle off by default) to feel responsive without streaming, keeping tool-call parsing simple.
