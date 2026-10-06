@@ -38,18 +38,14 @@ class TestExtractFunctionParams:
             extract_function_params(func)
 
     @pytest.mark.asyncio
-    async def test_required_vs_optional(self):
-        """Defaults never leak into the schema, regardless of whether a param has one."""
+    async def test_defaults_unsupported(self):
+        """Params with defaults raise, since strict schemas require every param."""
 
-        async def func(required: str, a: str = "x", b: int = 1, c: str = "y"):
+        async def func(a: str = "x"):
             pass
 
-        params = extract_function_params(func)
-        assert set(params) == {"required", "a", "b", "c"}
-        assert "default" not in params["required"]
-        assert "default" not in params["a"]
-        assert "default" not in params["b"]
-        assert "default" not in params["c"]
+        with pytest.raises(ValueError, match="Default values not supported"):
+            extract_function_params(func)
 
     @pytest.mark.asyncio
     async def test_literals(self):
@@ -59,7 +55,7 @@ class TestExtractFunctionParams:
             mode: Literal["fast", "slow"],
             level: Literal[1, 2, 3],
             temp: Literal[1.5, 2.5],
-            optional: Literal["a", "b"] = "a",
+            optional: Literal["a", "b"],
         ):
             pass
 
@@ -106,7 +102,7 @@ class TestExtractFunctionParams:
     async def test_union_types_unsupported(self):
         """Union types (including T | None) are unsupported and raise errors."""
 
-        async def func(b: int | None = None):
+        async def func(b: int | None):
             pass
 
         with pytest.raises(ValueError, match="Unsupported type"):

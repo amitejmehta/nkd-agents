@@ -41,7 +41,7 @@ def test_output_format():
 def test_tool_schema():
     """Test tool_schema converts function to Anthropic ToolParam"""
 
-    async def example_tool(query: str, limit: int = 10) -> str:
+    async def example_tool(query: str, limit: int) -> str:
         """Search for something with a limit"""
         return f"Results for {query} (limit={limit})"
 

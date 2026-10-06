@@ -144,40 +144,64 @@ class TestWriteFile:
 
 class TestEditFile:
     @pytest.mark.asyncio
-    async def test_replace_first_occurrence(self, tmp_path):
+    async def test_replace_unique(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("foo bar baz")
+        result = await edit_file(
+            str(file_path), old_str="bar", new_str="qux", replace_all=False
+        )
+        assert result == f"Success: Updated {file_path}"
+        assert file_path.read_text() == "foo qux baz"
+
+    @pytest.mark.asyncio
+    async def test_non_unique_raises(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("foo bar foo bar")
-        result = await edit_file(str(file_path), old_str="foo", new_str="baz")
-        assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == "baz bar foo bar"
+        with pytest.raises(ValueError, match="not unique: found 2"):
+            await edit_file(
+                str(file_path), old_str="foo", new_str="baz", replace_all=False
+            )
+        assert file_path.read_text() == "foo bar foo bar"
+
+    @pytest.mark.asyncio
+    async def test_empty_old_str_raises(self, tmp_path):
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("content")
+        with pytest.raises(ValueError, match="must not be empty"):
+            await edit_file(str(file_path), old_str="", new_str="x", replace_all=False)
+        assert file_path.read_text() == "content"
 
     @pytest.mark.asyncio
     async def test_replace_all(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("foo bar foo bar foo")
-        result = await edit_file(str(file_path), old_str="foo", new_str="baz", count=-1)
+        result = await edit_file(
+            str(file_path), old_str="foo", new_str="baz", replace_all=True
+        )
         assert result == f"Success: Updated {file_path}"
         assert file_path.read_text() == "baz bar baz bar baz"
 
     @pytest.mark.asyncio
-    async def test_replace_count_n(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("foo foo foo")
-        result = await edit_file(str(file_path), old_str="foo", new_str="baz", count=2)
-        assert result == f"Success: Updated {file_path}"
-        assert file_path.read_text() == "baz baz foo"
-
-    @pytest.mark.asyncio
     async def test_file_not_found(self):
         with pytest.raises(ValueError, match="not found"):
-            await edit_file("/nonexistent/file.txt", old_str="old", new_str="new")
+            await edit_file(
+                "/nonexistent/file.txt",
+                old_str="old",
+                new_str="new",
+                replace_all=False,
+            )
 
     @pytest.mark.asyncio
     async def test_old_str_not_found(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("existing content")
         with pytest.raises(ValueError, match="not found in file content"):
-            await edit_file(str(file_path), old_str="nonexistent", new_str="new")
+            await edit_file(
+                str(file_path),
+                old_str="nonexistent",
+                new_str="new",
+                replace_all=False,
+            )
         assert file_path.read_text() == "existing content"
 
     @pytest.mark.asyncio
@@ -185,29 +209,17 @@ class TestEditFile:
         file_path = tmp_path / "test.txt"
         file_path.write_text("same")
         with pytest.raises(ValueError, match="must be different"):
-            await edit_file(str(file_path), old_str="same", new_str="same")
-
-    @pytest.mark.asyncio
-    async def test_count_zero_raises(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("foo")
-        with pytest.raises(ValueError, match="positive integer or -1"):
-            await edit_file(str(file_path), old_str="foo", new_str="bar", count=0)
-
-    @pytest.mark.asyncio
-    async def test_count_minus_two_raises(self, tmp_path):
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("foo")
-        with pytest.raises(ValueError, match="positive integer or -1"):
-            await edit_file(str(file_path), old_str="foo", new_str="bar", count=-2)
+            await edit_file(
+                str(file_path), old_str="same", new_str="same", replace_all=False
+            )
 
     @pytest.mark.asyncio
     async def test_multiple_sequential_edits(self, tmp_path):
         file_path = tmp_path / "test.txt"
         file_path.write_text("one two three")
-        await edit_file(str(file_path), old_str="one", new_str="1")
-        await edit_file(str(file_path), old_str="two", new_str="2")
-        await edit_file(str(file_path), old_str="three", new_str="3")
+        await edit_file(str(file_path), old_str="one", new_str="1", replace_all=False)
+        await edit_file(str(file_path), old_str="two", new_str="2", replace_all=False)
+        await edit_file(str(file_path), old_str="three", new_str="3", replace_all=False)
         assert file_path.read_text() == "1 2 3"
 
     @pytest.mark.asyncio
@@ -218,7 +230,9 @@ class TestEditFile:
             "pathlib.Path.read_text", side_effect=PermissionError("Access denied")
         ):
             with pytest.raises(PermissionError, match="Access denied"):
-                await edit_file(str(file_path), old_str="old", new_str="new")
+                await edit_file(
+                    str(file_path), old_str="old", new_str="new", replace_all=False
+                )
 
 
 class TestEditFileCheckOrder:
@@ -232,24 +246,19 @@ class TestEditFileCheckOrder:
 
     Correct order:
         1. file not found
-        2. invalid count
+        2. old_str empty
         3. old_str not in file
         4. old_str == new_str   ← only reachable when string IS present
+        5. old_str not unique (replace_all=False)
     """
 
     @pytest.mark.asyncio
-    async def test_file_not_found_beats_invalid_count(self, tmp_path):
-        """File not found is reported before count is validated."""
-        with pytest.raises(ValueError, match="not found"):
-            await edit_file("/nonexistent/file.txt", old_str="x", new_str="y", count=0)
-
-    @pytest.mark.asyncio
-    async def test_invalid_count_beats_old_str_not_found(self, tmp_path):
-        """Invalid count is reported before old_str existence is checked."""
-        file_path = tmp_path / "test.txt"
-        file_path.write_text("hello")
-        with pytest.raises(ValueError, match="positive integer or -1"):
-            await edit_file(str(file_path), old_str="nothere", new_str="y", count=0)
+    async def test_file_not_found_beats_old_str_not_found(self):
+        """File not found is reported before old_str existence is checked."""
+        with pytest.raises(ValueError, match="File '/nonexistent/file.txt' not found"):
+            await edit_file(
+                "/nonexistent/file.txt", old_str="x", new_str="x", replace_all=False
+            )
 
     @pytest.mark.asyncio
     async def test_old_str_not_found_beats_same_strings(self, tmp_path):
@@ -263,14 +272,19 @@ class TestEditFileCheckOrder:
         file_path = tmp_path / "test.txt"
         file_path.write_text("hello world")
         with pytest.raises(ValueError, match="not found in file content"):
-            await edit_file(str(file_path), old_str="nothere", new_str="nothere")
+            await edit_file(
+                str(file_path),
+                old_str="nothere",
+                new_str="nothere",
+                replace_all=False,
+            )
 
 
 class TestBash:
     @pytest.mark.asyncio
     async def test_bash_success(self):
         """Test successful command execution with stdout."""
-        result = await bash("echo 'Hello'")
+        result = await bash("echo 'Hello'", timeout=30)
 
         assert "STDOUT:" in result
         assert "Hello" in result
@@ -280,14 +294,14 @@ class TestBash:
     @pytest.mark.asyncio
     async def test_bash_failure(self):
         """Test failed command with non-zero exit code."""
-        result = await bash("exit 42")
+        result = await bash("exit 42", timeout=30)
 
         assert "EXIT CODE: 42" in result
 
     @pytest.mark.asyncio
     async def test_bash_stderr(self):
         """Test command that writes to stderr."""
-        result = await bash("echo 'error message' >&2")
+        result = await bash("echo 'error message' >&2", timeout=30)
 
         assert "STDERR:" in result
         assert "error message" in result
@@ -296,7 +310,7 @@ class TestBash:
     @pytest.mark.asyncio
     async def test_bash_both_stdout_stderr(self):
         """Test command with both stdout and stderr output."""
-        result = await bash("echo 'out'; echo 'err' >&2")
+        result = await bash("echo 'out'; echo 'err' >&2", timeout=30)
 
         assert "STDOUT:" in result
         assert "out" in result
@@ -306,7 +320,7 @@ class TestBash:
     @pytest.mark.asyncio
     async def test_bash_command_not_found(self):
         """Test invalid command returns error in stderr."""
-        result = await bash("nonexistentcommand12345")
+        result = await bash("nonexistentcommand12345", timeout=30)
 
         assert "STDERR:" in result
         assert "EXIT CODE:" in result
@@ -316,7 +330,7 @@ class TestBash:
     @pytest.mark.asyncio
     async def test_bash_multiline_output(self):
         """Test command with multiline output."""
-        result = await bash("printf 'line1\\nline2\\nline3'")
+        result = await bash("printf 'line1\\nline2\\nline3'", timeout=30)
 
         assert "STDOUT:" in result
         assert "line1" in result
@@ -328,7 +342,7 @@ class TestBash:
         """Test that bash handles cancellation properly."""
 
         async def run_and_cancel():
-            task = asyncio.create_task(bash("sleep 10"))
+            task = asyncio.create_task(bash("sleep 10", timeout=30))
             await asyncio.sleep(0.1)  # Let it start
             task.cancel()
             try:
@@ -348,7 +362,7 @@ class TestBash:
             "asyncio.create_subprocess_exec", side_effect=OSError("Exec failed")
         ):
             with pytest.raises(OSError, match="Exec failed"):
-                await bash("echo test")
+                await bash("echo test", timeout=30)
 
     @pytest.mark.asyncio
     async def test_bash_timeout(self):
@@ -367,7 +381,7 @@ class TestBash:
     @pytest.mark.asyncio
     async def test_bash_background_via_shell(self):
         """Background processes are run via & in the command string."""
-        result = await bash("echo hello &")
+        result = await bash("echo hello &", timeout=30)
         assert "EXIT CODE: 0" in result
 
 
@@ -476,7 +490,7 @@ class TestCwdContext:
 
         token = cwd_ctx.set(subdir)
         try:
-            result = await bash("pwd")
+            result = await bash("pwd", timeout=30)
             assert str(subdir) in result
         finally:
             cwd_ctx.reset(token)

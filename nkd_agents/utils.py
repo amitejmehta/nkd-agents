@@ -47,6 +47,10 @@ def extract_function_params(
             raise ValueError(
                 f"Variadic parameters not supported: {func.__name__}.{param.name}"
             )
+        if param.default is not param.empty:
+            raise ValueError(
+                f"Default values not supported: {func.__name__}.{param.name}"
+            )
         param_sig = f"{func.__name__}.{param.name}: {param.annotation}"
         params[param.name] = process_param_annotation(param.annotation, param_sig)
     return params
