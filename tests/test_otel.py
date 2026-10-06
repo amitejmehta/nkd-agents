@@ -374,7 +374,7 @@ async def test_openai_execute_tool_error_span(otel_setup):
 
 
 @pytest.mark.asyncio
-async def test_nested_subagent_trace(otel_setup):
+async def test_anthropic_nested_subagent_trace(otel_setup):
     """A tool calling agent() produces a nested invoke_agent span."""
     inner_client = _anthropic_client(_anthropic_message("Subagent result"))
 
@@ -413,6 +413,46 @@ async def test_nested_subagent_trace(otel_setup):
     assert len(tool_spans) == 1
 
     # Inner invoke_agent is a child of execute_tool
+    inner_agent = [
+        s
+        for s in agent_spans
+        if s.parent is not None and s.parent.span_id == tool_spans[0].context.span_id
+    ]
+    assert len(inner_agent) == 1
+
+
+@pytest.mark.asyncio
+async def test_openai_nested_subagent_trace(otel_setup):
+    inner_client = _openai_client(_openai_response("Subagent result"))
+
+    async def research(query: str) -> str:
+        """Research a topic using a subagent."""
+        return await openai.agent(
+            inner_client,
+            input=[{"role": "user", "content": query}],
+            model="gpt-4o",
+        )
+
+    tool_call = _openai_tool_call("call_1", "research", '{"query": "test"}')
+    outer_client = _openai_client(
+        _openai_response("Researching.", [tool_call]),
+        _openai_response("Final answer"),
+    )
+
+    await openai.agent(
+        outer_client,
+        input=[{"role": "user", "content": "research this"}],
+        fns=[research],
+        model="gpt-4o",
+    )
+
+    spans = _spans(otel_setup)
+    agent_spans = [s for s in spans if s.name.startswith("invoke_agent")]
+    assert len(agent_spans) == 2
+
+    tool_spans = [s for s in spans if s.name.startswith("execute_tool")]
+    assert len(tool_spans) == 1
+
     inner_agent = [
         s
         for s in agent_spans
