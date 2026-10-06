@@ -201,7 +201,6 @@ class CLI:
 def main() -> None:
     try:
         configure_logging(LOG_LEVEL, metadata=False)
-        print(f"\n\n{DIM}nkd-agents\n\n{RESET}")
         asyncio.run(CLI().start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
