@@ -6,7 +6,7 @@ Only loaded when playwright is installed (pip install nkd_agents[web]).
 import logging
 from urllib.parse import quote_plus
 
-import httpx
+import httpx2
 import trafilatura
 from playwright.async_api import async_playwright
 
@@ -77,7 +77,7 @@ async def fetch_url(url: str, save_path: str) -> str:
         Success message with character count and path, or error message.
     """
     logger.info(f"Fetching: {GREEN}{url}{RESET}")
-    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+    async with httpx2.AsyncClient(follow_redirects=True, timeout=30.0) as client:
         response = await client.get(url)
         response.raise_for_status()
         html = response.text

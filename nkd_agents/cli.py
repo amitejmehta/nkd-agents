@@ -18,7 +18,7 @@ try:
 
     FNS = (read_file, write_file, edit_file, bash, fetch_url, web_search)
 except ImportError:
-    logger.warning("web search tools not available")
+    print("web tools unavailable: install nkd-agents with the [web] extra")
     FNS = (read_file, write_file, edit_file, bash)
 
 TOOLS = [tool_schema(fn) for fn in FNS]

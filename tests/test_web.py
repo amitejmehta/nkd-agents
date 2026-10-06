@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import httpx2
 import pytest
 
 from nkd_agents.web import fetch_url
@@ -19,7 +19,7 @@ def mock_cwd(tmp_path):
 @pytest.fixture
 def mock_httpx_success():
     """Mock successful HTTP response."""
-    with patch("nkd_agents.web.httpx.AsyncClient") as mock:
+    with patch("nkd_agents.web.httpx2.AsyncClient") as mock:
         response = MagicMock()
         response.text = "<html><body>Hello World</body></html>"
         response.raise_for_status = MagicMock()
@@ -59,10 +59,10 @@ async def test_fetch_url_no_content_extracted(mock_cwd, mock_httpx_success):
 @pytest.mark.asyncio
 async def test_fetch_url_http_error(mock_cwd):
     """Returns error on HTTP failure."""
-    with patch("nkd_agents.web.httpx.AsyncClient") as mock:
+    with patch("nkd_agents.web.httpx2.AsyncClient") as mock:
         client = AsyncMock()
         client.get = AsyncMock(
-            side_effect=httpx.HTTPStatusError(
+            side_effect=httpx2.HTTPStatusError(
                 "Not Found", request=MagicMock(), response=MagicMock()
             )
         )
@@ -70,7 +70,7 @@ async def test_fetch_url_http_error(mock_cwd):
         client.__aexit__ = AsyncMock(return_value=None)
         mock.return_value = client
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(httpx2.HTTPStatusError):
             await fetch_url("https://example.com/404", "output.md")
 
     assert not (mock_cwd / "output.md").exists()
