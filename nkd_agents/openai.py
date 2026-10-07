@@ -142,12 +142,10 @@ async def agent(
 ) -> str:
     if not kwargs.get("input") or not isinstance(kwargs.get("input"), list):
         raise ValueError("input must be provided and must be a list")
-    if "model" not in kwargs:
-        raise ValueError("model is required")
     if not kwargs.get("tools"):
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
 
-    with tracer.start_as_current_span(f"invoke_agent {kwargs['model']}") as span:
+    with tracer.start_as_current_span(f"invoke_agent {kwargs.get('model')}") as span:
         span.set_attribute("gen_ai.operation.name", "invoke_agent")
 
         i = 0
