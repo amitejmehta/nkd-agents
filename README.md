@@ -19,21 +19,20 @@ I built the framework for control of low-level primitives with little overhead �
 
 ## The CLI (`read_file`, `write_file`, `edit_file`, `bash`, `fetch_url`, `web_search`)
 
-- Fast as hell: `Be brief and exacting` prepended to every user message, not stated once in the system prompt, to steer behavior reliably over long contexts (customize via `NKD_START_PHRASE`).
-- Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels, not separate code paths — customize the list, the mode name alone is enough signal for the model to shift behavior.
-- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. Cleaning up after the fact has a much smaller failure surface (one LLM call, directly evalable) than mid-trajectory delegation decisions, which is why there are no sub-agents.
-- No `prompt_toolkit`: `tty.py` ships a minimal async, responsive prompt handler; the CLI is async end to end, so you can queue a message while the model is still responding.
-- No edit approval: full autonomy by default, no per-edit approval prompts (same paradigm as `claude --dangerously-skip-permissions`) 
-- No streaming: relies on quick responses (via start phrase + think toggle off by default) to feel responsive without streaming, keeping tool-call parsing simple.
-- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. Cleaning up after the fact has a much smaller failure surface (one LLM call, directly evalable) than mid-trajectory delegation decisions, which is why there are no sub-agents.
+**What I didn't build:**
 
-*Made redundant by auto-compact:*
-- No cache warming. **Built, then removed.** Context stays small enough that cache misses are cheap.
-- No sub-agents, no headless mode. **Built, then removed.** A new terminal handles independence/parallelism without delegation overhead.
-- No session persistence. **Built, then removed.** State is code and files; tracking externally (writing, docs, research) cuts costs and improves hygiene.
+- No streaming. Streaming adds unnecessary complexity to the base agent framework purely for interactive use cases like CLI. Our approach uses the framework's basic logging (nicely formatted) — speed comes from the start phrase and thinking-off defaults below.
+- No `prompt_toolkit`. Built a minimal async prompt handler (`tty.py`) instead — keeps the CLI lightweight and lets you queue a message while the model is still responding (async end to end).
+- No edit approval. Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`) leads to faster, less constrained work. Use `nkd-sandbox` (Docker) for a safety boundary if needed.
+- No `grep`/`glob` as standalone tools. An eval harness showed no accuracy or turn-count benefit over `bash` (`rg`, `find`/`ls`), and the model fell back to `bash` even when offered — didn't earn its keep.
+- No background bash. Background commands only help if their result isn't on the critical path of the next action — rare enough in practice not to justify the complexity.
+- No cache warming, sub-agents/headless mode, or session persistence. Auto-compact made all three redundant: context stays small, parallelism works via a new terminal, and state lives in code/files anyway.
 
-- No `grep`/`glob` as standalone tools. **Built, then removed.** Fully subsumed by `bash` (`rg`, `find`/`ls`) — an eval harness showed no accuracy or turn-count benefit from a dedicated `glob` tool, and the model fell back to `bash` even when `glob` was offered.
-- No background bash. **Built, then removed.** The rule was: background a command iff its result isn't on the critical path of the next action — in practice that was rare enough not to justify the complexity.
+**What I built instead:**
+
+- Start phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Coupled with thinking off by default, this makes the experience extremely fast. For harder problems, toggle thinking on with `tab` — one keystroke when you need it.
+- Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels (prepended to every user message), not separate code paths. Label-based > code-based because you can customize the full list without touching code — the mode name alone signals behavior shift.
+- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. This is a simpler, more evaluable form of context management than sub-agents — one LLM call, one failure surface, directly evalable — which is why there are no sub-agents.
 
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
