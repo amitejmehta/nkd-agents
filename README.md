@@ -26,7 +26,9 @@ I built the framework for control of low-level primitives with little overhead �
 - No edit approval. Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`) leads to faster, less constrained work. Use `nkd-sandbox` (Docker) for a safety boundary if needed.
 - No `grep`/`glob` as standalone tools. An eval harness showed no accuracy or turn-count benefit over `bash` (`rg`, `find`/`ls`), and the model fell back to `bash` even when offered — didn't earn its keep.
 - No background bash. Background commands only help if their result isn't on the critical path of the next action — rare enough in practice not to justify the complexity.
-- No cache warming, sub-agents/headless mode, or session persistence. Auto-compact made all three redundant: context stays small, parallelism works via a new terminal, and state lives in code/files anyway.
+- No cache warming. **Built, then removed.** It auto-warmed Anthropic's cache after each turn (TTL is only 5 minutes), but auto-compact made it unnecessary — context stays small enough that cache misses are cheap.
+- No sub-agents, no headless mode. **Built, then removed.** They were overkill for context management — auto-compact is simpler and more evaluable. Delegation only helps with independence/parallelism anyway, and a new terminal does that better, with you as the explicit channel and no context leakage risk.
+- No session persistence. **Built, then removed.** Auto-compact summarizes history into one message pair, making cached conversation history feel less crucial. This forced the best practice: capture state externally (writing, docs, research, git) instead of relying on session memory. Cuts costs and improves hygiene.
 
 **What I built instead:**
 
