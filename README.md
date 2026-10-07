@@ -25,10 +25,15 @@ I built the framework for control of low-level primitives with little overhead �
 - No `prompt_toolkit`: `tty.py` ships a minimal async, responsive prompt handler; the CLI is async end to end, so you can queue a message while the model is still responding.
 - No edit approval: full autonomy by default, no per-edit approval prompts (same paradigm as `claude --dangerously-skip-permissions`) 
 - No streaming: relies on quick responses (via start phrase + think toggle off by default) to feel responsive without streaming, keeping tool-call parsing simple.
+- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. Cleaning up after the fact has a much smaller failure surface (one LLM call, directly evalable) than mid-trajectory delegation decisions, which is why there are no sub-agents.
+
+*Made redundant by auto-compact:*
+- No cache warming. **Built, then removed.** Context stays small enough that cache misses are cheap.
+- No sub-agents, no headless mode. **Built, then removed.** A new terminal handles independence/parallelism without delegation overhead.
+- No session persistence. **Built, then removed.** State is code and files; tracking externally (writing, docs, research) cuts costs and improves hygiene.
+
 - No `grep`/`glob` as standalone tools. **Built, then removed.** Fully subsumed by `bash` (`rg`, `find`/`ls`) — an eval harness showed no accuracy or turn-count benefit from a dedicated `glob` tool, and the model fell back to `bash` even when `glob` was offered.
 - No background bash. **Built, then removed.** The rule was: background a command iff its result isn't on the critical path of the next action — in practice that was rare enough not to justify the complexity.
-- No cache warming. **Built, then removed.** It auto-warmed the cache after each turn since Anthropic's cache TTL is only 5 minutes — but aggressive auto-compact already keeps context small enough that cache misses are cheap regardless.
-- No sub-agents, no headless mode. **Built, then removed.** Once auto-compact handles context hygiene, the only reason left to delegate is independence/parallelism — and a new terminal gives both, with you as the explicit channel and no risk of the parent leaking context into the child. Delegation tools just make over-delegation easier to reach for.
 
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
