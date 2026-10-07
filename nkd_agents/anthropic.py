@@ -56,10 +56,10 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
 
     for block in response.content:
         if block.type == "thinking":
-            logger.info(f"model {response.model} thinking: {block.thinking}")
+            logger.info(f"thinking: {block.thinking}")
         if block.type == "text":
             text += block.text
-            logger.info(f"model {response.model}: {block.text}")
+            logger.info(block.text)
         elif block.type == "tool_use":
             tool_calls.append(block)
 
@@ -130,7 +130,7 @@ async def agent(
         while True:
             span.set_attribute("iterations", i)
             resp = await client.messages.create(**kwargs)
-            logger.info(f"turn {i} · {resp.stop_reason} · {resp.usage}")
+            logger.info(f"{i} · {resp.stop_reason} · {resp.model} · {resp.usage}")
 
             text, tool_calls = extract_text_and_tool_calls(resp)
             results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
