@@ -174,6 +174,7 @@ class CLI:
             self.llm_task = asyncio.create_task(
                 agent(self.client, fns=FNS, messages=self.messages, **self.kwargs)
             )
+            self.session.refresh()
             try:
                 await self.llm_task
             except asyncio.CancelledError:
@@ -182,6 +183,7 @@ class CLI:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
                 self.llm_task = None
+                self.session.refresh()
                 try:
                     if await self.count_tokens() > COMPACT_TOKENS:
                         await self.compact()
