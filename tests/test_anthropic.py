@@ -278,7 +278,7 @@ def _message(content, stop_reason="end_turn") -> Message:
 
 @pytest.mark.asyncio
 async def test_agent_logs_turn_format(caplog):
-    """Each turn logs `turn {i} · {stop_reason} · {usage}`."""
+    """Each turn logs `{i} · {stop_reason} · {model} · {usage}`."""
 
     async def echo(text: str) -> str:
         """Echo"""
@@ -300,8 +300,8 @@ async def test_agent_logs_turn_format(caplog):
             messages=[{"role": "user", "content": "hi"}],
         )
     lines = [r.getMessage() for r in caplog.records]
-    assert lines[0].startswith("turn 0 · tool_use · ")
-    assert lines[1].startswith("turn 1 · end_turn · ")
+    assert lines[0].startswith("0 · tool_use · claude-3-5-sonnet-20241022 · ")
+    assert lines[1].startswith("1 · end_turn · claude-3-5-sonnet-20241022 · ")
     assert "Usage(" in lines[0] or "input_tokens=10" in lines[0]
 
 
