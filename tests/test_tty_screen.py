@@ -223,6 +223,38 @@ class TestWholeSession:
             os.close(r)
             os.close(w)
 
+    def test_refresh_repaints_toolbar_only_while_prompting(self, monkeypatch) -> None:
+        state = {"tb": "idle"}
+        t = Term(lines=12)
+        t.prompt.toolbar = lambda: state["tb"]
+        seen = []
+
+        async def go() -> str:
+            task = asyncio.create_task(t.prompt.prompt_async("> "))
+            await asyncio.sleep(0)
+            seen.append(t.rows[-1])
+            state["tb"] = "busy"
+            t.prompt.refresh()
+            seen.append(t.rows[-1])
+            os.write(w, b"\r")
+            result = await task
+            t.prompt.refresh()
+            return result
+
+        r, w = os.pipe()
+        t.prompt.fd = r
+        monkeypatch.setattr(tty, "setcbreak", lambda *_: None)
+        monkeypatch.setattr(termios, "tcgetattr", lambda *_: [0] * 7)
+        monkeypatch.setattr(termios, "tcsetattr", lambda *_: None)
+        try:
+            with patch.object(os, "get_terminal_size", return_value=t.size):
+                asyncio.run(go())
+        finally:
+            os.close(r)
+            os.close(w)
+        assert seen == ["idle", "busy"]
+        assert not [row for row in t.rows if "─" in row or row == "busy"]
+
     def test_submitting_leaves_a_clean_screen(self, monkeypatch) -> None:
         t = Term(lines=12)
         t.feed("".join(f"output {i}\r\n" for i in range(4)))

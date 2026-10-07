@@ -123,6 +123,11 @@ class Prompt:
         self.fd = 0  # stdin
         self._pending = ""  # input read past a paste terminator, not yet consumed
         self._rows = 0
+        self._active = False
+
+    def refresh(self) -> None:
+        if self._active:
+            self._render()
 
     # -- editing (pure) -----------------------------------------------------
 
@@ -305,9 +310,13 @@ class Prompt:
         self.buf, self.cursor, self.pastes, self.label = "", 0, [], label
         self._rows = 0  # the last box was erased at teardown; nothing to reclaim
         with self._raw():
-            self._render()
-            while (key := await self._read_key()) != "\r":
-                self._handle(key)
+            self._active = True
+            try:
                 self._render()
+                while (key := await self._read_key()) != "\r":
+                    self._handle(key)
+                    self._render()
+            finally:
+                self._active = False
         self._write(f"\n{self.style}{label}{self._display(self.buf)}{RESET}\n\n")
         return self._expand()

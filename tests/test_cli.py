@@ -45,6 +45,13 @@ class TestToolbar:
         cli.cycle_mode()
         assert "Plan" in cli.toolbar()
 
+    def test_idle_shows_hollow_circle(self, cli: CLI):
+        assert cli.toolbar().startswith(" ○ ")
+
+    def test_running_shows_filled_circle(self, cli: CLI):
+        cli.llm_task = MagicMock(done=lambda: False)
+        assert cli.toolbar().startswith(" ● ")
+
 
 class TestInit:
     def test_missing_api_key(self, tmp_path, monkeypatch):
