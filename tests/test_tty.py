@@ -243,7 +243,9 @@ class TestRender:
     @pytest.fixture
     def screen(self, p: Prompt, monkeypatch, capsys):
         monkeypatch.setattr(
-            os, "get_terminal_size", lambda: os.terminal_size((self.COLS, self.LINES))
+            os,
+            "get_terminal_size",
+            lambda *_: os.terminal_size((self.COLS, self.LINES)),
         )
         p.toolbar = lambda: "tb"
         return p, capsys
@@ -405,7 +407,7 @@ class TestGeometryIsAlwaysOnScreen:
         p.toolbar = lambda: "toolbar text that is plausibly long"
         p.buf, p.cursor = buf, len(buf)
         monkeypatch.setattr(
-            os, "get_terminal_size", lambda: os.terminal_size((cols, lines))
+            os, "get_terminal_size", lambda *_: os.terminal_size((cols, lines))
         )
         p._render()  # first draw, then a redraw and a resize: all three must be safe
         p._render()
@@ -424,7 +426,7 @@ class TestGeometryIsAlwaysOnScreen:
         satisfies this trivially - the point is that row 1 is never claimed."""
         p.buf, p.cursor = buf, len(buf)
         monkeypatch.setattr(
-            os, "get_terminal_size", lambda: os.terminal_size((cols, lines))
+            os, "get_terminal_size", lambda *_: os.terminal_size((cols, lines))
         )
         p._render()
         assert all(row >= 2 for row in painted(capsys.readouterr().out))
