@@ -270,6 +270,9 @@ async def test_anthropic_execute_tool_error_span(otel_setup):
     assert span.attributes["error.type"] == "ValueError"
     assert span.status.status_code == StatusCode.ERROR
     assert span.status.description == "boom"
+    event = next(e for e in span.events if e.name == "exception")
+    assert event.attributes["exception.type"] == "ValueError"
+    assert event.attributes["exception.message"] == "boom"
 
 
 # ── OpenAI tests ─────────────────────────────────────────────
@@ -368,6 +371,9 @@ async def test_openai_execute_tool_error_span(otel_setup):
     assert span.attributes["error.type"] == "ValueError"
     assert span.status.status_code == StatusCode.ERROR
     assert span.status.description == "boom"
+    event = next(e for e in span.events if e.name == "exception")
+    assert event.attributes["exception.type"] == "ValueError"
+    assert event.attributes["exception.message"] == "boom"
 
 
 # ── Subagent nesting test ────────────────────────────────────

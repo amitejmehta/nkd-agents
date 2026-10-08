@@ -29,7 +29,6 @@ def configure_logging(level: int = logging.INFO, metadata: bool = True) -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.addFilter(ContextFilter())
     logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpx2").setLevel(logging.WARNING)
 
 
