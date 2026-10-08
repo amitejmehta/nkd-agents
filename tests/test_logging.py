@@ -82,14 +82,8 @@ def test_configure_logging_adds_filter():
     assert has_context_filter
 
 
-def test_configure_logging_silences_httpx():
-    """Test configure_logging sets httpx logger to WARNING"""
-    configure_logging()
-    assert logging.getLogger("httpx").level == logging.WARNING
-
-
 def test_configure_logging_silences_httpx2():
-    """Test configure_logging sets httpx2 logger to WARNING (openai>=3.0 default client)"""
+    """Test configure_logging sets httpx2 logger to WARNING"""
     configure_logging()
     assert logging.getLogger("httpx2").level == logging.WARNING
 

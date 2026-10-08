@@ -13,8 +13,8 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic>=0.77.0,<=1.0.0",
-    "openai>=2.11.0,<=3.13.0",
+    "anthropic>=1.12.1,<2.0.0",
+    "openai>=3.26.1,<4.0.0",
     "opentelemetry-api>=1.20.0",
 ]
 
@@ -23,6 +23,7 @@ nkd = "nkd_agents.cli:main"
 
 [project.optional-dependencies]
 web = [
+    "httpx2>=2.13.1,<3.0.0", # fetch_url tool
     "playwright>=1.58.0,<2.0.0", # web search with browser automation
     "trafilatura>=2.0.0,<3.0.0", # fetch_url tool
 ]
