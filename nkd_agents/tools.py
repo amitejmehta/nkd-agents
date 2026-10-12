@@ -7,7 +7,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
-from .logging import DIM, GREEN, RESET, display_diff
+from .logging import DIM, RESET, display_diff
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ async def read_file(path: str) -> FileContent:
     """Read and return the contents of a file at the given path. Only works with files, not directories.
     Supports image (jpg, jpeg, png, gif, webp), PDF, and all text files."""
     p = resolve(path)
-    logger.info(f"{DIM}<{RESET} {GREEN}{p}{RESET}")
+    logger.info(f"{DIM}<{RESET} {p}")
     ext, size = p.suffix[1:].lower(), p.stat().st_size
     if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and size > 50000:
         raise ValueError(
