@@ -138,7 +138,10 @@ class Prompt:
         self.cursor += len(text)
 
     def _paste(self, text: str) -> None:
-        self.pastes.append(text.replace("\r\n", "\n").replace("\r", "\n"))
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if "\n" not in text.rstrip("\n"):
+            return self._insert(text.rstrip("\n"))
+        self.pastes.append(text)
         self._insert(chr(PUA + len(self.pastes) - 1))
 
     def _paste_idx(self, c: str) -> int | None:
