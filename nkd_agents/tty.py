@@ -93,6 +93,8 @@ MOVES = {
     ESC + "[1;5D": (-1, True),  # ctrl-left
     ESC + "[1;5C": (1, True),  # ctrl-right
 }
+HOMES = {"\x01", ESC + "[H", ESC + "[1~", ESC + "OH"}  # ctrl-a, home
+ENDS = {"\x05", ESC + "[F", ESC + "[4~", ESC + "OF"}  # ctrl-e, end
 
 
 class Prompt:
@@ -178,6 +180,8 @@ class Prompt:
             self._delete(*dele)
         elif move := MOVES.get(key):
             self.cursor = self._seek(*move)
+        elif key in HOMES | ENDS:
+            self.cursor = len(self.buf) * (key in ENDS)
         elif key == "\x03":  # ctrl-c
             raise KeyboardInterrupt
         elif key == "\x04" and not self.buf:  # ctrl-d on empty line

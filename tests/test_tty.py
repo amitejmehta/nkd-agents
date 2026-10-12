@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from nkd_agents.tty import DIM, ESC, PASTE, RESET, REV, Prompt
+from nkd_agents.tty import DIM, ENDS, ESC, HOMES, PASTE, RESET, REV, Prompt
 
 NORM = "\x1b[27m"
 GREEN = "\x1b[32m"
@@ -83,6 +83,19 @@ class TestEditing:
         type_(p, "a")
         p._handle(ESC + "[C")
         assert p.cursor == 1
+
+    @pytest.mark.parametrize("key", sorted(HOMES))
+    def test_home(self, p: Prompt, key: str) -> None:
+        type_(p, "foo bar")
+        p._handle(key)
+        assert p.cursor == 0
+
+    @pytest.mark.parametrize("key", sorted(ENDS))
+    def test_end(self, p: Prompt, key: str) -> None:
+        type_(p, "foo bar")
+        p.cursor = 2
+        p._handle(key)
+        assert p.cursor == 7
 
     @pytest.mark.parametrize("left", [ESC + "b", ESC + "[1;3D", ESC + "[1;5D"])
     def test_word_left(self, p: Prompt, left: str) -> None:
