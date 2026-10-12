@@ -138,10 +138,12 @@ async def bash(command: str, timeout: int) -> str:
     )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
         with contextlib.suppress(ProcessLookupError):  # exited before we could kill it
             os.killpg(process.pid, signal.SIGKILL)  # pgid == pid (start_new_session)
         await process.communicate()
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         return f"Error: Command timed out after {timeout} seconds"
     out, err = stdout.decode()[:50000].strip(), stderr.decode()[:50000].strip()
     return f"STDOUT: {out}\nSTDERR: {err}\nEXIT CODE: {process.returncode}"
