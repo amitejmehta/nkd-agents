@@ -174,15 +174,20 @@ class TestPaste:
         assert shown(p) == "see [Paste #1, 3 lines] ok"
         assert p._expand() == "see l1\nl2\nl3\n ok"
 
-    def test_single_line_label_and_numbering(self, p: Prompt) -> None:
+    def test_single_line_is_inserted_literally(self, p: Prompt) -> None:
         p._handle(PASTE + "one")
-        p._handle(PASTE + "two")
-        assert shown(p) == "[Paste #1, 1 line][Paste #2, 1 line]"
-        assert p._expand() == "onetwo"
+        p._handle(PASTE + "two\n")
+        assert (p.buf, p.cursor, p.pastes) == ("onetwo", 6, [])
+
+    def test_multi_line_numbering(self, p: Prompt) -> None:
+        p._handle(PASTE + "a\nb")
+        p._handle(PASTE + "c\nd")
+        assert shown(p) == "[Paste #1, 2 lines][Paste #2, 2 lines]"
+        assert p._expand() == "a\nbc\nd"
 
     def test_arrows_jump_over_paste(self, p: Prompt) -> None:
         type_(p, "a")
-        p._handle(PASTE + "x")
+        p._handle(PASTE + "x\ny")
         type_(p, "b")
         p._handle(ESC + "[D")
         p._handle(ESC + "[D")
@@ -198,18 +203,18 @@ class TestPaste:
 
     def test_backspace_after_paste_only_removes_char(self, p: Prompt) -> None:
         type_(p, "a")
-        p._handle(PASTE + "x")
+        p._handle(PASTE + "x\ny")
         type_(p, "b")
         p._handle("\x7f")
-        assert shown(p) == "a[Paste #1, 1 line]"
-        assert p.pastes == ["x"]
+        assert shown(p) == "a[Paste #1, 2 lines]"
+        assert p.pastes == ["x\ny"]
 
     def test_word_ops_treat_paste_as_word(self, p: Prompt) -> None:
         type_(p, "see ")
         p._handle(PASTE + "x\ny")
         p._handle(ESC + "\x7f")
         assert (p.buf, p.cursor) == ("see ", 4)
-        p._handle(PASTE + "z")
+        p._handle(PASTE + "z\nz")
         type_(p, " end")
         p.cursor = 4
         p._handle(ESC + "d")
@@ -240,10 +245,10 @@ class TestInputRows:
         assert p._input_rows(cols=5) == ["> abc", f"{REV} {NORM}"]
 
     def test_cursor_before_paste_sits_on_label(self, p: Prompt) -> None:
-        p._handle(PASTE + "x")
+        p._handle(PASTE + "x\ny")
         type_(p, "z")
         p.cursor = 0
-        assert p._input_rows(cols=40) == [f"> {REV}[{NORM}Paste #1, 1 line]z"]
+        assert p._input_rows(cols=40) == [f"> {REV}[{NORM}Paste #1, 2 lines]z"]
 
 
 class TestRender:
