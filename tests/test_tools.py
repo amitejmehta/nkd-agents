@@ -1,6 +1,10 @@
 """Comprehensive tests for nkd_agents/tools.py"""
 
 import asyncio
+import contextlib
+import os
+import shlex
+import signal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -353,6 +357,75 @@ class TestBash:
 
         result = await run_and_cancel()
         assert result == "cancelled"
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(os.name != "posix", reason="requires POSIX process groups")
+    @pytest.mark.parametrize("mode", ["exec", "child", "exited_shell"])
+    @pytest.mark.parametrize("exit_race", [False, True])
+    async def test_bash_cancellation_terminates_process_group(
+        self, tmp_path, mode, exit_race
+    ):
+        pid_file = tmp_path / "pid"
+        destination = shlex.quote(str(pid_file))
+        if mode == "exec":
+            command = f"echo $$ > {destination}; exec sleep 60"
+        else:
+            ending = "wait" if mode == "child" else "exit 0"
+            command = f"sleep 60 & echo $! > {destination}; {ending}"
+
+        processes = []
+        create_subprocess = asyncio.create_subprocess_exec
+        killpg = os.killpg
+
+        async def capture_process(*args, **kwargs):
+            process = await create_subprocess(*args, **kwargs)
+            processes.append(process)
+            return process
+
+        def kill_with_exit_race(pgid, sig):
+            killpg(pgid, sig)
+            if exit_race:
+                raise ProcessLookupError
+
+        with patch("asyncio.create_subprocess_exec", side_effect=capture_process):
+            task = asyncio.create_task(bash(command, timeout=30))
+            try:
+                async with asyncio.timeout(5):
+                    while (
+                        not processes
+                        or not pid_file.exists()
+                        or not pid_file.read_text().strip()
+                    ):
+                        await asyncio.sleep(0.01)
+                    process = processes[0]
+                    pid = int(pid_file.read_text())
+                    assert os.getpgid(pid) == process.pid
+                    if mode == "exited_shell":
+                        while process.returncode is None:
+                            await asyncio.sleep(0.01)
+
+                assert not task.done()
+                with patch("os.killpg", side_effect=kill_with_exit_race):
+                    task.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await asyncio.wait_for(task, timeout=5)
+
+                assert process.returncode == (
+                    0 if mode == "exited_shell" else -signal.SIGKILL
+                )
+                with pytest.raises(ChildProcessError):
+                    os.waitpid(process.pid, os.WNOHANG)
+
+                await asyncio.wait_for(process.communicate(), timeout=1)
+            finally:
+                for process in processes:
+                    with contextlib.suppress(ProcessLookupError):
+                        killpg(process.pid, signal.SIGKILL)
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+                for process in processes:
+                    await process.communicate()
 
     @pytest.mark.asyncio
     async def test_bash_generic_exception(self):
