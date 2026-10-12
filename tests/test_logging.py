@@ -96,3 +96,12 @@ class TestDisplayDiff:
         caplog.set_level(logging.INFO)
         display_diff("old\nline1\nline2", "new\nline1\nline3", "test.txt")
         assert "± test.txt" in caplog.text
+        assert "+2" in caplog.text
+        assert "-2" in caplog.text
+
+    def test_header_counts_only_changed_lines(self, caplog):
+        caplog.set_level(logging.INFO)
+        display_diff("a\nb\nc", "a\nb\nc\nd", "f.txt")
+        assert "f.txt" in caplog.text
+        assert "+1" in caplog.text
+        assert "-0" in caplog.text
