@@ -23,8 +23,8 @@ Sizing is re-derived from one `os.get_terminal_size()` per render, and a SIGWINC
 handler repaints: a resize changes cols, height, the box's row count and DECSTBM all
 at once, and the terminal re-wraps the old box into the scroll region.
 
-Also: input wraps and the box grows, but buf is always one logical line; Enter
-always submits. No history (removed: unused), no completion, no vi mode.
+Also: input is one row that scrolls horizontally to keep the cursor in view, so the
+box is a constant height; buf is always one logical line; Enter always submits. No history (removed: unused), no completion, no vi mode.
 
 tests/test_tty.py pins every key and the escapes; tests/test_tty_screen.py drives a
 VT emulator and asserts what lands on screen; scripts/tty_mutants.py breaks each
@@ -203,12 +203,10 @@ class Prompt:
     def _input_rows(self, cols: int) -> list[str]:
         text = self.label + self._display(self.buf)
         offset = len(self.label) + len(self._display(self.buf[: self.cursor]))
-        rows = [text[j : j + cols] for j in range(0, len(text) + 1, cols)]
-        cur_row, cur_col = offset // cols, offset % cols
-        r, c = rows[cur_row], cur_col
+        start = max(0, offset + 1 - cols)
+        r, c = text[start : start + cols], offset - start
         # REV = reverse video on, \x1b[27m = off: a 1-cell fake cursor
-        rows[cur_row] = f"{r[:c]}{REV}{r[c : c + 1] or ' '}\x1b[27m{r[c + 1 :]}"
-        return rows
+        return [f"{r[:c]}{REV}{r[c : c + 1] or ' '}\x1b[27m{r[c + 1 :]}"]
 
     def _room(self, rows: int) -> None:
         self._write(
@@ -231,10 +229,7 @@ class Prompt:
 
     def _render(self, resized: bool = False) -> None:
         cols, height = os.get_terminal_size()
-        cols = max(1, cols)  # a zero-width terminal would divide by zero below
         box, top = self._layout(cols, height)
-        # Rows a shrink freed above the box are still ours, and get painted blank.
-        blanks = max(0, min(top - 1, self._rows - len(box)))
         if resized:
             # A resize moves the cursor, so room cannot be made relative to it -
             # _room's indexes would fire at the bottom row and scroll output away,
@@ -244,11 +239,10 @@ class Prompt:
             self._rows = len(box)
         else:
             self._room(len(box))
-        painted = enumerate([""] * blanks + box, start=top - blanks)
         self._write(
             SAVE_CURSOR
             + scroll_region(top - 1)
-            + "".join(f"{clear_row(i)}{line}" for i, line in painted)
+            + "".join(f"{clear_row(i)}{line}" for i, line in enumerate(box, top))
             + RESTORE_CURSOR
         )
 
@@ -315,7 +309,6 @@ class Prompt:
 
     async def prompt_async(self, label: str = "❯ ") -> str:
         self.buf, self.cursor, self.pastes, self.label = "", 0, [], label
-        self._rows = 0  # the last box was erased at teardown; nothing to reclaim
         with self._raw():
             self._active = True
             try:

@@ -34,11 +34,6 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     ("no room made for the box", "self._room(len(box))", "self._rows = len(box)"),
     (
-        "no clearing of rows freed by a shrink",
-        "blanks = max(0, min(top - 1, self._rows - len(box)))",
-        "blanks = 0",
-    ),
-    (
         "no scroll region",
         "SAVE_CURSOR\n            + scroll_region(top - 1)",
         'SAVE_CURSOR\n            + ""',
@@ -48,11 +43,10 @@ MUTANTS: list[tuple[str, str, str]] = [
         "[rule, *self._input_rows(cols), rule, chrome(self.toolbar())][\n            : max(0, height - 1)\n        ]",
         "[rule, *self._input_rows(cols), rule, chrome(self.toolbar())]",
     ),
-    ("no zero-width guard", "cols = max(1, cols)", "pass"),
     (
         "resize does not erase the reflowed box",
-        "CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1)",
-        "RESET_SCROLL_REGION + goto(top - 1)",
+        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
+        "self._write(RESET_SCROLL_REGION + goto(top - 1))",
     ),
     (
         "resize makes room relative to the moved cursor",
@@ -62,8 +56,8 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "resize does not anchor the cursor above the box",
-        "CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1)",
-        "CLEAR_TO_END + RESET_SCROLL_REGION",
+        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
+        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION)",
     ),
     (
         "room does not restore the cursor",
@@ -84,11 +78,6 @@ MUTANTS: list[tuple[str, str, str]] = [
         "room lets \\x1b[r home the cursor (real terminals do; pyte does not)",
         "SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows",
         "RESET_SCROLL_REGION + IND * rows",
-    ),
-    (
-        "second prompt reclaims the previous box's rows",
-        "self._rows = 0  # the last box was erased at teardown; nothing to reclaim",
-        "pass",
     ),
     (
         "echo lands on a writer's half-written line",

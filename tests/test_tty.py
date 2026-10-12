@@ -236,13 +236,23 @@ class TestPaste:
 
 
 class TestInputRows:
-    def test_wraps_and_marks_cursor(self, p: Prompt) -> None:
-        type_(p, "abcdefghij")  # "> abcdefghij" = 12 chars
-        assert p._input_rows(cols=5) == ["> abc", "defgh", f"ij{REV} {NORM}"]
+    def test_fits_and_marks_cursor(self, p: Prompt) -> None:
+        type_(p, "abc")
+        assert p._input_rows(cols=10) == [f"> abc{CUR}"]
 
-    def test_exact_multiple_gets_empty_row(self, p: Prompt) -> None:
-        type_(p, "abc")  # 5 chars = cols
-        assert p._input_rows(cols=5) == ["> abc", f"{REV} {NORM}"]
+    def test_scrolls_to_keep_cursor_at_the_end_in_view(self, p: Prompt) -> None:
+        type_(p, "abcdefghij")  # "> abcdefghij" = 12 chars
+        assert p._input_rows(cols=5) == [f"ghij{CUR}"]
+
+    def test_scrolls_back_when_cursor_moves_left(self, p: Prompt) -> None:
+        type_(p, "abcdefghij")
+        p.cursor = 0
+        assert p._input_rows(cols=5) == [f"> {REV}a{NORM}bc"]
+
+    def test_is_always_one_row_of_at_most_cols(self, p: Prompt) -> None:
+        type_(p, "x" * 500)
+        rows = p._input_rows(cols=7)
+        assert len(rows) == 1 and cells(rows[0]) == 7
 
     def test_cursor_before_paste_sits_on_label(self, p: Prompt) -> None:
         p._handle(PASTE + "x\ny")
@@ -282,44 +292,20 @@ class TestRender:
         }
         assert out.endswith("\x1b8")  # cursor left in the output area
 
-    def test_grow_then_shrink_clears_freed_row(self, screen) -> None:
+    def test_overflow_scrolls_horizontally_and_box_keeps_its_height(
+        self, screen
+    ) -> None:
         p, capsys = screen
         p._render()
         capsys.readouterr()
 
-        type_(p, "a" * 8)  # exactly fills the row: wraps to a second, empty row
+        type_(p, "abcdefghijkl")  # "> " + 12 chars > 10 cols
         p._render()
         out = capsys.readouterr().out
-        assert "\x1b[1;15r" in out and room(5) in out  # one more row of room
+        assert "\x1b[1;16r" in out and room(4) in out
         assert painted(out) == {
-            16: rule(10),
-            17: "> aaaaaaaa",
-            18: CUR,
-            19: rule(10),
-            20: dim("tb"),
-        }
-
-        p._handle("\x7f")  # back to 4 rows
-        p._render()
-        out = capsys.readouterr().out
-        assert room(4) in out  # asks for less room, so nothing scrolls
-        assert painted(out)[16] == ""  # freed row 16 wiped
-        assert painted(out)[18] == f"> aaaaaaa{CUR}"
-
-    def test_overflow_wraps_into_a_taller_box(self, screen) -> None:
-        p, capsys = screen
-        p._render()
-        capsys.readouterr()
-
-        type_(p, "abcdefghijkl")  # "> " + 12 chars > 10 cols, so it wraps
-        p._render()
-        out = capsys.readouterr().out
-        # the box grew by exactly the one wrapped row; rule and toolbar stay pinned
-        assert "\x1b[1;15r" in out and room(5) in out  # one more row of room
-        assert painted(out) == {
-            16: rule(10),
-            17: "> abcdefgh",
-            18: f"ijkl{CUR}",
+            17: rule(10),
+            18: f"defghijkl{CUR}",
             19: rule(10),
             20: dim("tb"),
         }
@@ -343,20 +329,17 @@ class TestRender:
 
     def test_resize_repaints_at_the_new_width(self, screen) -> None:
         p, capsys = screen
-        p.buf, p.cursor = "abcdefgh", 8  # one row at 10 cols, three at 5
+        p.buf, p.cursor = "abcdefgh", 8
         p._render()
         capsys.readouterr()
 
         self.COLS = 5
         p._render(resized=True)
         out = capsys.readouterr().out
-        assert anchor(top=15) in out  # box is 6 rows now, so it starts at 15
-        assert "\x1b[1;14r" in out  # scroll region re-derived from the new width
+        assert anchor(top=17) in out
         assert painted(out) == {
-            15: rule(5),  # the rule narrows with the terminal
-            16: "> abc",
-            17: "defgh",
-            18: CUR,
+            17: rule(5),  # the rule narrows with the terminal
+            18: f"efgh{CUR}",
             19: rule(5),
             20: dim("tb"),
         }

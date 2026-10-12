@@ -113,11 +113,6 @@ class TestCursorStaysInTheOutputArea:
     def test_after_render_the_cursor_is_above_the_box(self, term: Term) -> None:
         assert term.screen.cursor.y < term.screen.lines - term.prompt._rows
 
-    def test_still_above_after_the_box_grows(self, term: Term) -> None:
-        term.type("a" * 50)  # wraps across several rows
-        term.render()
-        assert term.screen.cursor.y < term.screen.lines - term.prompt._rows
-
     def test_still_above_after_output_and_renders(self, term: Term) -> None:
         for i in range(30):
             term.feed(f"out {i}\r\n")
@@ -187,22 +182,12 @@ class TestBoxIntegrity:
             term.render()
         assert term.rows == stable
 
-    def test_shrinking_the_box_leaves_no_ghost_row(self, term: Term) -> None:
-        term.type("a" * 23)  # wraps to a second row
+    def test_long_input_never_changes_the_box_height(self, term: Term) -> None:
+        term.type("a" * 100)
         term.render()
-        tall = len(term.box)
-        term.prompt._handle("\x7f")  # still wrapped: one char short of the boundary
-        term.prompt._handle("\x7f")  # drops below it: back to one row
-        term.render()
-        assert len(term.box) == tall - 1
-        assert term.last_output == "output 3"  # the freed row is blank, not stale box
-
-    def test_growing_the_box_scrolls_output_up_by_one(self, term: Term) -> None:
+        assert len(term.box) == CHROME + 1
         assert term.last_output == "output 3"
-        term.type("a" * 22)  # exactly fills the row: wraps to a second, empty row
-        term.render()
-        assert term.last_output == "output 3"  # still there, just one row higher
-        assert len(term.box) == CHROME + 2
+        assert all(len(row) <= term.screen.columns for row in term.rows)
 
 
 class TestWholeSession:
@@ -262,20 +247,6 @@ class TestWholeSession:
         assert not [row for row in t.rows if "─" in row or row == "tb"]  # box erased
         assert "output 3" in t.rows  # prior output survived the session
         assert "> hi" in t.rows  # the submitted line is left in the scrollback
-
-    def test_second_prompt_does_not_reclaim_the_last_box(self, monkeypatch) -> None:
-        """_rows outlives teardown. Unreset, the next prompt's first render treats the
-        old (taller) box's rows as freed by a shrink and blanks them. The row it hits
-        is the cursor's, which is blank after a finished reply - but holds the tail
-        of an interrupted one, printed with no trailing newline."""
-        t = Term(lines=12)
-        t.feed("".join(f"output {i}\r\n" for i in range(12)))  # full: cursor at bottom
-        assert self.run(t, b"a" * 22 + b"\r", monkeypatch) == "a" * 22  # 2-row input
-        t.feed("reply cut off by ctrl-c")
-        assert self.run(t, b"\r", monkeypatch) == ""
-        # the next echo lands on the same row (no newline to end it) - that is the
-        # writer's business; the point is that the reply itself is still there
-        assert any(row.startswith("reply cut off by ctrl-c") for row in t.rows)
 
     def test_echo_starts_on_its_own_line(self, monkeypatch) -> None:
         """A reply streamed with end="" leaves the cursor mid-line. The echo cannot
