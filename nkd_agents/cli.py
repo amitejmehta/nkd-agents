@@ -133,7 +133,7 @@ class CLI:
 
     def interrupt(self) -> None:
         if self.session.buf:
-            self.session.buf, self.session.cursor = "", 0
+            self.session.buf = ""
             return
         if self.llm_task and not self.llm_task.done():
             self.llm_task.cancel()

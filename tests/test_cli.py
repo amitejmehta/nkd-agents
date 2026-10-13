@@ -196,9 +196,9 @@ class TestInterrupt:
     def test_clears_buffer_when_text_present(self, cli: CLI):
         cli.llm_task = MagicMock()
         cli.llm_task.done.return_value = False
-        cli.session.buf, cli.session.cursor = "some input", 4
+        cli.session.buf = "some input"
         cli.interrupt()
-        assert (cli.session.buf, cli.session.cursor) == ("", 0)
+        assert cli.session.buf == ""
         cli.llm_task.cancel.assert_not_called()
 
     def test_cancels_task_when_buffer_empty(self, cli: CLI):
