@@ -74,7 +74,6 @@ told the user's intent, the decisions made, or what's already been tried. Be con
 function/symbol names, exact commands, and exact error messages (only when the error itself is the \
 important fact) over general description. Do not add commentary about the summarization process \
 itself. Output only the summary."""
-# runtime config (override via env / ~/.nkd-agents/.env)
 load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
@@ -197,7 +196,7 @@ class CLI:
 
     async def prompt_loop(self) -> None:
         while True:
-            if text := (await self.session.prompt_async("❯ ")).strip():
+            if text := (await self.session.prompt_async()).strip():
                 content = f"CWD: {Path.cwd()} Mode: {self.mode}. {START_PHRASE} {text}"
                 await self.queue.put({"role": "user", "content": content})
 
