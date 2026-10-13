@@ -114,13 +114,15 @@ class TestToggleThinking:
         cli.toggle_thinking()
         assert cli.kwargs["thinking"]["type"] == "adaptive"
 
-    def test_haiku_4_5_omits_thinking(self, cli: CLI):
+    def test_haiku_5_5_toggles(self, cli: CLI):
         cli.switch_model()
         cli.switch_model()
-        assert cli.kwargs["model"] == "claude-haiku-4-5"
-        assert "thinking" not in cli.kwargs
+        assert cli.kwargs["model"] == "claude-haiku-5-5"
+        assert cli.kwargs["thinking"] == {"type": "disabled"}
         cli.toggle_thinking()
-        assert "thinking" not in cli.kwargs
+        assert cli.kwargs["thinking"]["type"] == "adaptive"
+        cli.toggle_thinking()
+        assert cli.kwargs["thinking"] == {"type": "disabled"}
 
     def test_switch_model_resets_thinking(self, cli: CLI):
         cli.toggle_thinking()
