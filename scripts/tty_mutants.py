@@ -32,7 +32,7 @@ MUTANTS: list[tuple[str, str, str]] = [
         'return self.style + s.replace("\\n", " ")[:cols] + RESET',
         "return self.style + s[:cols] + RESET",
     ),
-    ("no room made for the box", "self._room(len(box))", "self._rows = len(box)"),
+    ("no room made for the box", "self._room(len(box))", "pass"),
     (
         "no scroll region",
         "SAVE_CURSOR\n            + scroll_region(top - 1)",
@@ -40,8 +40,8 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "box may claim row 1 (negative row escapes)",
-        "[rule, *self._input_rows(cols), rule, chrome(self.toolbar())][\n            : max(0, height - 1)\n        ]",
-        "[rule, *self._input_rows(cols), rule, chrome(self.toolbar())]",
+        "[rule, self._input_row(cols), rule, chrome(self.toolbar())][\n            : max(0, height - 1)\n        ]",
+        "[rule, self._input_row(cols), rule, chrome(self.toolbar())]",
     ),
     (
         "resize does not erase the reflowed box",
@@ -50,8 +50,7 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "resize makes room relative to the moved cursor",
-        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))\n            "
-        "self._rows = len(box)",
+        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
         "self._write(CLEAR_TO_END)\n            self._room(len(box))",
     ),
     (
