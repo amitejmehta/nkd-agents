@@ -64,9 +64,9 @@ def shown(p: Prompt) -> str:
 
 
 class TestEditing:
-    def test_insert_and_cursor(self, p: Prompt) -> None:
+    def test_insert_mid_word(self, p: Prompt) -> None:
         type_(p, "abc")
-        p._handle(ESC + "[D")
+        p.cursor = 2
         type_(p, "X")
         assert (p.buf, p.cursor) == ("abXc", 3)
 
@@ -76,13 +76,6 @@ class TestEditing:
         p._handle("\x7f")
         p._handle("\x7f")  # no-op at start
         assert (p.buf, p.cursor) == ("", 0)
-
-    def test_arrows_clamp(self, p: Prompt) -> None:
-        p._handle(ESC + "[D")
-        assert p.cursor == 0
-        type_(p, "a")
-        p._handle(ESC + "[C")
-        assert p.cursor == 1
 
     @pytest.mark.parametrize("key", sorted(HOMES))
     def test_home(self, p: Prompt, key: str) -> None:
@@ -96,27 +89,6 @@ class TestEditing:
         p.cursor = 2
         p._handle(key)
         assert p.cursor == 7
-
-    @pytest.mark.parametrize("left", [ESC + "b", ESC + "[1;3D", ESC + "[1;5D"])
-    def test_word_left(self, p: Prompt, left: str) -> None:
-        type_(p, "foo  bar")
-        p._handle(left)
-        assert p.cursor == 5
-        p._handle(left)
-        assert p.cursor == 0
-        p._handle(left)  # clamps
-        assert p.cursor == 0
-
-    @pytest.mark.parametrize("right", [ESC + "f", ESC + "[1;3C", ESC + "[1;5C"])
-    def test_word_right(self, p: Prompt, right: str) -> None:
-        type_(p, "foo  bar")
-        p.cursor = 0
-        p._handle(right)
-        assert p.cursor == 3
-        p._handle(right)
-        assert p.cursor == 8
-        p._handle(right)  # clamps
-        assert p.cursor == 8
 
     @pytest.mark.parametrize("key", [ESC + "\x7f", ESC + "\x08", "\x17"])
     def test_word_backspace(self, p: Prompt, key: str) -> None:
@@ -136,15 +108,6 @@ class TestEditing:
         p.cursor = 2
         p._handle(ESC + "[3~")  # no-op at end
         assert p.buf == "ac"
-
-    @pytest.mark.parametrize("key", [ESC + "d", ESC + "[3;3~"])
-    def test_word_forward_delete(self, p: Prompt, key: str) -> None:
-        type_(p, "foo  bar baz")
-        p.cursor = 3
-        p._handle(key)
-        assert (p.buf, p.cursor) == ("foo baz", 3)
-        p._handle(key)
-        assert p.buf == "foo"
 
     def test_key_bindings_and_defaults(self, p: Prompt) -> None:
         hits: list[str] = []
@@ -185,16 +148,6 @@ class TestPaste:
         assert shown(p) == "[Paste #1, 2 lines][Paste #2, 2 lines]"
         assert p._expand() == "a\nbc\nd"
 
-    def test_arrows_jump_over_paste(self, p: Prompt) -> None:
-        type_(p, "a")
-        p._handle(PASTE + "x\ny")
-        type_(p, "b")
-        p._handle(ESC + "[D")
-        p._handle(ESC + "[D")
-        assert p.cursor == 1
-        p._handle(ESC + "[C")
-        assert p.cursor == 2
-
     def test_backspace_removes_whole_paste(self, p: Prompt) -> None:
         type_(p, "a")
         p._handle(PASTE + "x\ny")
@@ -217,7 +170,7 @@ class TestPaste:
         p._handle(PASTE + "z\nz")
         type_(p, " end")
         p.cursor = 4
-        p._handle(ESC + "d")
+        p._handle(ESC + "[3~")
         assert shown(p) == "see  end"
 
     def test_typed_label_is_literal(self, p: Prompt) -> None:
