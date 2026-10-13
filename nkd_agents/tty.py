@@ -24,7 +24,7 @@ handler repaints: a resize changes cols, height, the box's row count and DECSTBM
 at once, and the terminal re-wraps the old box into the scroll region.
 
 Also: input is one row that scrolls horizontally to keep the cursor in view, so the
-box is a constant height; buf is always one logical line; Enter always submits. No history (removed: unused), no completion, no vi mode.
+box is a constant height; buf is always one logical line; Enter always submits.
 
 tests/test_tty.py pins every key and the escapes; tests/test_tty_screen.py drives a
 VT emulator and asserts what lands on screen; scripts/tty_mutants.py breaks each
@@ -200,19 +200,18 @@ class Prompt:
         sys.stdout.write(s)
         sys.stdout.flush()
 
-    def _input_rows(self, cols: int) -> list[str]:
+    def _input_row(self, cols: int) -> str:
         text = self.label + self._display(self.buf)
         offset = len(self.label) + len(self._display(self.buf[: self.cursor]))
         start = max(0, offset + 1 - cols)
         r, c = text[start : start + cols], offset - start
         # REV = reverse video on, \x1b[27m = off: a 1-cell fake cursor
-        return [f"{r[:c]}{REV}{r[c : c + 1] or ' '}\x1b[27m{r[c + 1 :]}"]
+        return f"{r[:c]}{REV}{r[c : c + 1] or ' '}\x1b[27m{r[c + 1 :]}"
 
     def _room(self, rows: int) -> None:
         self._write(
             SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows + up(rows)
         )
-        self._rows = rows
 
     def _layout(self, cols: int, height: int) -> tuple[list[str], int]:
         def chrome(s: str) -> str:
@@ -222,7 +221,7 @@ class Prompt:
         # at least one row tall and every index below lands on the screen. The slice
         # is the last resort for a terminal too short to hold even the chrome.
         rule = chrome("─" * cols)
-        box = [rule, *self._input_rows(cols), rule, chrome(self.toolbar())][
+        box = [rule, self._input_row(cols), rule, chrome(self.toolbar())][
             : max(0, height - 1)
         ]
         return box, height - len(box) + 1
@@ -236,9 +235,9 @@ class Prompt:
             # a line per row of box. \x1b[J erases the re-wrapped box (always below
             # the cursor), then anchor absolutely above the box instead.
             self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))
-            self._rows = len(box)
         else:
             self._room(len(box))
+        self._rows = len(box)
         self._write(
             SAVE_CURSOR
             + scroll_region(top - 1)

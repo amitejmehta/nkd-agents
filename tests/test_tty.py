@@ -235,30 +235,29 @@ class TestPaste:
         assert p._expand() == "l1\nl2\nl3"
 
 
-class TestInputRows:
+class TestInputRow:
     def test_fits_and_marks_cursor(self, p: Prompt) -> None:
         type_(p, "abc")
-        assert p._input_rows(cols=10) == [f"> abc{CUR}"]
+        assert p._input_row(cols=10) == f"> abc{CUR}"
 
     def test_scrolls_to_keep_cursor_at_the_end_in_view(self, p: Prompt) -> None:
         type_(p, "abcdefghij")  # "> abcdefghij" = 12 chars
-        assert p._input_rows(cols=5) == [f"ghij{CUR}"]
+        assert p._input_row(cols=5) == f"ghij{CUR}"
 
     def test_scrolls_back_when_cursor_moves_left(self, p: Prompt) -> None:
         type_(p, "abcdefghij")
         p.cursor = 0
-        assert p._input_rows(cols=5) == [f"> {REV}a{NORM}bc"]
+        assert p._input_row(cols=5) == f"> {REV}a{NORM}bc"
 
-    def test_is_always_one_row_of_at_most_cols(self, p: Prompt) -> None:
+    def test_is_always_at_most_cols_wide(self, p: Prompt) -> None:
         type_(p, "x" * 500)
-        rows = p._input_rows(cols=7)
-        assert len(rows) == 1 and cells(rows[0]) == 7
+        assert cells(p._input_row(cols=7)) == 7
 
     def test_cursor_before_paste_sits_on_label(self, p: Prompt) -> None:
         p._handle(PASTE + "x\ny")
         type_(p, "z")
         p.cursor = 0
-        assert p._input_rows(cols=40) == [f"> {REV}[{NORM}Paste #1, 2 lines]z"]
+        assert p._input_row(cols=40) == f"> {REV}[{NORM}Paste #1, 2 lines]z"
 
 
 class TestRender:
