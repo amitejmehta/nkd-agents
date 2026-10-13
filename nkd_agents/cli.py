@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
-from anthropic.types import ThinkingConfigDisabledParam
 
 from .anthropic import agent, tool_schema
 from .logging import DIM, RED, RESET, configure_logging
@@ -25,7 +24,7 @@ except ImportError:
 TOOLS = [tool_schema(fn) for fn in FNS]
 
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
-DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
+DISABLED = {"type": "disabled"}
 MODELS = {
     "claude-sonnet-5-5": {"type": "between_tools"},
     "claude-opus-5-5": ADAPTIVE,
@@ -133,7 +132,7 @@ class CLI:
 
     def toolbar(self) -> str:
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
-        model = self.kwargs["model"].split("claude-")[1]
+        model = self.kwargs["model"].split("-")[1]
         think = "✓" if self.kwargs.get("thinking") == ADAPTIVE else "✗"
         return f" {busy} {self.mode} (shift+tab) {model} (ctrl+l) think:{think} (tab)"
 
@@ -148,13 +147,14 @@ class CLI:
         return resp.input_tokens
 
     async def compact(self) -> None:
-        if not self.messages:
+        *history, latest = self.messages
+        if not history:
             return
         summary = await agent(
             self.client,
-            messages=[*self.messages, {"role": "user", "content": COMPACT_PROMPT}],
+            messages=[*history, {"role": "user", "content": COMPACT_PROMPT}],
             model="claude-haiku-5-5",
-            max_tokens=COMPACT_TOKENS,
+            max_tokens=4096,
             thinking=DISABLED,
         )
         self.messages[:] = [
@@ -163,12 +163,13 @@ class CLI:
                 "content": f"[compacted summary of earlier session]\n{summary}",
             },
             {"role": "assistant", "content": "Understood, continuing from summary."},
+            latest,
         ]
 
     async def turn(self) -> None:
-        await agent(self.client, fns=FNS, messages=self.messages, **self.kwargs)
         if await self.count_tokens() > COMPACT_TOKENS:
             await self.compact()
+        await agent(self.client, fns=FNS, messages=self.messages, **self.kwargs)
 
     async def llm_loop(self) -> None:
         while True:
