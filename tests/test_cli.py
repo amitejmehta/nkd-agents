@@ -89,23 +89,6 @@ class TestSwitchModel:
             cli.switch_model()
         assert cli.kwargs["model"] == NAMES[0]
 
-    def test_syncs_idx_with_nkd_model(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setenv("NKD_MODEL", NAMES[1])
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        cli = CLI()
-        assert cli.kwargs["model"] == NAMES[1]
-        cli.switch_model()
-        assert cli.kwargs["model"] == NAMES[2]
-
-    def test_unknown_nkd_model_exits(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setenv("NKD_MODEL", "bogus")
-        with pytest.raises(SystemExit, match="NKD_MODEL"):
-            CLI()
-
 
 class TestToggleThinking:
     def test_sonnet_5_5_toggles(self, cli: CLI):

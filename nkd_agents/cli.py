@@ -90,12 +90,7 @@ class CLI:
         self.queue = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
         self.mode = MODES[0]
-        self.kwargs = {
-            "model": os.environ.get("NKD_MODEL", SONNET),
-            "max_tokens": MAX_TOKENS,
-        }
-        if self.kwargs["model"] not in MODELS:
-            raise SystemExit(f"NKD_MODEL must be one of: {', '.join(MODELS)}")
+        self.kwargs = {"model": SONNET, "max_tokens": MAX_TOKENS}
         self.reset_thinking()
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
