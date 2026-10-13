@@ -27,9 +27,13 @@ TOOLS = [tool_schema(fn) for fn in FNS]
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 BETWEEN_TOOLS = {"type": "between_tools"}
 DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
-TIERS = {"sonnet": BETWEEN_TOOLS, "opus": ADAPTIVE, "haiku": DISABLED}
-VERSIONS = {"sonnet": "5-5", "opus": "5-5", "haiku": "5-5"}
-MODELS = {f"claude-{t}-{VERSIONS[t]}": cfg for t, cfg in TIERS.items()}
+SONNET = "claude-sonnet-5-5"
+HAIKU = "claude-haiku-5-5"
+MODELS = {
+    SONNET: BETWEEN_TOOLS,
+    "claude-opus-5-5": ADAPTIVE,
+    HAIKU: DISABLED,
+}
 COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
 summary that will replace this raw history. The repository/filesystem is the source of truth \
 for anything reconstructable by re-reading files or re-running commands — do not preserve \
@@ -79,11 +83,6 @@ START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
 
 
-def resolve_model(name: str) -> str:
-    tier = next((t for t in TIERS if t in name.lower()), next(iter(TIERS)))
-    return f"claude-{tier}-{VERSIONS[tier]}"
-
-
 class CLI:
     def __init__(self) -> None:
         self.client = AsyncAnthropic(max_retries=4)
@@ -92,9 +91,11 @@ class CLI:
         self.llm_task: asyncio.Task | None = None
         self.mode = MODES[0]
         self.kwargs = {
-            "model": resolve_model(os.environ.get("NKD_MODEL", "")),
+            "model": os.environ.get("NKD_MODEL", SONNET),
             "max_tokens": MAX_TOKENS,
         }
+        if self.kwargs["model"] not in MODELS:
+            raise SystemExit(f"NKD_MODEL must be one of: {', '.join(MODELS)}")
         self.reset_thinking()
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
@@ -160,7 +161,7 @@ class CLI:
         summary = await agent(
             self.client,
             messages=[*self.messages, {"role": "user", "content": COMPACT_PROMPT}],
-            model=resolve_model("haiku"),
+            model=HAIKU,
             max_tokens=COMPACT_TOKENS,
             thinking=DISABLED,
         )
