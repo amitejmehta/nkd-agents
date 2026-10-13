@@ -27,12 +27,10 @@ TOOLS = [tool_schema(fn) for fn in FNS]
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 BETWEEN_TOOLS = {"type": "between_tools"}
 DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
-SONNET = "claude-sonnet-5-5"
-HAIKU = "claude-haiku-5-5"
 MODELS = {
-    SONNET: BETWEEN_TOOLS,
+    "claude-sonnet-5-5": BETWEEN_TOOLS,
     "claude-opus-5-5": ADAPTIVE,
-    HAIKU: DISABLED,
+    "claude-haiku-5-5": DISABLED,
 }
 COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
 summary that will replace this raw history. The repository/filesystem is the source of truth \
@@ -90,7 +88,7 @@ class CLI:
         self.queue = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
         self.mode = MODES[0]
-        self.kwargs = {"model": SONNET, "max_tokens": MAX_TOKENS}
+        self.kwargs = {"model": next(iter(MODELS)), "max_tokens": MAX_TOKENS}
         self.reset_thinking()
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
@@ -156,7 +154,7 @@ class CLI:
         summary = await agent(
             self.client,
             messages=[*self.messages, {"role": "user", "content": COMPACT_PROMPT}],
-            model=HAIKU,
+            model="claude-haiku-5-5",
             max_tokens=COMPACT_TOKENS,
             thinking=DISABLED,
         )
