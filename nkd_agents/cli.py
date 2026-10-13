@@ -25,10 +25,9 @@ except ImportError:
 TOOLS = [tool_schema(fn) for fn in FNS]
 
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
-BETWEEN_TOOLS = {"type": "between_tools"}
 DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
 MODELS = {
-    "claude-sonnet-5-5": BETWEEN_TOOLS,
+    "claude-sonnet-5-5": {"type": "between_tools"},
     "claude-opus-5-5": ADAPTIVE,
     "claude-haiku-5-5": DISABLED,
 }
