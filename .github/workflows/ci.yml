@@ -37,12 +37,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-uv-
 
-    - name: Install ripgrep
-      run: sudo apt-get install -y ripgrep
-
     - name: Install dependencies
       run: |
-        uv pip install --system -e ".[dev,cli,web]"
+        uv pip install --system -e ".[dev,web]"
 
     - name: Run ruff linting
       run: |
