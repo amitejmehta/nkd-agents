@@ -25,10 +25,14 @@ except ImportError:
 TOOLS = [tool_schema(fn) for fn in FNS]
 
 # constants
-MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5")
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 BETWEEN_TOOLS = {"type": "between_tools"}
 DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
+MODELS = {
+    "claude-sonnet-5-5": BETWEEN_TOOLS,
+    "claude-opus-5-5": ADAPTIVE,
+    "claude-haiku-5-5": DISABLED,
+}
 COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
 summary that will replace this raw history. The repository/filesystem is the source of truth \
 for anything reconstructable by re-reading files or re-running commands — do not preserve \
@@ -88,7 +92,7 @@ class CLI:
         self.llm_task: asyncio.Task | None = None
         self.mode = MODES[0]
         self.kwargs = {
-            "model": os.environ.get("NKD_MODEL", MODELS[0]),
+            "model": os.environ.get("NKD_MODEL", next(iter(MODELS))),
             "max_tokens": MAX_TOKENS,
         }
         self.reset_thinking()
@@ -111,22 +115,17 @@ class CLI:
         return "\n\n".join(parts).strip() or None
 
     def switch_model(self) -> None:
-        next_model_idx = (MODELS.index(self.kwargs["model"]) + 1) % len(MODELS)
-        self.kwargs["model"] = MODELS[next_model_idx]
+        models = list(MODELS)
+        next_model_idx = (models.index(self.kwargs["model"]) + 1) % len(models)
+        self.kwargs["model"] = models[next_model_idx]
         self.reset_thinking()
 
     def reset_thinking(self) -> None:
-        self.kwargs.pop("thinking", None)
-        if self.kwargs["model"] == "claude-sonnet-5-5":
-            self.kwargs["thinking"] = BETWEEN_TOOLS
-        elif self.kwargs["model"] == "claude-opus-5-5":
-            self.kwargs["thinking"] = ADAPTIVE
-        else:
-            self.kwargs["thinking"] = DISABLED
+        self.kwargs["thinking"] = MODELS[self.kwargs["model"]]
 
     def toggle_thinking(self) -> None:
-        off = {"claude-sonnet-5-5": BETWEEN_TOOLS, "claude-haiku-5-5": DISABLED}
-        if (idle := off.get(self.kwargs["model"])) is not None:
+        idle = MODELS[self.kwargs["model"]]
+        if idle != ADAPTIVE:
             self.kwargs["thinking"] = (
                 ADAPTIVE if self.kwargs["thinking"] == idle else idle
             )
