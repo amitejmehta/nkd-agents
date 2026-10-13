@@ -13,6 +13,8 @@ from nkd_agents.cli import (
 )
 from nkd_agents.tty import ESC
 
+NAMES = list(MODELS)
+
 
 @pytest.fixture
 def cli(tmp_path, monkeypatch):
@@ -25,7 +27,7 @@ def cli(tmp_path, monkeypatch):
 
 class TestToolbar:
     def test_shows_model(self, cli: CLI):
-        assert MODELS[0].split("claude-")[1] in cli.toolbar()
+        assert NAMES[0].split("claude-")[1] in cli.toolbar()
 
     def test_shows_mode(self, cli: CLI):
         assert "Act" in cli.toolbar()
@@ -39,7 +41,7 @@ class TestToolbar:
 
     def test_reflects_model_change(self, cli: CLI):
         cli.switch_model()
-        assert MODELS[1].split("claude-")[1] in cli.toolbar()
+        assert NAMES[1].split("claude-")[1] in cli.toolbar()
 
     def test_reflects_mode_change(self, cli: CLI):
         cli.cycle_mode()
@@ -61,7 +63,7 @@ class TestInit:
         CLI()  # should not raise
 
     def test_defaults(self, cli: CLI):
-        assert cli.kwargs["model"] == MODELS[0]
+        assert cli.kwargs["model"] == NAMES[0]
         assert cli.kwargs["max_tokens"] > 0
         assert cli.kwargs["thinking"] == {"type": "between_tools"}
         assert cli.messages == []
@@ -78,24 +80,24 @@ class TestInit:
 
 class TestSwitchModel:
     def test_cycles_through_models(self, cli: CLI):
-        assert cli.kwargs["model"] == MODELS[0]
+        assert cli.kwargs["model"] == NAMES[0]
         cli.switch_model()
-        assert cli.kwargs["model"] == MODELS[1]
+        assert cli.kwargs["model"] == NAMES[1]
 
     def test_wraps_around(self, cli: CLI):
-        for _ in range(len(MODELS)):
+        for _ in range(len(NAMES)):
             cli.switch_model()
-        assert cli.kwargs["model"] == MODELS[0]
+        assert cli.kwargs["model"] == NAMES[0]
 
     def test_syncs_idx_with_nkd_model(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setenv("NKD_MODEL", MODELS[1])
+        monkeypatch.setenv("NKD_MODEL", NAMES[1])
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         cli = CLI()
-        assert cli.kwargs["model"] == MODELS[1]
+        assert cli.kwargs["model"] == NAMES[1]
         cli.switch_model()
-        assert cli.kwargs["model"] == MODELS[2]
+        assert cli.kwargs["model"] == NAMES[2]
 
 
 class TestToggleThinking:
@@ -126,7 +128,7 @@ class TestToggleThinking:
 
     def test_switch_model_resets_thinking(self, cli: CLI):
         cli.toggle_thinking()
-        for _ in range(len(MODELS)):
+        for _ in range(len(NAMES)):
             cli.switch_model()
         assert cli.kwargs["thinking"] == {"type": "between_tools"}
 

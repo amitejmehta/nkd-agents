@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nkd_agents.tty import CHROME, Prompt
+from nkd_agents.tty import Prompt
 
 pyte = pytest.importorskip("pyte")
 
@@ -159,7 +159,7 @@ class TestResizeToANewHeight:
         t, _ = self.arrive(lines=lines, cursor_row=lines)
         assert t.rows[-1] == "tb"
         assert t.rows[-2].startswith("─")
-        assert len(t.box) == CHROME + 1
+        assert len(t.box) == 4
 
 
 class TestBoxIntegrity:
@@ -172,7 +172,7 @@ class TestBoxIntegrity:
         t.type("h")
         t.render()
         assert t.last_output == "output 3"  # not the toolbar's wrapped remainder
-        assert len(t.box) == CHROME + 1
+        assert len(t.box) == 4
 
     def test_repeated_renders_do_not_drift(self, term: Term) -> None:
         term.type("hello")
@@ -185,7 +185,7 @@ class TestBoxIntegrity:
     def test_long_input_never_changes_the_box_height(self, term: Term) -> None:
         term.type("a" * 100)
         term.render()
-        assert len(term.box) == CHROME + 1
+        assert len(term.box) == 4
         assert term.last_output == "output 3"
         assert all(len(row) <= term.screen.columns for row in term.rows)
 

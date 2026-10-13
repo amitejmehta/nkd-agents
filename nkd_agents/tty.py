@@ -46,7 +46,6 @@ from collections.abc import Callable, Iterator
 ESC = "\x1b"
 PASTE = "\x00"  # prefix on the key returned by _read_key for a bracketed paste
 PUA = 0xE000  # paste n is stored in buf as chr(PUA + n)
-CHROME = 3  # rule above, rule below, toolbar
 DIM, RESET = "\x1b[38;5;242m", "\x1b[0m"  # grey 242
 REV = "\x1b[7m"  # reverse video, drawn as the fake cursor
 HIDE_CURSOR, SHOW_CURSOR = "\x1b[?25l", "\x1b[?25h"
