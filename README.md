@@ -57,13 +57,13 @@ pip install git+https://github.com/amitejmehta/nkd-agents.git
 
 ## Configuration
 
-All config via environment variables, set in `~/.claude/nkd/.env` (loaded at startup) or the shell environment.
+All config via environment variables, set in `~/.claude/nkd/.env` (loaded at startup) or the shell environment. The global system prompt is read from `~/.claude/CLAUDE.md` (plus `./CLAUDE.md`). Migrating: `~/.nkd-agents/.env` and `~/.nkd-agents/CLAUDE.md` are no longer read.
 
 | Variable | Default | Description |
 |----------|---------|--------------|
 | `ANTHROPIC_API_KEY` | *(required)* | Anthropic API key |
 | `NKD_LOG_LEVEL` | `20` (INFO) | Python logging level integer |
-| `NKD_MODEL` | `claude-sonnet-5-5` | Initial model (cycle at runtime via `ctrl+l`) |
+| `NKD_MODEL` | `sonnet` | Initial model tier: any string containing `sonnet`, `opus`, or `haiku` (e.g. a legacy id) maps to that tier's current version; otherwise `sonnet`. Cycle at runtime via `ctrl+l` |
 | `NKD_MAX_TOKENS` | `20000` | Max tokens per response |
 | `NKD_COMPACT_TOKENS` | `20000` | Token count that triggers auto-compact |
 | `NKD_START_PHRASE` | `"Be brief and exacting."` | Prefix prepended to every user message |

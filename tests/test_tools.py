@@ -516,7 +516,7 @@ class TestResolve:
         link.symlink_to(target)
         token = cwd_ctx.set(tmp_path)
         try:
-            assert resolve("link.txt") == tmp_path / "link.txt"
+            assert resolve("link.txt") == target.resolve()
         finally:
             cwd_ctx.reset(token)
 

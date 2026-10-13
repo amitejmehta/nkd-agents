@@ -5,8 +5,8 @@
   ```bash
   ruff check --fix nkd_agents/ examples/ tests/
   ruff format nkd_agents/ examples/ tests/
-  pyright
-  xenon --max-average A --max-modules A --max-absolute B nkd_agents/
+  pyright nkd_agents/ examples/
+  xenon --max-average A --max-modules A --max-absolute B nkd_agents/ examples/
   pytest tests/ -v --cov=nkd_agents --cov-report=term-missing 2>&1 | tail -20
   ```
 - Before refactoring `tty.py`, confirm the tests can still fail — coverage alone doesn't prove that: `python scripts/tty_mutants.py`
