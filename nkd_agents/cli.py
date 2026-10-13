@@ -23,12 +23,10 @@ except ImportError:
 
 TOOLS = [tool_schema(fn) for fn in FNS]
 
-ADAPTIVE = {"type": "adaptive", "display": "summarized"}
-DISABLED = {"type": "disabled"}
 MODELS = {
     "claude-sonnet-5-5": {"type": "between_tools"},
-    "claude-opus-5-5": ADAPTIVE,
-    "claude-haiku-5-5": DISABLED,
+    "claude-opus-5-5": {"type": "adaptive", "display": "summarized"},
+    "claude-haiku-5-5": {"type": "disabled"},
 }
 COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
 summary that will replace this raw history. The repository/filesystem is the source of truth \
@@ -86,8 +84,12 @@ class CLI:
         self.queue = asyncio.Queue()
         self.llm_task: asyncio.Task | None = None
         self.mode = MODES[0]
-        self.kwargs = {"model": next(iter(MODELS)), "max_tokens": MAX_TOKENS}
-        self.reset_thinking()
+        model = next(iter(MODELS))
+        self.kwargs = {
+            "model": model,
+            "max_tokens": MAX_TOKENS,
+            "thinking": MODELS[model],
+        }
         if system := self.build_system_prompt():
             self.kwargs["system"] = system
 
@@ -110,17 +112,12 @@ class CLI:
         models = list(MODELS)
         next_model_idx = (models.index(self.kwargs["model"]) + 1) % len(models)
         self.kwargs["model"] = models[next_model_idx]
-        self.reset_thinking()
-
-    def reset_thinking(self) -> None:
         self.kwargs["thinking"] = MODELS[self.kwargs["model"]]
 
     def toggle_thinking(self) -> None:
-        idle = MODELS[self.kwargs["model"]]
-        if idle != ADAPTIVE:
-            self.kwargs["thinking"] = (
-                ADAPTIVE if self.kwargs["thinking"] == idle else idle
-            )
+        on = {"type": "adaptive", "display": "summarized"}
+        enabled = self.kwargs["thinking"] == on
+        self.kwargs["thinking"] = MODELS[self.kwargs["model"]] if enabled else on
 
     def interrupt(self) -> None:
         if self.session.buf:
@@ -133,7 +130,7 @@ class CLI:
     def toolbar(self) -> str:
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
         model = self.kwargs["model"].split("-")[1]
-        think = "✓" if self.kwargs.get("thinking") == ADAPTIVE else "✗"
+        think = "✓" if self.kwargs["thinking"]["type"] == "adaptive" else "✗"
         return f" {busy} {self.mode} (shift+tab) {model} (ctrl+l) think:{think} (tab)"
 
     def cycle_mode(self) -> None:
@@ -155,7 +152,7 @@ class CLI:
             messages=[*history, {"role": "user", "content": COMPACT_PROMPT}],
             model="claude-haiku-5-5",
             max_tokens=4096,
-            thinking=DISABLED,
+            thinking={"type": "disabled"},
         )
         self.messages[:] = [
             {
