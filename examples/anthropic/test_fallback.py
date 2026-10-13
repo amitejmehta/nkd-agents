@@ -39,12 +39,6 @@ async def main():
     ]
 
     try:
-        msgs.append(
-            {
-                "role": "assistant",
-                "content": [{"type": "text", "text": "Let me check..."}],
-            }
-        )
         raise Exception("Vertex unavailable")
     except Exception:
         logger.info(
