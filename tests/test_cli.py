@@ -27,7 +27,7 @@ def cli(tmp_path, monkeypatch):
 
 class TestToolbar:
     def test_shows_model(self, cli: CLI):
-        assert NAMES[0].split("claude-")[1] in cli.toolbar()
+        assert NAMES[0].split("-")[1] in cli.toolbar()
 
     def test_shows_mode(self, cli: CLI):
         assert "Act" in cli.toolbar()
@@ -41,7 +41,7 @@ class TestToolbar:
 
     def test_reflects_model_change(self, cli: CLI):
         cli.switch_model()
-        assert NAMES[1].split("claude-")[1] in cli.toolbar()
+        assert NAMES[1].split("-")[1] in cli.toolbar()
 
     def test_reflects_mode_change(self, cli: CLI):
         cli.cycle_mode()
@@ -252,18 +252,12 @@ class TestLLMLoop:
             assert len(cli.messages) == 2
 
     async def test_count_tokens_failure_does_not_kill_loop(self, cli: CLI):
-        """A failure counting tokens (e.g. API error) must not crash the loop."""
-        call_count = 0
-
-        async def mock_llm(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
+        cli.messages.append({"role": "user", "content": "earlier"})
+        counter = AsyncMock(side_effect=[RuntimeError("boom"), 0])
 
         with (
-            patch("nkd_agents.cli.agent", side_effect=mock_llm),
-            patch.object(
-                cli, "count_tokens", AsyncMock(side_effect=RuntimeError("boom"))
-            ),
+            patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm,
+            patch.object(cli, "count_tokens", counter),
         ):
             await cli.queue.put({"role": "user", "content": "first"})
             await cli.queue.put({"role": "user", "content": "second"})
@@ -272,7 +266,9 @@ class TestLLMLoop:
             loop_task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await loop_task
-            assert call_count == 2
+        assert counter.call_count == 2
+        mock_llm.assert_called_once()
+        assert cli.messages[-1]["content"] == "second"
 
 
 class TestCountTokens:
@@ -295,15 +291,16 @@ def _mock_create_response(text: str) -> MagicMock:
 
 
 class TestCompact:
-    async def test_noop_when_no_messages(self, cli: CLI):
+    async def test_noop_when_only_latest_message(self, cli: CLI):
+        cli.messages.append(_user_text("hi"))
         with patch.object(
             cli.client.messages, "create", new_callable=AsyncMock
         ) as mock_create:
             await cli.compact()
             mock_create.assert_not_called()
-        assert cli.messages == []
+        assert cli.messages == [_user_text("hi")]
 
-    async def test_summarizes_entire_history(self, cli: CLI):
+    async def test_summarizes_history_and_keeps_latest(self, cli: CLI):
         cli.messages.extend({"role": "user", "content": f"msg{i}"} for i in range(10))
 
         with patch.object(
@@ -313,21 +310,20 @@ class TestCompact:
         ) as mock_create:
             await cli.compact()
             call_kwargs = mock_create.call_args.kwargs
-            # full history, the compact instruction, then agent()'s appended reply
-            assert len(call_kwargs["messages"]) == 12
+            assert len(call_kwargs["messages"]) == 11
 
-        assert len(cli.messages) == 2
+        assert len(cli.messages) == 3
         assert "summary text" in cli.messages[0]["content"]
         assert cli.messages[1]["role"] == "assistant"
+        assert cli.messages[2] == {"role": "user", "content": "msg9"}
 
     async def test_handles_tool_use_pairs_without_splitting(self, cli: CLI):
-        """Since the whole history is summarized (no tail split), tool_use/tool_result
-        pairs never need special handling."""
         cli.messages.extend(
             [
                 _user_text("earlier"),
                 _assistant_tool_use(),
                 _user_tool_result(),
+                _user_text("latest"),
             ]
         )
 
@@ -338,21 +334,25 @@ class TestCompact:
         ):
             await cli.compact()
 
-        assert len(cli.messages) == 2
+        assert len(cli.messages) == 3
         assert "summary text" in cli.messages[0]["content"]
+        assert cli.messages[2] == _user_text("latest")
 
 
 class TestLLMLoopCompactTrigger:
     async def test_triggers_compact_over_threshold(self, cli: CLI, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKENS", 1)
+        cli.messages.append({"role": "user", "content": "earlier"})
+        seen: list[int] = []
 
-        async def mock_llm(*args, **kwargs):
-            kwargs["messages"].append({"role": "assistant", "content": "hi"})
+        async def mock_compact():
+            seen.append(len(cli.messages))
+            cli.messages[:] = [cli.messages[-1]]
 
         with (
-            patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch("nkd_agents.cli.agent", new_callable=AsyncMock),
             patch.object(cli, "count_tokens", AsyncMock(return_value=100)),
-            patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
+            patch.object(cli, "compact", side_effect=mock_compact),
         ):
             await cli.queue.put({"role": "user", "content": "hello"})
             loop_task = asyncio.create_task(cli.llm_loop())
@@ -360,16 +360,15 @@ class TestLLMLoopCompactTrigger:
             loop_task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await loop_task
-            mock_compact.assert_called_once()
+        assert seen == [2]
+        assert [m["content"] for m in cli.messages] == ["hello"]
 
     async def test_skips_compact_under_threshold(self, cli: CLI, monkeypatch):
         monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKENS", 10_000_000)
-
-        async def mock_llm(*args, **kwargs):
-            kwargs["messages"].append({"role": "assistant", "content": "hi"})
+        cli.messages.append({"role": "user", "content": "earlier"})
 
         with (
-            patch("nkd_agents.cli.agent", side_effect=mock_llm),
+            patch("nkd_agents.cli.agent", new_callable=AsyncMock),
             patch.object(cli, "count_tokens", AsyncMock(return_value=100)),
             patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
         ):
