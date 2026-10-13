@@ -71,7 +71,7 @@ def up(rows: int) -> str:
     return f"\x1b[{rows}A" if rows else ""
 
 
-# key -> (direction, by_word). Backspace deletes left; delete / option-delete right.
+# key -> (direction, by_word). Backspace deletes left; delete deletes right.
 DELETES = {
     "\x7f": (-1, False),  # backspace
     "\x08": (-1, False),  # backspace (ctrl-h terminals)
@@ -79,19 +79,6 @@ DELETES = {
     ESC + "\x08": (-1, True),  # option-backspace (ctrl-h terminals)
     "\x17": (-1, True),  # ctrl-w
     ESC + "[3~": (1, False),  # delete
-    ESC + "d": (1, True),  # option-delete (emacs)
-    ESC + "[3;3~": (1, True),  # option-delete (xterm)
-}
-# key -> (direction, by_word). Option/alt-arrows: emacs, xterm, and ctrl variants.
-MOVES = {
-    ESC + "[D": (-1, False),  # left
-    ESC + "[C": (1, False),  # right
-    ESC + "b": (-1, True),  # option-left (emacs)
-    ESC + "f": (1, True),  # option-right (emacs)
-    ESC + "[1;3D": (-1, True),  # option-left (xterm)
-    ESC + "[1;3C": (1, True),  # option-right (xterm)
-    ESC + "[1;5D": (-1, True),  # ctrl-left
-    ESC + "[1;5C": (1, True),  # ctrl-right
 }
 HOMES = {"\x01", ESC + "[H", ESC + "[1~", ESC + "OH"}  # ctrl-a, home
 ENDS = {"\x05", ESC + "[F", ESC + "[4~", ESC + "OF"}  # ctrl-e, end
@@ -181,8 +168,6 @@ class Prompt:
             self._paste(key[1:])
         elif dele := DELETES.get(key):
             self._delete(*dele)
-        elif move := MOVES.get(key):
-            self.cursor = self._seek(*move)
         elif key in HOMES | ENDS:
             self.cursor = len(self.buf) * (key in ENDS)
         elif key == "\x03":  # ctrl-c
