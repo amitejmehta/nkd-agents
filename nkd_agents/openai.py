@@ -145,8 +145,8 @@ async def agent(
     ] = (),
     **kwargs: Unpack[ResponseCreateParamsNonStreaming],
 ) -> str:
-    if not kwargs.get("input") or not isinstance(kwargs.get("input"), list):
-        raise ValueError("input must be provided and must be a list")
+    if not isinstance(kwargs.get("input"), list):
+        raise ValueError("input is mutated in-place as history and must be a list")
     if not kwargs.get("tools"):
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
 

@@ -26,8 +26,8 @@ def resolve(path: str) -> Path:
         )
     resolved = (sandbox / p).resolve()
     if not resolved.is_relative_to(sandbox.resolve()):
-        raise ValueError(f"Path '{path}' escapes the sandbox via symlink.")
-    return sandbox / p
+        raise ValueError(f"Path '{path}' escapes the sandbox.")
+    return resolved
 
 
 @dataclass(frozen=True, slots=True)

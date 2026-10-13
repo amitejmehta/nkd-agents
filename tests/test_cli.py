@@ -10,6 +10,8 @@ from nkd_agents.cli import (
     MODELS,
     MODES,
     START_PHRASE,
+    VERSIONS,
+    resolve_model,
 )
 from nkd_agents.tty import ESC
 
@@ -98,6 +100,27 @@ class TestSwitchModel:
         assert cli.kwargs["model"] == NAMES[1]
         cli.switch_model()
         assert cli.kwargs["model"] == NAMES[2]
+
+
+class TestResolveModel:
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("", "claude-sonnet-5-5"),
+            ("bogus", "claude-sonnet-5-5"),
+            ("opus", "claude-opus-5-5"),
+            ("HAIKU", "claude-haiku-5-5"),
+            ("claude-3-5-sonnet-20241022", "claude-sonnet-5-5"),
+            ("claude-opus-4-1", "claude-opus-5-5"),
+        ],
+    )
+    def test_maps_to_current_tier(self, name, expected):
+        assert resolve_model(name) == expected
+
+    def test_per_tier_version(self, monkeypatch):
+        monkeypatch.setitem(VERSIONS, "opus", "6")
+        assert resolve_model("opus") == "claude-opus-6"
+        assert resolve_model("sonnet") == "claude-sonnet-5-5"
 
 
 class TestToggleThinking:

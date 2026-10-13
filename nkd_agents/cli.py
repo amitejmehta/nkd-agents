@@ -27,11 +27,9 @@ TOOLS = [tool_schema(fn) for fn in FNS]
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 BETWEEN_TOOLS = {"type": "between_tools"}
 DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
-MODELS = {
-    "claude-sonnet-5-5": BETWEEN_TOOLS,
-    "claude-opus-5-5": ADAPTIVE,
-    "claude-haiku-5-5": DISABLED,
-}
+TIERS = {"sonnet": BETWEEN_TOOLS, "opus": ADAPTIVE, "haiku": DISABLED}
+VERSIONS = {"sonnet": "5-5", "opus": "5-5", "haiku": "5-5"}
+MODELS = {f"claude-{t}-{VERSIONS[t]}": cfg for t, cfg in TIERS.items()}
 COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
 summary that will replace this raw history. The repository/filesystem is the source of truth \
 for anything reconstructable by re-reading files or re-running commands — do not preserve \
@@ -81,6 +79,11 @@ START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
 MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
 
 
+def resolve_model(name: str) -> str:
+    tier = next((t for t in TIERS if t in name.lower()), next(iter(TIERS)))
+    return f"claude-{tier}-{VERSIONS[tier]}"
+
+
 class CLI:
     def __init__(self) -> None:
         self.client = AsyncAnthropic(max_retries=4)
@@ -89,7 +92,7 @@ class CLI:
         self.llm_task: asyncio.Task | None = None
         self.mode = MODES[0]
         self.kwargs = {
-            "model": os.environ.get("NKD_MODEL", next(iter(MODELS))),
+            "model": resolve_model(os.environ.get("NKD_MODEL", "")),
             "max_tokens": MAX_TOKENS,
         }
         self.reset_thinking()
@@ -137,10 +140,9 @@ class CLI:
 
     def toolbar(self) -> str:
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
-        mode = self.mode.split(" (")[0]
         model = self.kwargs["model"].split("claude-")[1]
         think = "✓" if self.kwargs.get("thinking") == ADAPTIVE else "✗"
-        return f" {busy} {mode} (shift+tab) {model} (ctrl+l) think:{think} (tab)"
+        return f" {busy} {self.mode} (shift+tab) {model} (ctrl+l) think:{think} (tab)"
 
     def cycle_mode(self) -> None:
         self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]
@@ -158,8 +160,8 @@ class CLI:
         summary = await agent(
             self.client,
             messages=[*self.messages, {"role": "user", "content": COMPACT_PROMPT}],
-            model="claude-haiku-5-5",
-            max_tokens=COMPACT_TOKENS // 10,
+            model=resolve_model("haiku"),
+            max_tokens=COMPACT_TOKENS,
             thinking=DISABLED,
         )
         self.messages[:] = [
@@ -170,12 +172,15 @@ class CLI:
             {"role": "assistant", "content": "Understood, continuing from summary."},
         ]
 
+    async def turn(self) -> None:
+        await agent(self.client, fns=FNS, messages=self.messages, **self.kwargs)
+        if await self.count_tokens() > COMPACT_TOKENS:
+            await self.compact()
+
     async def llm_loop(self) -> None:
         while True:
             self.messages.append(await self.queue.get())
-            self.llm_task = asyncio.create_task(
-                agent(self.client, fns=FNS, messages=self.messages, **self.kwargs)
-            )
+            self.llm_task = asyncio.create_task(self.turn())
             self.session.refresh()
             try:
                 await self.llm_task
@@ -186,11 +191,6 @@ class CLI:
             finally:
                 self.llm_task = None
                 self.session.refresh()
-                try:
-                    if await self.count_tokens() > COMPACT_TOKENS:
-                        await self.compact()
-                except Exception as e:
-                    logger.exception(f"{RED}Error compacting tokens: {e}{RESET}")
 
     async def prompt_loop(self) -> None:
         while True:
