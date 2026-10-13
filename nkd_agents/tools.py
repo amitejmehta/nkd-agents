@@ -12,10 +12,6 @@ from .logging import DIM, RESET, display_diff
 logger = logging.getLogger(__name__)
 
 
-# Working directory for tools. When None (default), paths resolve against the
-# Python process cwd with no restrictions. When set to a Path, read/write/edit
-# are sandboxed to that directory: absolute paths and symlink escapes are
-# rejected, and relative paths resolve against it. For bash, just sets the cwd.
 cwd_ctx = ContextVar[Path | None]("cwd_ctx", default=None)
 
 
@@ -39,7 +35,7 @@ class FileContent:
     """Raw file bytes with extension — returned by read_file; providers convert to their content format."""
 
     data: bytes
-    ext: str  # lowercase, no leading dot; "" if no extension
+    ext: str
 
 
 async def read_file(path: str) -> FileContent:

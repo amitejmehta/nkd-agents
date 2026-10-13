@@ -23,7 +23,7 @@ I built the framework for control of low-level primitives with little overhead �
 
 - No streaming. Streaming adds unnecessary complexity to the base agent framework purely for interactive use cases like CLI. Our approach uses the framework's basic logging (nicely formatted) — speed comes from the start phrase and thinking-off defaults below.
 - No `prompt_toolkit`. Built a minimal async prompt handler (`tty.py`) instead — keeps the CLI lightweight and lets you queue a message while the model is still responding (async end to end).
-- No edit approval. Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`) leads to faster, less constrained work. Use `nkd-sandbox` (Docker) for a safety boundary if needed.
+- No edit approval. Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`) leads to faster, less constrained work.
 - No `grep`/`glob` as standalone tools. An eval harness showed no accuracy or turn-count benefit over `bash` (`rg`, `find`/`ls`), and the model fell back to `bash` even when offered — didn't earn its keep.
 - No background bash. Background commands only help if their result isn't on the critical path of the next action — rare enough in practice not to justify the complexity.
 - No cache warming. **Built, then removed.** It auto-warmed Anthropic's cache after each turn (TTL is only 5 minutes), but auto-compact made it unnecessary — context stays small enough that cache misses are cheap.
@@ -46,9 +46,9 @@ I built the CLI to understand the tool I used 24/7. What started as an experimen
 curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
 ```
 
-Installs [uv](https://docs.astral.sh/uv/), [ripgrep](https://github.com/BurntSushi/ripgrep), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds `nkd-update` and `nkd-sandbox` (requires Docker) aliases.
+Installs [uv](https://docs.astral.sh/uv/), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-install` alias.
 
-To update later: `nkd-update`
+To update later: `nkd-install`
 
 **Framework only:**
 ```bash

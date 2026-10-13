@@ -24,7 +24,6 @@ except ImportError:
 
 TOOLS = [tool_schema(fn) for fn in FNS]
 
-# constants
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 BETWEEN_TOOLS = {"type": "between_tools"}
 DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
@@ -84,7 +83,6 @@ MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
 
 class CLI:
     def __init__(self) -> None:
-        # agent
         self.client = AsyncAnthropic(max_retries=4)
         self.messages = []
         self.queue = asyncio.Queue()
@@ -100,10 +98,10 @@ class CLI:
 
         self.session = Prompt(
             key_bindings={
-                "\x0c": lambda p: self.switch_model(),  # ctrl-l
-                ESC: lambda p: self.interrupt(),  # esc
-                "\t": lambda p: self.toggle_thinking(),  # tab
-                ESC + "[Z": lambda p: self.cycle_mode(),  # shift-tab
+                "\x0c": lambda p: self.switch_model(),
+                ESC: lambda p: self.interrupt(),
+                "\t": lambda p: self.toggle_thinking(),
+                ESC + "[Z": lambda p: self.cycle_mode(),
             },
             toolbar=self.toolbar,
         )
