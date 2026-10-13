@@ -23,8 +23,10 @@ Sizing is re-derived from one `os.get_terminal_size()` per render, and a SIGWINC
 handler repaints: a resize changes cols, height, the box's row count and DECSTBM all
 at once, and the terminal re-wraps the old box into the scroll region.
 
-Also: input is one row that scrolls horizontally to keep the cursor in view, so the
-box is a constant height; buf is always one logical line; Enter always submits.
+Also: editing is append-only (type, backspace, word-backspace; no cursor movement), so
+the cursor is always the end of buf. Input is one row that scrolls horizontally to keep
+it in view, so the box is a constant height; buf is always one logical line; Enter
+always submits.
 
 tests/test_tty.py pins every key and the escapes; tests/test_tty_screen.py drives a
 VT emulator and asserts what lands on screen; scripts/tty_mutants.py breaks each
@@ -71,17 +73,8 @@ def up(rows: int) -> str:
     return f"\x1b[{rows}A" if rows else ""
 
 
-# key -> (direction, by_word). Backspace deletes left; delete deletes right.
-DELETES = {
-    "\x7f": (-1, False),  # backspace
-    "\x08": (-1, False),  # backspace (ctrl-h terminals)
-    ESC + "\x7f": (-1, True),  # option-backspace
-    ESC + "\x08": (-1, True),  # option-backspace (ctrl-h terminals)
-    "\x17": (-1, True),  # ctrl-w
-    ESC + "[3~": (1, False),  # delete
-}
-HOMES = {"\x01", ESC + "[H", ESC + "[1~", ESC + "OH"}  # ctrl-a, home
-ENDS = {"\x05", ESC + "[F", ESC + "[4~", ESC + "OF"}  # ctrl-e, end
+BACKSPACE = {"\x7f", "\x08"}  # \x08: ctrl-h terminals
+WORD_BACKSPACE = {ESC + "\x7f", ESC + "\x08", "\x17"}  # option-backspace, ctrl-w
 
 
 class Prompt:
@@ -107,7 +100,6 @@ class Prompt:
         self.style = style
         self.label = ""
         self.buf = ""
-        self.cursor = 0
         self.pastes: list[str] = []
         self.fd = 0  # stdin
         self._pending = ""  # input read past a paste terminator, not yet consumed
@@ -120,16 +112,13 @@ class Prompt:
 
     # -- editing (pure) -----------------------------------------------------
 
-    def _insert(self, text: str) -> None:
-        self.buf = self.buf[: self.cursor] + text + self.buf[self.cursor :]
-        self.cursor += len(text)
-
     def _paste(self, text: str) -> None:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         if "\n" not in text.rstrip("\n"):
-            return self._insert(text.rstrip("\n"))
+            self.buf += text.rstrip("\n")
+            return
         self.pastes.append(text)
-        self._insert(chr(PUA + len(self.pastes) - 1))
+        self.buf += chr(PUA + len(self.pastes) - 1)
 
     def _paste_idx(self, c: str) -> int | None:
         n = ord(c) - PUA
@@ -149,27 +138,13 @@ class Prompt:
             c if (n := self._paste_idx(c)) is None else self.pastes[n] for c in self.buf
         )
 
-    def _seek(self, direction: int, word: bool) -> int:
-        if not word:
-            return max(0, min(len(self.buf), self.cursor + direction))
-        if direction < 0:
-            m = re.search(r"\S+\s*$", self.buf[: self.cursor])
-            return m.start() if m else 0
-        m = re.match(r"\s*\S+", self.buf[self.cursor :])
-        return self.cursor + m.end() if m else len(self.buf)
-
-    def _delete(self, direction: int, word: bool) -> None:
-        lo, hi = sorted((self.cursor, self._seek(direction, word)))
-        self.buf = self.buf[:lo] + self.buf[hi:]
-        self.cursor = lo
-
     def _handle(self, key: str) -> None:
         if key.startswith(PASTE):
             self._paste(key[1:])
-        elif dele := DELETES.get(key):
-            self._delete(*dele)
-        elif key in HOMES | ENDS:
-            self.cursor = len(self.buf) * (key in ENDS)
+        elif key in BACKSPACE:
+            self.buf = self.buf[:-1]
+        elif key in WORD_BACKSPACE:
+            self.buf = re.sub(r"\S+\s*$", "", self.buf)
         elif key == "\x03":  # ctrl-c
             raise KeyboardInterrupt
         elif key == "\x04" and not self.buf:  # ctrl-d on empty line
@@ -177,7 +152,7 @@ class Prompt:
         elif fn := self.key_bindings.get(key):
             fn(self)
         elif key.isprintable():
-            self._insert(key)
+            self.buf += key
 
     # -- rendering ----------------------------------------------------------
 
@@ -187,11 +162,9 @@ class Prompt:
 
     def _input_row(self, cols: int) -> str:
         text = self.label + self._display(self.buf)
-        offset = len(self.label) + len(self._display(self.buf[: self.cursor]))
-        start = max(0, offset + 1 - cols)
-        r, c = text[start : start + cols], offset - start
+        r = text[max(0, len(text) + 1 - cols) :]
         # REV = reverse video on, \x1b[27m = off: a 1-cell fake cursor
-        return f"{r[:c]}{REV}{r[c : c + 1] or ' '}\x1b[27m{r[c + 1 :]}"
+        return f"{r}{REV} \x1b[27m"
 
     def _room(self, rows: int) -> None:
         self._write(
@@ -292,7 +265,7 @@ class Prompt:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, old)
 
     async def prompt_async(self, label: str = "❯ ") -> str:
-        self.buf, self.cursor, self.pastes, self.label = "", 0, [], label
+        self.buf, self.pastes, self.label = "", [], label
         with self._raw():
             self._active = True
             try:

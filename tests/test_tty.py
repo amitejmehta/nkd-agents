@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from nkd_agents.tty import DIM, ENDS, ESC, HOMES, PASTE, RESET, REV, Prompt
+from nkd_agents.tty import DIM, ESC, PASTE, RESET, REV, Prompt
 
 NORM = "\x1b[27m"
 GREEN = "\x1b[32m"
@@ -64,31 +64,13 @@ def shown(p: Prompt) -> str:
 
 
 class TestEditing:
-    def test_insert_mid_word(self, p: Prompt) -> None:
-        type_(p, "abc")
-        p.cursor = 2
-        type_(p, "X")
-        assert (p.buf, p.cursor) == ("abXc", 3)
-
-    def test_backspace(self, p: Prompt) -> None:
+    @pytest.mark.parametrize("key", ["\x7f", "\x08"])
+    def test_backspace(self, p: Prompt, key: str) -> None:
         type_(p, "ab")
-        p._handle("\x7f")
-        p._handle("\x7f")
-        p._handle("\x7f")  # no-op at start
-        assert (p.buf, p.cursor) == ("", 0)
-
-    @pytest.mark.parametrize("key", sorted(HOMES))
-    def test_home(self, p: Prompt, key: str) -> None:
-        type_(p, "foo bar")
         p._handle(key)
-        assert p.cursor == 0
-
-    @pytest.mark.parametrize("key", sorted(ENDS))
-    def test_end(self, p: Prompt, key: str) -> None:
-        type_(p, "foo bar")
-        p.cursor = 2
         p._handle(key)
-        assert p.cursor == 7
+        p._handle(key)  # no-op at start
+        assert p.buf == ""
 
     @pytest.mark.parametrize("key", [ESC + "\x7f", ESC + "\x08", "\x17"])
     def test_word_backspace(self, p: Prompt, key: str) -> None:
@@ -99,15 +81,6 @@ class TestEditing:
         assert p.buf == ""
         p._handle(key)  # no-op at start
         assert p.buf == ""
-
-    def test_forward_delete(self, p: Prompt) -> None:
-        type_(p, "abc")
-        p.cursor = 1
-        p._handle(ESC + "[3~")
-        assert (p.buf, p.cursor) == ("ac", 1)
-        p.cursor = 2
-        p._handle(ESC + "[3~")  # no-op at end
-        assert p.buf == "ac"
 
     def test_key_bindings_and_defaults(self, p: Prompt) -> None:
         hits: list[str] = []
@@ -140,7 +113,7 @@ class TestPaste:
     def test_single_line_is_inserted_literally(self, p: Prompt) -> None:
         p._handle(PASTE + "one")
         p._handle(PASTE + "two\n")
-        assert (p.buf, p.cursor, p.pastes) == ("onetwo", 6, [])
+        assert (p.buf, p.pastes) == ("onetwo", [])
 
     def test_multi_line_numbering(self, p: Prompt) -> None:
         p._handle(PASTE + "a\nb")
@@ -152,7 +125,7 @@ class TestPaste:
         type_(p, "a")
         p._handle(PASTE + "x\ny")
         p._handle("\x7f")
-        assert (p.buf, p.cursor) == ("a", 1)
+        assert p.buf == "a"
 
     def test_backspace_after_paste_only_removes_char(self, p: Prompt) -> None:
         type_(p, "a")
@@ -166,12 +139,7 @@ class TestPaste:
         type_(p, "see ")
         p._handle(PASTE + "x\ny")
         p._handle(ESC + "\x7f")
-        assert (p.buf, p.cursor) == ("see ", 4)
-        p._handle(PASTE + "z\nz")
-        type_(p, " end")
-        p.cursor = 4
-        p._handle(ESC + "[3~")
-        assert shown(p) == "see  end"
+        assert p.buf == "see "
 
     def test_typed_label_is_literal(self, p: Prompt) -> None:
         type_(p, "[Paste #7, 2 lines]")
@@ -197,20 +165,14 @@ class TestInputRow:
         type_(p, "abcdefghij")  # "> abcdefghij" = 12 chars
         assert p._input_row(cols=5) == f"ghij{CUR}"
 
-    def test_scrolls_back_when_cursor_moves_left(self, p: Prompt) -> None:
-        type_(p, "abcdefghij")
-        p.cursor = 0
-        assert p._input_row(cols=5) == f"> {REV}a{NORM}bc"
-
     def test_is_always_at_most_cols_wide(self, p: Prompt) -> None:
         type_(p, "x" * 500)
         assert cells(p._input_row(cols=7)) == 7
 
-    def test_cursor_before_paste_sits_on_label(self, p: Prompt) -> None:
+    def test_paste_shows_as_label(self, p: Prompt) -> None:
         p._handle(PASTE + "x\ny")
         type_(p, "z")
-        p.cursor = 0
-        assert p._input_row(cols=40) == f"> {REV}[{NORM}Paste #1, 2 lines]z"
+        assert p._input_row(cols=40) == f"> [Paste #1, 2 lines]z{CUR}"
 
 
 class TestRender:
@@ -281,7 +243,7 @@ class TestRender:
 
     def test_resize_repaints_at_the_new_width(self, screen) -> None:
         p, capsys = screen
-        p.buf, p.cursor = "abcdefgh", 8
+        p.buf = "abcdefgh"
         p._render()
         capsys.readouterr()
 
@@ -358,7 +320,7 @@ class TestGeometryIsAlwaysOnScreen:
         self, p: Prompt, monkeypatch, capsys, cols: int, lines: int, buf: str
     ) -> None:
         p.toolbar = lambda: "toolbar text that is plausibly long"
-        p.buf, p.cursor = buf, len(buf)
+        p.buf = buf
         monkeypatch.setattr(
             os, "get_terminal_size", lambda *_: os.terminal_size((cols, lines))
         )
@@ -377,7 +339,7 @@ class TestGeometryIsAlwaysOnScreen:
         """Row 1 always stays outside the box, or output has nowhere to scroll.
         On a screen too short to hold any box at all, nothing is painted, which
         satisfies this trivially - the point is that row 1 is never claimed."""
-        p.buf, p.cursor = buf, len(buf)
+        p.buf = buf
         monkeypatch.setattr(
             os, "get_terminal_size", lambda *_: os.terminal_size((cols, lines))
         )
