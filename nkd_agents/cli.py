@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
+from anthropic.types import ThinkingConfigDisabledParam
 
 from .anthropic import agent, tool_schema
 from .logging import DIM, RED, RESET, configure_logging
@@ -24,9 +25,10 @@ except ImportError:
 TOOLS = [tool_schema(fn) for fn in FNS]
 
 # constants
-MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-4-5")
+MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5")
 ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 BETWEEN_TOOLS = {"type": "between_tools"}
+DISABLED: ThinkingConfigDisabledParam = {"type": "disabled"}
 COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
 summary that will replace this raw history. The repository/filesystem is the source of truth \
 for anything reconstructable by re-reading files or re-running commands — do not preserve \
@@ -119,11 +121,15 @@ class CLI:
             self.kwargs["thinking"] = BETWEEN_TOOLS
         elif self.kwargs["model"] == "claude-opus-5-5":
             self.kwargs["thinking"] = ADAPTIVE
+        else:
+            self.kwargs["thinking"] = DISABLED
 
     def toggle_thinking(self) -> None:
-        if self.kwargs["model"] == "claude-sonnet-5-5":
-            on = self.kwargs["thinking"] == BETWEEN_TOOLS
-            self.kwargs["thinking"] = ADAPTIVE if on else BETWEEN_TOOLS
+        off = {"claude-sonnet-5-5": BETWEEN_TOOLS, "claude-haiku-5-5": DISABLED}
+        if (idle := off.get(self.kwargs["model"])) is not None:
+            self.kwargs["thinking"] = (
+                ADAPTIVE if self.kwargs["thinking"] == idle else idle
+            )
 
     def interrupt(self) -> None:
         if self.session.buf:
@@ -156,9 +162,9 @@ class CLI:
         summary = await agent(
             self.client,
             messages=[*self.messages, {"role": "user", "content": COMPACT_PROMPT}],
-            model="claude-haiku-4-5",
+            model="claude-haiku-5-5",
             max_tokens=COMPACT_TOKENS // 10,
-            thinking={"type": "disabled"},
+            thinking=DISABLED,
         )
         self.messages[:] = [
             {
