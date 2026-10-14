@@ -28,47 +28,35 @@ MODELS = {
     "claude-opus-5-5": {"type": "adaptive", "display": "summarized"},
     "claude-haiku-5-5": {"type": "disabled"},
 }
-COMPACT_PROMPT = """The above is a long coding session transcript. Compact it into a durable \
-summary that will replace this raw history. The repository/filesystem is the source of truth \
-for anything reconstructable by re-reading files or re-running commands — do not preserve \
-information that is cheap to rediscover from the environment.
+COMPACT_PROMPT = """The above is a coding session transcript. Compact it into a summary that \
+replaces the raw history.
 
-If the transcript begins with a "[compacted summary of earlier session]" message, it is a prior \
-summary of even earlier work. Carry forward all of its still-relevant facts verbatim in substance \
-(objective, constraints, decisions, files modified, discoveries); only drop items the later \
-transcript has made obsolete. Merge it with the new work into one coherent summary.
+Principle: keep only what cannot be cheaply recovered. The repo, filesystem, git history, and \
+command output are the source of truth for state; a fresh reader can re-read and re-run them. \
+What compaction destroys is the intent, reasoning, and judgment around that state. Capture that.
 
-Preserve, concretely and specifically (not vague paraphrase):
-- The user's original objective and any requirements/constraints stated along the way, \
-including ones mentioned only once early on.
-- Decisions made and the rationale behind them, especially decisions that changed over time \
-(state the final decision AND that it changed, if relevant to not repeating a mistake).
-- The current plan / next steps.
-- Concrete discoveries about the codebase (file paths, symbols, behaviors) that took effort to \
-find and aren't obvious from a fresh read.
-- Exact list of files modified so far, and what changed in each (not full diffs, just intent).
-- Current test/build status (passing/failing, and which).
-- Approaches that were tried and failed, WHEN the reason they failed matters for not repeating \
-them. Drop failed approaches whose failure reason is irrelevant going forward.
-- Unresolved questions or TODOs.
-- Any fact that would be expensive/slow to rediscover (e.g. required a long investigation, an \
-expensive command, or reading many files to determine).
+Keep:
+- The goal, plus any constraints or preferences the user stated, even once.
+- Decisions and their rationale, including options rejected and why, and conclusions that \
+something is a non-issue or out of scope.
+- Findings that live nowhere in the code: open issues, unresolved questions, pending work, \
+next steps.
+- Hard-won facts that were expensive to discover.
 
-Deliberately omit:
-- Raw command output, stack traces, or file contents — only extract the conclusion drawn from them.
-- Mechanical tool-call/tool-result chatter that led nowhere.
-- Redundant restatements of the same fact.
-- Hypotheses that were investigated and ruled out — replace with a one-line note of what was \
-ruled out and why, not the investigation itself.
-- Exploration that produced no durable finding.
-- Repeated failed syntax/retries once the correct form was found.
+Drop anything recoverable from the environment: file contents, lists of modified files, \
+command output, test status, code structure. Also drop process narrative, dead ends with no \
+lasting lesson, and retries.
 
-Write the summary as if briefing a new engineer who has access to the repo and shell but was \
-not present for this conversation: they can re-read files and re-run commands, but they were not \
-told the user's intent, the decisions made, or what's already been tried. Be concrete — file paths, \
-function/symbol names, exact commands, and exact error messages (only when the error itself is the \
-important fact) over general description. Do not add commentary about the summarization process \
-itself. Output only the summary."""
+Most sessions have only one or two things worth remembering; a short summary is correct. Let the \
+session decide what matters. A review: the open issues found, and why other candidates are \
+non-issues. A debugging session: the root cause, and what was ruled out and why. An \
+implementation: the chosen design and why alternatives lost.
+
+If the transcript begins with a "[compacted summary of earlier session]" message, merge it in: \
+carry forward what is still relevant, drop what later work made obsolete.
+
+Write for an engineer with repo and shell access who was not present. Be specific (paths, \
+symbols; exact errors only when the error itself is the fact). Output only the summary."""
 load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
 LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
 MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
@@ -125,11 +113,11 @@ class CLI:
             return
         if self.llm_task and not self.llm_task.done():
             self.llm_task.cancel()
-            print(f"{RED}\nInterrupted.\n{RESET}")
+            print(f"{RED}Interrupted.{RESET}")
 
     def toolbar(self) -> str:
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
-        model = self.kwargs["model"].split("-")[1]
+        model = self.kwargs["model"].split("-")[1].capitalize()
         think = "✓" if self.kwargs["thinking"]["type"] == "adaptive" else "✗"
         return f" {busy} {self.mode} (shift+tab) {model} (ctrl+l) think:{think} (tab)"
 
