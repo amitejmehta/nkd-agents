@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from typing_extensions import Unpack
 
 from .tools import FileContent
-from .utils import extract_function_params
+from .utils import param_schemas
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("nkd-agents.anthropic")
@@ -36,7 +36,7 @@ def tool_schema(
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
 
-    parameters = extract_function_params(func)
+    parameters = param_schemas(func)
 
     return {
         "name": func.__name__,
