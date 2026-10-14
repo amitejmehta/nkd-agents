@@ -1,7 +1,7 @@
 import inspect
 import os
 from pathlib import Path
-from typing import Any, Callable, Literal, get_args, get_origin
+from typing import Any, Callable, Literal, NotRequired, TypedDict, get_args, get_origin
 
 
 def load_env(path: str = ".env") -> None:
@@ -17,7 +17,12 @@ def load_env(path: str = ".env") -> None:
 TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
 
-def _process_literal(args: list[Any], param_sig: str) -> dict[str, Any]:
+class ParamSchema(TypedDict):
+    type: str
+    enum: NotRequired[list[str | int | float | bool]]
+
+
+def _process_literal(args: list[Any], param_sig: str) -> ParamSchema:
     if not args:
         raise ValueError(f"Empty Literal in {param_sig}")
     first_type = type(args[0])
@@ -28,19 +33,10 @@ def _process_literal(args: list[Any], param_sig: str) -> dict[str, Any]:
     return {"type": TYPE_MAP[first_type], "enum": list(args)}
 
 
-def process_param_annotation(annotation: Any, param_sig: str) -> dict[str, Any]:
-    origin, args = get_origin(annotation), get_args(annotation)
-    if origin is Literal:
-        return _process_literal(list(args), param_sig)
-    if annotation not in TYPE_MAP:
-        raise ValueError(f"Unsupported type: {param_sig}")
-    return {"type": TYPE_MAP[annotation]}
-
-
-def extract_function_params(
+def param_schemas(
     func: Callable[..., Any],
-) -> dict[str, dict[str, Any]]:
-    params = {}
+) -> dict[str, ParamSchema]:
+    params: dict[str, ParamSchema] = {}
 
     for param in inspect.signature(func).parameters.values():
         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
@@ -52,5 +48,12 @@ def extract_function_params(
                 f"Default values not supported: {func.__name__}.{param.name}"
             )
         param_sig = f"{func.__name__}.{param.name}: {param.annotation}"
-        params[param.name] = process_param_annotation(param.annotation, param_sig)
+        if get_origin(param.annotation) is Literal:
+            params[param.name] = _process_literal(
+                list(get_args(param.annotation)), param_sig
+            )
+        elif param.annotation in TYPE_MAP:
+            params[param.name] = {"type": TYPE_MAP[param.annotation]}
+        else:
+            raise ValueError(f"Unsupported type: {param_sig}")
     return params

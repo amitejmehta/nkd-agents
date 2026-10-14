@@ -6,13 +6,13 @@ from typing import Literal
 import pytest
 
 from nkd_agents.utils import (
-    extract_function_params,
     load_env,
+    param_schemas,
 )
 
 
 class TestExtractFunctionParams:
-    """Test extract_function_params functionality."""
+    """Test param_schemas functionality."""
 
     @pytest.mark.asyncio
     async def test_basic_types(self):
@@ -21,7 +21,7 @@ class TestExtractFunctionParams:
         async def func(name: str, count: int, temp: float, enabled: bool):
             pass
 
-        params = extract_function_params(func)
+        params = param_schemas(func)
         assert params["name"]["type"] == "string"
         assert params["count"]["type"] == "integer"
         assert params["temp"]["type"] == "number"
@@ -35,7 +35,7 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError, match="Unsupported type"):
-            extract_function_params(func)
+            param_schemas(func)
 
     @pytest.mark.asyncio
     async def test_defaults_unsupported(self):
@@ -45,7 +45,7 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError, match="Default values not supported"):
-            extract_function_params(func)
+            param_schemas(func)
 
     @pytest.mark.asyncio
     async def test_literals(self):
@@ -59,7 +59,7 @@ class TestExtractFunctionParams:
         ):
             pass
 
-        params = extract_function_params(func)
+        params = param_schemas(func)
         assert params["mode"]["enum"] == ["fast", "slow"]
         assert params["level"]["enum"] == [1, 2, 3]
         assert params["temp"]["enum"] == [1.5, 2.5]
@@ -73,7 +73,7 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError) as exc:
-            extract_function_params(func)
+            param_schemas(func)
         assert "Unsupported type" in str(exc.value)
 
     @pytest.mark.asyncio
@@ -84,7 +84,7 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError) as exc:
-            extract_function_params(func)
+            param_schemas(func)
         assert "mixed" in str(exc.value).lower()
 
     @pytest.mark.asyncio
@@ -95,7 +95,7 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError) as exc:
-            extract_function_params(func)
+            param_schemas(func)
         assert "Unsupported Literal type" in str(exc.value)
 
     @pytest.mark.asyncio
@@ -106,13 +106,13 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError, match="Unsupported type"):
-            extract_function_params(func)
+            param_schemas(func)
 
         async def func2(val: int | str):
             pass
 
         with pytest.raises(ValueError, match="Unsupported type"):
-            extract_function_params(func2)
+            param_schemas(func2)
 
     @pytest.mark.asyncio
     async def test_var_positional_rejected(self):
@@ -120,7 +120,7 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError, match="f.args"):
-            extract_function_params(f)
+            param_schemas(f)
 
     @pytest.mark.asyncio
     async def test_var_keyword_rejected(self):
@@ -128,7 +128,7 @@ class TestExtractFunctionParams:
             pass
 
         with pytest.raises(ValueError, match="f.kwargs"):
-            extract_function_params(f)
+            param_schemas(f)
 
     @pytest.mark.asyncio
     async def test_no_parameters(self):
@@ -137,7 +137,7 @@ class TestExtractFunctionParams:
         async def no_params():
             pass
 
-        params = extract_function_params(no_params)
+        params = param_schemas(no_params)
         assert len(params) == 0
 
     @pytest.mark.asyncio
@@ -147,7 +147,7 @@ class TestExtractFunctionParams:
         async def func(CamelCase: str, snake_case: int, num123: bool):
             pass
 
-        params = extract_function_params(func)
+        params = param_schemas(func)
         assert "CamelCase" in params
         assert "snake_case" in params
         assert "num123" in params
