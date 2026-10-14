@@ -9,10 +9,8 @@ Three design choices carry most of the weight; don't undo them without reading t
    stray print() breaks it. Cost: the real cursor is hidden in the output area and
    a reverse-video fake cursor is drawn in the box (see _render).
 
-2. A bracketed paste is stored as ONE private-use char (chr(PUA+n)) in `buf`, shown
-   as `[Paste #n, k lines]`, expanded on submit. Movement/deletion is atomic by
-   construction, so no code defends the placeholder. An earlier version stored the
-   label text in `buf` and needed regexes everywhere to keep it intact.
+2. A bracketed paste is returned by _read_key as one unit and appended to `buf` raw,
+   newlines normalized to "\n".
 
 3. The box owns *width* and *color*. `toolbar` is plain text painted in
    `style`; every chrome row is cut to the terminal width. A row that overflows
@@ -23,9 +21,10 @@ Sizing is re-derived from one `os.get_terminal_size()` per render, and a SIGWINC
 handler repaints: a resize changes cols, height, the box's row count and DECSTBM all
 at once, and the terminal re-wraps the old box into the scroll region.
 
-Also: editing is append-only (type, backspace, word-backspace; no cursor movement), so
-the cursor is always the end of buf. Input is one row that scrolls horizontally to keep
-it in view, so the box is a constant height; buf is always one logical line; Enter
+Also: editing is tail-only. The cursor is pinned to the end of buf and cannot move, so
+typing and pasting append and nothing mid-line is editable. Deletion (backspace,
+clear) is opt-in via key_bindings, which may mutate `prompt.buf`. Input is one row that scrolls horizontally to keep
+it in view, so the box is a constant height; newlines in buf display as spaces; Enter
 always submits.
 
 tests/test_tty.py pins every key and the escapes; tests/test_tty_screen.py drives a
@@ -36,7 +35,6 @@ invariant here on purpose and checks a test notices. Run it before refactoring.
 import asyncio
 import contextlib
 import os
-import re
 import signal
 import sys
 import termios
@@ -45,7 +43,6 @@ from collections.abc import Callable, Iterator
 
 ESC = "\x1b"
 PASTE = "\x00"  # prefix on the key returned by _read_key for a bracketed paste
-PUA = 0xE000  # paste n is stored in buf as chr(PUA + n)
 DIM, RESET = "\x1b[38;5;242m", "\x1b[0m"  # grey 242
 REV = "\x1b[7m"  # reverse video, drawn as the fake cursor
 HIDE_CURSOR, SHOW_CURSOR = "\x1b[?25l", "\x1b[?25h"
@@ -72,16 +69,13 @@ def up(rows: int) -> str:
     return f"\x1b[{rows}A" if rows else ""
 
 
-BACKSPACE = {"\x7f", "\x08"}  # \x08: ctrl-h terminals
-WORD_BACKSPACE = {ESC + "\x7f", ESC + "\x08", "\x17"}  # option-backspace, ctrl-w
-
-
 class Prompt:
     """Async prompt with key bindings, raw terminal only.
 
     key_bindings: raw key sequence (e.g. "\\x0c" for ctrl-l, ESC + "[Z" for
-      shift-tab) -> sync callable(prompt) -> None. Built-in editing keys, ctrl-c
-      and ctrl-d cannot be overridden.
+      shift-tab) -> sync callable(prompt) -> None. Ctrl-c, paste and ctrl-d on
+      an empty line cannot be overridden. Tail-only editing (no cursor
+      movement): bind "\\x7f" to trim `prompt.buf` for backspace.
     toolbar: optional callable() -> str, plain text rendered below the input box.
     style: color for the border, toolbar and the echoed submission, so your lines
       read apart from the output. Toolbar carries no escapes of its own: the box
@@ -99,7 +93,6 @@ class Prompt:
         self.style = style
         self.label = ""
         self.buf = ""
-        self.pastes: list[str] = []
         self.fd = 0  # stdin
         self._pending = ""  # input read past a paste terminator, not yet consumed
         self._rows = 0
@@ -111,46 +104,16 @@ class Prompt:
 
     # -- editing (pure) -----------------------------------------------------
 
-    def _paste(self, text: str) -> None:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-        if "\n" not in text.rstrip("\n"):
-            self.buf += text.rstrip("\n")
-            return
-        self.pastes.append(text)
-        self.buf += chr(PUA + len(self.pastes) - 1)
-
-    def _paste_idx(self, c: str) -> int | None:
-        n = ord(c) - PUA
-        return n if 0 <= n < len(self.pastes) else None
-
-    def _label(self, n: int) -> str:
-        lines = self.pastes[n].rstrip("\n").count("\n") + 1
-        return f"[Paste #{n + 1}, {lines} line{'s' * (lines > 1)}]"
-
-    def _display(self, s: str) -> str:
-        return "".join(
-            c if (n := self._paste_idx(c)) is None else self._label(n) for c in s
-        )
-
-    def _expand(self) -> str:
-        return "".join(
-            c if (n := self._paste_idx(c)) is None else self.pastes[n] for c in self.buf
-        )
-
     def _handle(self, key: str) -> None:
         if key.startswith(PASTE):
-            self._paste(key[1:])
-        elif key in BACKSPACE:
-            self.buf = self.buf[:-1]
-        elif key in WORD_BACKSPACE:
-            self.buf = re.sub(r"\S+\s*$", "", self.buf)
+            self.buf += key[1:].replace("\r\n", "\n").replace("\r", "\n")
         elif key == "\x03":  # ctrl-c
             raise KeyboardInterrupt
         elif key == "\x04" and not self.buf:  # ctrl-d on empty line
             raise EOFError
         elif fn := self.key_bindings.get(key):
             fn(self)
-        elif key.isprintable() and ord(key[0]) < PUA:
+        elif key.isprintable():
             self.buf += key
 
     # -- rendering ----------------------------------------------------------
@@ -160,7 +123,7 @@ class Prompt:
         sys.stdout.flush()
 
     def _input_row(self, cols: int) -> str:
-        text = self.label + self._display(self.buf)
+        text = (self.label + self.buf).replace("\n", " ")
         r = text[max(0, len(text) + 1 - cols) :]
         # REV = reverse video on, \x1b[27m = off: a 1-cell fake cursor
         return f"{r}{REV} \x1b[27m"
@@ -264,7 +227,7 @@ class Prompt:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, old)
 
     async def prompt_async(self, label: str = "❯ ") -> str:
-        self.buf, self.pastes, self.label = "", [], label
+        self.buf, self.label = "", label
         with self._raw():
             self._active = True
             try:
@@ -274,5 +237,5 @@ class Prompt:
                     self._render()
             finally:
                 self._active = False
-        self._write(f"\n{self.style}{label}{self._display(self.buf)}{RESET}\n\n")
-        return self._expand()
+        self._write(f"\n{self.style}{label}{self.buf}{RESET}\n\n")
+        return self.buf

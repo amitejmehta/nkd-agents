@@ -59,34 +59,12 @@ def type_(p: Prompt, s: str) -> None:
         p._handle(ch)
 
 
-def shown(p: Prompt) -> str:
-    return p._display(p.buf)
-
-
 class TestEditing:
-    @pytest.mark.parametrize("key", ["\x7f", "\x08"])
-    def test_backspace(self, p: Prompt, key: str) -> None:
+    @pytest.mark.parametrize("key", ["\x7f", "\x08", ESC + "\x7f", "\x17"])
+    def test_deletion_keys_do_nothing(self, p: Prompt, key: str) -> None:
         type_(p, "ab")
         p._handle(key)
-        p._handle(key)
-        p._handle(key)  # no-op at start
-        assert p.buf == ""
-
-    def test_typed_private_use_char_is_dropped(self, p: Prompt) -> None:
-        p._paste("a\nb")
-        p._handle(chr(0xE000))
-        p._handle(chr(0xE005))
-        assert p.buf == chr(0xE000)
-
-    @pytest.mark.parametrize("key", [ESC + "\x7f", ESC + "\x08", "\x17"])
-    def test_word_backspace(self, p: Prompt, key: str) -> None:
-        type_(p, "foo  bar  ")
-        p._handle(key)
-        assert p.buf == "foo  "
-        p._handle(key)
-        assert p.buf == ""
-        p._handle(key)  # no-op at start
-        assert p.buf == ""
+        assert p.buf == "ab"
 
     def test_key_bindings_and_defaults(self, p: Prompt) -> None:
         hits: list[str] = []
@@ -108,58 +86,18 @@ class TestEditing:
 
 
 class TestPaste:
-    def test_is_one_char_shown_as_label(self, p: Prompt) -> None:
+    def test_is_appended_raw(self, p: Prompt) -> None:
         type_(p, "see ")
-        p._handle(PASTE + "l1\nl2\nl3\n")
+        p._handle(PASTE + "l1\nl2")
         type_(p, " ok")
-        assert len(p.buf) == len("see ") + 1 + len(" ok")
-        assert shown(p) == "see [Paste #1, 3 lines] ok"
-        assert p._expand() == "see l1\nl2\nl3\n ok"
-
-    def test_single_line_is_inserted_literally(self, p: Prompt) -> None:
-        p._handle(PASTE + "one")
-        p._handle(PASTE + "two\n")
-        assert (p.buf, p.pastes) == ("onetwo", [])
-
-    def test_multi_line_numbering(self, p: Prompt) -> None:
-        p._handle(PASTE + "a\nb")
-        p._handle(PASTE + "c\nd")
-        assert shown(p) == "[Paste #1, 2 lines][Paste #2, 2 lines]"
-        assert p._expand() == "a\nbc\nd"
-
-    def test_backspace_removes_whole_paste(self, p: Prompt) -> None:
-        type_(p, "a")
-        p._handle(PASTE + "x\ny")
-        p._handle("\x7f")
-        assert p.buf == "a"
-
-    def test_backspace_after_paste_only_removes_char(self, p: Prompt) -> None:
-        type_(p, "a")
-        p._handle(PASTE + "x\ny")
-        type_(p, "b")
-        p._handle("\x7f")
-        assert shown(p) == "a[Paste #1, 2 lines]"
-        assert p.pastes == ["x\ny"]
-
-    def test_word_ops_treat_paste_as_word(self, p: Prompt) -> None:
-        type_(p, "see ")
-        p._handle(PASTE + "x\ny")
-        p._handle(ESC + "\x7f")
-        assert p.buf == "see "
-
-    def test_typed_label_is_literal(self, p: Prompt) -> None:
-        type_(p, "[Paste #7, 2 lines]")
-        assert p._expand() == "[Paste #7, 2 lines]"
+        assert p.buf == "see l1\nl2 ok"
 
     @pytest.mark.parametrize(
         "line_ending", ["\n", "\r", "\r\n"], ids=["lf", "cr", "crlf"]
     )
-    def test_line_count_is_correct_for_any_line_ending(
-        self, p: Prompt, line_ending: str
-    ) -> None:
+    def test_any_line_ending_becomes_newline(self, p: Prompt, line_ending: str) -> None:
         p._handle(PASTE + line_ending.join(["l1", "l2", "l3"]))
-        assert shown(p) == "[Paste #1, 3 lines]"
-        assert p._expand() == "l1\nl2\nl3"
+        assert p.buf == "l1\nl2\nl3"
 
 
 class TestInputRow:
@@ -175,10 +113,10 @@ class TestInputRow:
         type_(p, "x" * 500)
         assert cells(p._input_row(cols=7)) == 7
 
-    def test_paste_shows_as_label(self, p: Prompt) -> None:
+    def test_paste_newline_shows_as_space(self, p: Prompt) -> None:
         p._handle(PASTE + "x\ny")
         type_(p, "z")
-        assert p._input_row(cols=40) == f"> [Paste #1, 2 lines]z{CUR}"
+        assert p._input_row(cols=40) == f"> x yz{CUR}"
 
 
 class TestRender:
@@ -372,11 +310,6 @@ class TestReadKey:
         p, w = piped
         os.write(w, ESC.encode())
         assert asyncio.run(p._read_key()) == ESC
-
-    def test_option_backspace_is_one_key(self, piped) -> None:
-        p, w = piped
-        os.write(w, ESC.encode() + b"\x7f")
-        assert asyncio.run(p._read_key()) == ESC + "\x7f"
 
     def test_bracketed_paste_keeps_trailing_input(self, piped) -> None:
         p, w = piped
