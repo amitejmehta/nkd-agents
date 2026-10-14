@@ -27,7 +27,7 @@ def cli(tmp_path, monkeypatch):
 
 class TestToolbar:
     def test_shows_model(self, cli: CLI):
-        assert NAMES[0].split("-")[1] in cli.toolbar()
+        assert NAMES[0].split("-")[1].capitalize() in cli.toolbar()
 
     def test_shows_mode(self, cli: CLI):
         assert "Act" in cli.toolbar()
@@ -41,7 +41,7 @@ class TestToolbar:
 
     def test_reflects_model_change(self, cli: CLI):
         cli.switch_model()
-        assert NAMES[1].split("-")[1] in cli.toolbar()
+        assert NAMES[1].split("-")[1].capitalize() in cli.toolbar()
 
     def test_reflects_mode_change(self, cli: CLI):
         cli.cycle_mode()
