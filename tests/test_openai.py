@@ -298,9 +298,8 @@ async def test_agent_logs_turn_format(caplog):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("empty", [None, []])
-async def test_agent_empty_tools_falls_back_to_fns(empty):
-    """tools=None or tools=[] still gets schemas from fns."""
+async def test_agent_missing_tools_uses_fns():
+    """Absent tools gets schemas from fns."""
 
     async def echo(text: str) -> str:
         """Echo"""
@@ -312,10 +311,29 @@ async def test_agent_empty_tools_falls_back_to_fns(empty):
         [echo],
         model="m",
         input=[{"role": "user", "content": "hi"}],
-        tools=empty,
     )
     sent = client.responses.create.call_args.kwargs
     assert [t["name"] for t in sent["tools"]] == ["echo"]
+
+
+@pytest.mark.asyncio
+async def test_agent_explicit_empty_tools_respected():
+    """tools=[] is not overwritten by fns."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    client = _client(_response([_text_msg("done")]))
+    await agent(
+        client,
+        [echo],
+        model="m",
+        input=[{"role": "user", "content": "hi"}],
+        tools=[],
+    )
+    sent = client.responses.create.call_args.kwargs
+    assert sent["tools"] == []
 
 
 @pytest.mark.asyncio

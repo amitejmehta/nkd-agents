@@ -306,9 +306,8 @@ async def test_agent_logs_turn_format(caplog):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("empty", [None, []])
-async def test_agent_empty_tools_falls_back_to_fns(empty):
-    """tools=None or tools=[] still gets schemas from fns."""
+async def test_agent_missing_tools_uses_fns():
+    """Absent tools gets schemas from fns."""
 
     async def echo(text: str) -> str:
         """Echo"""
@@ -321,11 +320,32 @@ async def test_agent_empty_tools_falls_back_to_fns(empty):
         model="m",
         max_tokens=10,
         messages=[{"role": "user", "content": "hi"}],
-        tools=empty,
     )
     sent = client.messages.create.call_args.kwargs
     assert [t["name"] for t in sent["tools"]] == ["echo"]
     assert sent["cache_control"] == {"type": "ephemeral"}
+
+
+@pytest.mark.asyncio
+async def test_agent_explicit_empty_tools_respected():
+    """tools=[] is not overwritten by fns."""
+
+    async def echo(text: str) -> str:
+        """Echo"""
+        return text
+
+    client = _client(_message([TextBlock(type="text", text="done")]))
+    await agent(
+        client,
+        [echo],
+        model="m",
+        max_tokens=10,
+        messages=[{"role": "user", "content": "hi"}],
+        tools=[],
+    )
+    sent = client.messages.create.call_args.kwargs
+    assert sent["tools"] == []
+    assert "cache_control" not in sent
 
 
 @pytest.mark.asyncio
