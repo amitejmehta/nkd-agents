@@ -72,6 +72,12 @@ class TestEditing:
         p._handle(key)  # no-op at start
         assert p.buf == ""
 
+    def test_typed_private_use_char_is_dropped(self, p: Prompt) -> None:
+        p._paste("a\nb")
+        p._handle(chr(0xE000))
+        p._handle(chr(0xE005))
+        assert p.buf == chr(0xE000)
+
     @pytest.mark.parametrize("key", [ESC + "\x7f", ESC + "\x08", "\x17"])
     def test_word_backspace(self, p: Prompt, key: str) -> None:
         type_(p, "foo  bar  ")
@@ -366,6 +372,11 @@ class TestReadKey:
         p, w = piped
         os.write(w, ESC.encode())
         assert asyncio.run(p._read_key()) == ESC
+
+    def test_option_backspace_is_one_key(self, piped) -> None:
+        p, w = piped
+        os.write(w, ESC.encode() + b"\x7f")
+        assert asyncio.run(p._read_key()) == ESC + "\x7f"
 
     def test_bracketed_paste_keeps_trailing_input(self, piped) -> None:
         p, w = piped
