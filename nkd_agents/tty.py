@@ -150,7 +150,7 @@ class Prompt:
             raise EOFError
         elif fn := self.key_bindings.get(key):
             fn(self)
-        elif key.isprintable():
+        elif key.isprintable() and ord(key[0]) < PUA:
             self.buf += key
 
     # -- rendering ----------------------------------------------------------
