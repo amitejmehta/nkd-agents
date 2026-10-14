@@ -123,7 +123,7 @@ async def agent(
 ) -> str:
     if not isinstance(kwargs["messages"], list):
         raise ValueError("messages is mutated in-place as history and must be a list")
-    if not kwargs.get("tools"):
+    if "tools" not in kwargs:
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
     if kwargs.get("tools"):
         kwargs.setdefault("cache_control", {"type": "ephemeral"})

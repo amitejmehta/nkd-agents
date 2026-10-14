@@ -147,7 +147,7 @@ async def agent(
 ) -> str:
     if not isinstance(kwargs.get("input"), list):
         raise ValueError("input is mutated in-place as history and must be a list")
-    if not kwargs.get("tools"):
+    if "tools" not in kwargs:
         kwargs["tools"] = [tool_schema(fn) for fn in fns]
 
     with tracer.start_as_current_span(f"invoke_agent {kwargs.get('model')}") as span:
