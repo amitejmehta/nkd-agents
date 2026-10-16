@@ -57,6 +57,15 @@ class TestToolbar:
         assert cli.toolbar().startswith(" ● ")
 
 
+class TestDelete:
+    def test_deletes_last_word(self, cli: CLI):
+        cli.session.buf = "foo bar  "
+        cli.session._handle("\x7f")
+        assert cli.session.buf == "foo "
+        cli.session._handle("\x7f")
+        assert cli.session.buf == ""
+
+
 class TestDefaultFns:
     def test_includes_web_tools_when_available(self):
         from nkd_agents.web import fetch_url, web_search

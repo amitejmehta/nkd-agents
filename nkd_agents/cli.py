@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -81,9 +82,13 @@ class CLI:
                 ESC: lambda p: self.interrupt(),
                 "\t": lambda p: self.toggle_thinking(),
                 ESC + "[Z": lambda p: self.cycle_mode(),
+                "\x7f": self.delete,
             },
             toolbar=self.toolbar,
         )
+
+    def delete(self, p: Prompt) -> None:
+        p.buf = re.sub(r"\S*\s*$", "", p.buf)
 
     def build_system_prompt(self) -> str | None:
         paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
@@ -107,7 +112,6 @@ class CLI:
             return
         if self.llm_task and not self.llm_task.done():
             self.llm_task.cancel()
-            print(f"{RED}Interrupted.{RESET}")
 
     def toolbar(self) -> str:
         busy = "●" if self.llm_task and not self.llm_task.done() else "○"
