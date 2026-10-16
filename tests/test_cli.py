@@ -6,14 +6,16 @@ from anthropic.types import MessageParam
 
 from nkd_agents.cli import (
     CLI,
-    FNS,
     MODELS,
     MODES,
     START_PHRASE,
+    default_fns,
 )
+from nkd_agents.tools import bash, edit_file, read_file, write_file
 from nkd_agents.tty import ESC
 
 NAMES = list(MODELS)
+FNS = (read_file, write_file, edit_file, bash)
 
 
 @pytest.fixture
@@ -22,7 +24,7 @@ def cli(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-    return CLI()
+    return CLI(FNS)
 
 
 class TestToolbar:
@@ -55,12 +57,34 @@ class TestToolbar:
         assert cli.toolbar().startswith(" ● ")
 
 
+class TestDefaultFns:
+    def test_includes_web_tools_when_available(self):
+        from nkd_agents.web import fetch_url, web_search
+
+        assert default_fns()[-2:] == (fetch_url, web_search)
+
+    def test_falls_back_without_web_extra(self, monkeypatch, caplog):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def blocked(name, *args, **kwargs):
+            if name.endswith("web"):
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", blocked)
+        with caplog.at_level("WARNING"):
+            assert default_fns() == FNS
+        assert "web tools unavailable" in caplog.text
+
+
 class TestInit:
     def test_missing_api_key(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("NKD_AGENTS_ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        CLI()  # should not raise
+        CLI(FNS)  # should not raise
 
     def test_defaults(self, cli: CLI):
         assert cli.kwargs["model"] == NAMES[0]
@@ -72,7 +96,7 @@ class TestInit:
     def test_loads_claude_md(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         (tmp_path / "CLAUDE.md").write_text("system prompt")
-        assert "system prompt" in CLI().kwargs["system"]
+        assert "system prompt" in CLI(FNS).kwargs["system"]
 
     def test_no_claude_md(self, cli: CLI):
         assert "system" not in cli.kwargs
@@ -386,7 +410,7 @@ class TestBuildSystemPrompt:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        assert CLI().build_system_prompt() is None
+        assert CLI(FNS).build_system_prompt() is None
 
     def test_global_only(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -395,7 +419,7 @@ class TestBuildSystemPrompt:
         global_md.parent.mkdir()
         global_md.write_text("global content")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        result = CLI().build_system_prompt()
+        result = CLI(FNS).build_system_prompt()
         assert result is not None
         assert "global content" in result
 
@@ -404,7 +428,7 @@ class TestBuildSystemPrompt:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         (tmp_path / "CLAUDE.md").write_text("local content")
-        result = CLI().build_system_prompt()
+        result = CLI(FNS).build_system_prompt()
         assert result is not None
         assert "local content" in result
 
@@ -416,7 +440,7 @@ class TestBuildSystemPrompt:
         global_md.write_text("global content")
         (tmp_path / "CLAUDE.md").write_text("local content")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        result = CLI().build_system_prompt()
+        result = CLI(FNS).build_system_prompt()
         assert result is not None
         assert result.index("global content") < result.index("local content")
 
@@ -428,7 +452,7 @@ class TestBuildSystemPrompt:
         global_md.write_text("")
         (tmp_path / "CLAUDE.md").write_text("")
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        assert CLI().build_system_prompt() is None
+        assert CLI(FNS).build_system_prompt() is None
 
 
 # --- helpers for auto_compact tests ---

@@ -22,7 +22,7 @@ I built the framework for control of low-level primitives with little overhead �
 **What I didn't build:**
 
 - No streaming. Streaming adds unnecessary complexity to the base agent framework purely for interactive use cases like CLI. Our approach uses the framework's basic logging (nicely formatted) — speed comes from the start phrase and thinking-off defaults below.
-- No `prompt_toolkit`. Built a minimal async prompt handler (`tty.py`) instead — keeps the CLI lightweight and lets you queue a message while the model is still responding (async end to end).
+- No `prompt_toolkit`. Built a minimal async prompt handler (`tty.py`) instead — keeps the CLI lightweight and lets you queue a message while the model is still responding (async end to end). Input is tail-only: typing and pasting append to the end of the line; the cursor doesn't move and nothing mid-line is editable. Deletion isn't bound by default.
 - No edit approval. Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`) leads to faster, less constrained work.
 - No `grep`/`glob` as standalone tools. An eval harness showed no accuracy or turn-count benefit over `bash` (`rg`, `find`/`ls`), and the model fell back to `bash` even when offered — didn't earn its keep.
 - No background bash. Background commands only help if their result isn't on the critical path of the next action — rare enough in practice not to justify the complexity.
@@ -35,7 +35,6 @@ I built the framework for control of low-level primitives with little overhead �
 - Start phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Coupled with thinking off by default, this makes the experience extremely fast. For harder problems, toggle thinking on with `tab` — one keystroke when you need it.
 - Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels (prepended to every user message), not separate code paths. Label-based > code-based because you can customize the full list without touching code — the mode name alone signals behavior shift.
 - Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. This is a simpler, more evaluable form of context management than sub-agents — one LLM call, one failure surface, directly evalable — which is why there are no sub-agents.
-
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
 I built the CLI to understand the tool I used 24/7. What started as an experiment quickly became my primary workflow because it's fully customized to how I think and work. Owning the tool also means I can deprecate features that encode outdated AI coding habits (like pausing to approve every edit) and force myself to work better. But the real value was the cognitive shift: when you build the tool you use all day, every interaction becomes a first-principles reminder of how LLMs work. You stop accepting black boxes and start thinking clearly about how to build with AI. I hope this project inspires you to do the same!
