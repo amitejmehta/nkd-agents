@@ -19,7 +19,7 @@ from nkd_agents.anthropic import (
     tool,
     tool_schema,
 )
-from nkd_agents.tools import FileContent
+from nkd_agents.tools import FileContent, read_file
 
 
 def test_output_format():
@@ -382,3 +382,38 @@ async def test_agent_no_tools_no_cache_control():
     sent = client.messages.create.call_args.kwargs
     assert sent["tools"] == []
     assert "cache_control" not in sent
+
+
+TEXT_CASES = [
+    pytest.param("    def f():\n        pass\n", id="indented-source"),
+    pytest.param("\nfirst line\n\n  second line\n", id="multiline"),
+    pytest.param("text\n\n", id="trailing-newlines"),
+    pytest.param("text  \t", id="trailing-whitespace"),
+    pytest.param(" \t\n\r\n", id="whitespace-only"),
+    pytest.param("hello world", id="ordinary-text"),
+    pytest.param("", id="empty"),
+    pytest.param("\t café 世界\r\n", id="unicode-crlf"),
+]
+
+
+@pytest.mark.parametrize("text", TEXT_CASES)
+def test_bytes_to_content_preserves_text(text):
+    assert bytes_to_content(text.encode("utf-8"), "txt") == {
+        "type": "text",
+        "text": text,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", TEXT_CASES)
+async def test_read_file_tool_preserves_text(tmp_path, text):
+    path = tmp_path / "source.txt"
+    path.write_bytes(text.encode("utf-8"))
+    tool_call = ToolUseBlock(
+        type="tool_use", id="read_1", name="read_file", input={"path": str(path)}
+    )
+    assert await tool(tool_call, [read_file]) == {
+        "type": "tool_result",
+        "tool_use_id": "read_1",
+        "content": [{"type": "text", "text": text}],
+    }

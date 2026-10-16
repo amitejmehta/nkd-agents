@@ -5,6 +5,7 @@ import contextlib
 import os
 import shlex
 import signal
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -294,6 +295,46 @@ class TestBash:
         assert "Hello" in result
         assert "STDERR:" in result
         assert "EXIT CODE: 0" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("stream", ["stdout", "stderr"])
+    @pytest.mark.parametrize("exit_code", [0, 42])
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            pytest.param(b"\xff\x80", r"\xff\x80", id="invalid-bytes"),
+            pytest.param(
+                "café ".encode("utf-8") + b"\xff" + " 日本語".encode("utf-8"),
+                "café " + r"\xff" + " 日本語",
+                id="mixed-utf8",
+            ),
+            pytest.param(b"ok \xe2\x82", r"ok \xe2\x82", id="incomplete-utf8"),
+            pytest.param(b"  hello\nworld\n", "hello\nworld", id="normal-text"),
+        ],
+    )
+    async def test_bash_output_decoding(self, stream, exit_code, payload, expected):
+        script = (
+            f"import sys; sys.{stream}.buffer.write({payload!r}); sys.exit({exit_code})"
+        )
+        result = await bash(
+            f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}", timeout=30
+        )
+        out, err = (expected, "") if stream == "stdout" else ("", expected)
+        assert result == f"STDOUT: {out}\nSTDERR: {err}\nEXIT CODE: {exit_code}"
+
+    @pytest.mark.asyncio
+    async def test_bash_decoded_output_limits(self):
+        script = (
+            "import sys; "
+            "data = ('é'.encode('utf-8') + bytes([255])) * 10001; "
+            "sys.stdout.buffer.write(data); sys.stderr.buffer.write(data)"
+        )
+        result = await bash(
+            f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}", timeout=30
+        )
+        expected = ("é" + r"\xff") * 10000
+        assert len(expected) == 50000
+        assert result == f"STDOUT: {expected}\nSTDERR: {expected}\nEXIT CODE: 0"
 
     @pytest.mark.asyncio
     async def test_bash_failure(self):
