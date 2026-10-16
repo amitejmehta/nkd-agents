@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from anthropic import AsyncAnthropic
 
@@ -12,16 +14,6 @@ from .tty import ESC, Prompt
 from .utils import load_env
 
 logger = logging.getLogger(__name__)
-
-try:
-    from .web import fetch_url, web_search
-
-    FNS = (read_file, write_file, edit_file, bash, fetch_url, web_search)
-except ImportError:
-    print("web tools unavailable: install nkd-agents with the [web] extra")
-    FNS = (read_file, write_file, edit_file, bash)
-
-TOOLS = [tool_schema(fn) for fn in FNS]
 
 MODELS = {
     "claude-sonnet-5-5": {"type": "between_tools"},
@@ -66,7 +58,9 @@ MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
 
 
 class CLI:
-    def __init__(self) -> None:
+    def __init__(self, fns: tuple[Callable[..., Any], ...]) -> None:
+        self.fns = fns
+        self.tools = [tool_schema(fn) for fn in fns]
         self.client = AsyncAnthropic(max_retries=4)
         self.messages = []
         self.queue = asyncio.Queue()
@@ -127,7 +121,7 @@ class CLI:
     async def count_tokens(self) -> int:
         kwargs = {k: v for k, v in self.kwargs.items() if k != "max_tokens"}
         resp = await self.client.messages.count_tokens(
-            messages=self.messages, tools=TOOLS, **kwargs
+            messages=self.messages, tools=self.tools, **kwargs
         )
         return resp.input_tokens
 
@@ -154,7 +148,7 @@ class CLI:
     async def turn(self) -> None:
         if await self.count_tokens() > COMPACT_TOKENS:
             await self.compact()
-        await agent(self.client, fns=FNS, messages=self.messages, **self.kwargs)
+        await agent(self.client, fns=self.fns, messages=self.messages, **self.kwargs)
 
     async def llm_loop(self) -> None:
         while True:
@@ -181,10 +175,20 @@ class CLI:
         await asyncio.gather(self.llm_loop(), self.prompt_loop())
 
 
+def default_fns() -> tuple[Callable[..., Any], ...]:
+    base = (read_file, write_file, edit_file, bash)
+    try:
+        from .web import fetch_url, web_search
+    except ImportError:
+        logger.warning("web tools unavailable; install the [web] extra to enable them")
+        return base
+    return (*base, fetch_url, web_search)
+
+
 def main() -> None:
     try:
         configure_logging(LOG_LEVEL, metadata=False)
-        asyncio.run(CLI().start())
+        asyncio.run(CLI(default_fns()).start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
 

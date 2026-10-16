@@ -33,6 +33,7 @@ invariant here on purpose and checks a test notices. Run it before refactoring.
 """
 
 import asyncio
+import codecs
 import contextlib
 import os
 import signal
@@ -95,6 +96,7 @@ class Prompt:
         self.buf = ""
         self.fd = 0  # stdin
         self._pending = ""  # input read past a paste terminator, not yet consumed
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self._rows = 0
         self._active = False
 
@@ -175,7 +177,7 @@ class Prompt:
             await readable
         finally:
             loop.remove_reader(self.fd)
-        self._pending += os.read(self.fd, 4096).decode(errors="replace")
+        self._pending += self._decoder.decode(os.read(self.fd, 4096))
 
     async def _read_key(self) -> str:
         if not self._pending:
