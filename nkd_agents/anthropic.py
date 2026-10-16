@@ -84,7 +84,7 @@ def bytes_to_content(data: bytes, ext: str) -> Content:
             "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
         }
     else:
-        text = data.decode("utf-8", errors="ignore").strip()
+        text = data.decode("utf-8", errors="ignore")
         return {"type": "text", "text": text}
 
 

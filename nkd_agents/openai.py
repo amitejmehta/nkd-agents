@@ -99,7 +99,7 @@ def bytes_to_content(
                 "file_data": f"data:application/pdf;base64,{b64}",
             }
         ]
-    return data.decode("utf-8", errors="ignore").strip()
+    return data.decode("utf-8", errors="ignore")
 
 
 async def tool(

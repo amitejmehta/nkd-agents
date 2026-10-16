@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,7 +22,7 @@ from nkd_agents.openai import (
     tool,
     tool_schema,
 )
-from nkd_agents.tools import FileContent
+from nkd_agents.tools import FileContent, read_file
 
 
 def _response(output, model="gpt-4o") -> Response:
@@ -354,3 +355,33 @@ async def test_agent_explicit_tools_preserved():
         tools=custom,
     )
     assert client.responses.create.call_args.kwargs["tools"] == custom
+
+
+TEXT_CASES = [
+    pytest.param("    def f():\n        pass\n", id="indented-source"),
+    pytest.param("\nfirst line\n\n  second line\n", id="multiline"),
+    pytest.param("text\n\n", id="trailing-newlines"),
+    pytest.param("text  \t", id="trailing-whitespace"),
+    pytest.param(" \t\n\r\n", id="whitespace-only"),
+    pytest.param("hello world", id="ordinary-text"),
+    pytest.param("", id="empty"),
+    pytest.param("\t café 世界\r\n", id="unicode-crlf"),
+]
+
+
+@pytest.mark.parametrize("text", TEXT_CASES)
+def test_bytes_to_content_preserves_text(text):
+    assert bytes_to_content(text.encode("utf-8"), "txt") == text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", TEXT_CASES)
+async def test_read_file_tool_preserves_text(tmp_path, text):
+    path = tmp_path / "source.txt"
+    path.write_bytes(text.encode("utf-8"))
+    tool_call = _tool_call("read_1", "read_file", json.dumps({"path": str(path)}))
+    assert await tool(tool_call, [read_file]) == {
+        "type": "function_call_output",
+        "call_id": "read_1",
+        "output": text,
+    }

@@ -116,7 +116,8 @@ async def edit_file(
 async def bash(command: str, timeout: int) -> str:
     """Execute a bash command and return the results.
     timeout is in seconds; use 30 unless the command is known to run longer.
-    STDOUT/STDERR are truncated to 50,000 characters.
+    STDOUT/STDERR are decoded as UTF-8 with malformed bytes escaped as backslash
+    sequences, then truncated to 50,000 characters.
 
     Returns "STDOUT: {stdout}\nSTDERR: {stderr}\nEXIT CODE: {returncode}", or
     "Error: Command timed out after {timeout} seconds" (process group is SIGKILLed).
@@ -141,5 +142,6 @@ async def bash(command: str, timeout: int) -> str:
         if isinstance(exc, asyncio.CancelledError):
             raise
         return f"Error: Command timed out after {timeout} seconds"
-    out, err = stdout.decode()[:50000].strip(), stderr.decode()[:50000].strip()
+    out = stdout.decode("utf-8", errors="backslashreplace")[:50000].strip()
+    err = stderr.decode("utf-8", errors="backslashreplace")[:50000].strip()
     return f"STDOUT: {out}\nSTDERR: {err}\nEXIT CODE: {process.returncode}"
