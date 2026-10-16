@@ -1,31 +1,40 @@
 """Zero-abstraction line editor. termios + raw stdin, no event loop of its own.
 
-Three design choices carry most of the weight; don't undo them without reading this.
+Design choices that carry the weight; don't undo them without reading this.
 
-1. The input box lives in the bottom rows, *outside* the terminal's scroll region
-   (DECSTBM). Output printed anywhere - logging, print(), streamed tokens - scrolls
-   above it with zero coordination. The alternative (prompt_toolkit's patch_stdout:
-   erase box, print, redraw) requires every writer to go through the prompt; one
-   stray print() breaks it. Cost: the real cursor is hidden in the output area and
-   a reverse-video fake cursor is drawn in the box (see _render).
+1. The box lives in the bottom rows, *outside* the scroll region (DECSTBM), so any
+   output (logging, print(), streamed tokens) scrolls above it with no coordination.
+   The alternative (prompt_toolkit's patch_stdout: erase, print, redraw) breaks on one
+   stray print(). Cost: the real cursor is hidden and a reverse-video fake is drawn.
 
-2. A bracketed paste is returned by _read_key as one unit and appended to `buf` raw,
-   newlines normalized to "\n".
+2. A bracketed paste is one unit from _read_key, appended to `buf` raw, newlines
+   normalized to "\n".
 
-3. The box owns *width* and *color*. `toolbar` is plain text painted in
-   `style`; every chrome row is cut to the terminal width. A row that overflows
-   wraps, and wrapping on the bottom row scrolls the whole screen - which walks the
-   box upward and eats a line of real output.
+3. The box owns *width* and *color*. `toolbar` is plain text painted in `style`; every
+   chrome row is cut to the terminal width, since a row that wraps on the bottom row
+   scrolls the screen and eats a line of output. Sizing is re-derived from one
+   os.get_terminal_size() per render; SIGWINCH repaints, because a resize changes
+   cols, height, box rows and DECSTBM at once.
 
-Sizing is re-derived from one `os.get_terminal_size()` per render, and a SIGWINCH
-handler repaints: a resize changes cols, height, the box's row count and DECSTBM all
-at once, and the terminal re-wraps the old box into the scroll region.
+4. Editing is tail-only: the cursor is pinned to the end of buf, so typing and pasting
+   append and nothing mid-line is editable. Input is one row scrolling horizontally,
+   so the box has constant height; newlines in buf display as spaces.
 
-Also: editing is tail-only. The cursor is pinned to the end of buf and cannot move, so
-typing and pasting append and nothing mid-line is editable. Deletion (backspace,
-clear) is opt-in via key_bindings, which may mutate `prompt.buf`. Input is one row that scrolls horizontally to keep
-it in view, so the box is a constant height; newlines in buf display as spaces; Enter
-always submits.
+Keys with built-in behavior: printable chars append; Enter submits; Ctrl-C raises
+KeyboardInterrupt; Ctrl-D on an empty line raises EOFError; a paste appends. Everything
+else (backspace, arrows, Tab, ESC, Ctrl-W...) is a silent no-op until bound in
+key_bindings, whose callbacks may mutate `prompt.buf`.
+
+One os.read is one key, matched whole against key_bindings. A keypress is one terminal
+write, so multi-byte keys (Shift+Tab = ESC [ Z) arrive together and match their full
+string; separate presses are separate reads, so an ESC-prefixed chord can't be typed
+by hand. A bare-ESC binding doesn't shadow ESC-prefixed ones.
+
+Known limitation, intentional: a typed ESC and the next keystroke landing in one read
+(SSH stall batching) glue into one key. Unbound, it is dropped (press ESC again); if an
+ESC-prefixed binding matches (e.g. "\\x1bx") it fires, indistinguishable from Alt+x.
+Fixing it needs timing or a keyboard protocol (kitty, modifyOtherKeys), both out of
+scope. Don't bind destructive actions to ESC+key.
 
 tests/test_tty.py pins every key and the escapes; tests/test_tty_screen.py drives a
 VT emulator and asserts what lands on screen; scripts/tty_mutants.py breaks each
@@ -74,9 +83,8 @@ class Prompt:
     """Async prompt with key bindings, raw terminal only.
 
     key_bindings: raw key sequence (e.g. "\\x0c" for ctrl-l, ESC + "[Z" for
-      shift-tab) -> sync callable(prompt) -> None. Ctrl-c, paste and ctrl-d on
-      an empty line cannot be overridden. Tail-only editing (no cursor
-      movement): bind "\\x7f" to trim `prompt.buf` for backspace.
+      shift-tab) -> sync callable(prompt) -> None. Ctrl-c, paste and ctrl-d on an
+      empty line cannot be overridden.
     toolbar: optional callable() -> str, plain text rendered below the input box.
     style: color for the border, toolbar and the echoed submission, so your lines
       read apart from the output. Toolbar carries no escapes of its own: the box

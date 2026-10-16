@@ -311,6 +311,43 @@ class TestReadKey:
         os.write(w, ESC.encode())
         assert asyncio.run(p._read_key()) == ESC
 
+    def test_alt_sequence_is_one_key_that_misses_the_bare_escape_binding(
+        self, piped
+    ) -> None:
+        p, w = piped
+        hits: list[str] = []
+        p.key_bindings = {ESC: lambda _: hits.append("esc")}
+        p.buf = "ab"
+        os.write(w, (ESC + "\x7f").encode())
+        key = asyncio.run(p._read_key())
+        assert key == ESC + "\x7f"
+        p._handle(key)
+        assert hits == []
+        assert p.buf == "ab"
+
+    @pytest.mark.parametrize("seq", ["[A", "[Z", "OP", "x"])
+    def test_escape_sequences_are_dropped_not_interrupts(self, piped, seq: str) -> None:
+        p, w = piped
+        hits: list[str] = []
+        p.key_bindings = {ESC: lambda _: hits.append("esc")}
+        p.buf = "ab"
+        os.write(w, (ESC + seq).encode())
+        p._handle(asyncio.run(p._read_key()))
+        assert hits == []
+        assert p.buf == "ab"
+
+    def test_escape_byte_inside_paste_is_kept(self, piped) -> None:
+        p, w = piped
+        os.write(w, f"{ESC}[200~a{ESC}[Ab{ESC}[201~".encode())
+        p._handle(asyncio.run(p._read_key()))
+        assert p.buf == f"a{ESC}[Ab"
+
+    def test_printable_chunk_is_read_one_char_per_key(self, piped) -> None:
+        p, w = piped
+        os.write(w, b"abc")
+        keys = [asyncio.run(p._read_key()) for _ in range(3)]
+        assert keys == ["a", "b", "c"]
+
     def test_bracketed_paste_keeps_trailing_input(self, piped) -> None:
         p, w = piped
         os.write(w, f"{ESC}[200~x\ny{ESC}[201~z".encode())
