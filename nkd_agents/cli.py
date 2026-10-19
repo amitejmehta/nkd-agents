@@ -82,7 +82,7 @@ class CLI:
                 ESC: lambda p: self.interrupt(),
                 "\t": lambda p: self.toggle_thinking(),
                 ESC + "[Z": lambda p: self.cycle_mode(),
-                "\x7f": self.delete,
+                **dict.fromkeys(["\x17", ESC + "\x7f"], self.delete),
             },
             toolbar=self.toolbar,
         )
