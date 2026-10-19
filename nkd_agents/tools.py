@@ -61,11 +61,15 @@ async def write_file(path: str, content: str) -> str:
     Returns "Success: Created {path}" or raises ValueError if the file exists.
     """
     p = resolve(path)
-    if p.exists():
-        raise ValueError(f"File '{path}' already exists. Use edit_file to modify it.")
-    display_diff("", content, str(p))
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
+    try:
+        with p.open("x", encoding="utf-8") as f:
+            display_diff("", content, str(p))
+            f.write(content)
+    except FileExistsError:
+        raise ValueError(
+            f"File '{path}' already exists. Use edit_file to modify it."
+        ) from None
     return f"Success: Created {p}"
 
 
