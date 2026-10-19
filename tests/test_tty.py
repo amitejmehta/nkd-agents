@@ -354,11 +354,61 @@ class TestReadKey:
         assert asyncio.run(p._read_key()) == PASTE + "x\ny"
         assert asyncio.run(p._read_key()) == "z"
 
-    def test_multibyte_char_is_one_key(self, piped) -> None:
+    @pytest.mark.parametrize("char", ["a", "é", "€", "😀"])
+    def test_multibyte_char_is_one_key(self, piped, char: str) -> None:
         """Reading a byte at a time split UTF-8 sequences into U+FFFD pairs."""
         p, w = piped
-        os.write(w, "é".encode())
-        assert asyncio.run(p._read_key()) == "é"
+        os.write(w, char.encode())
+        assert asyncio.run(p._read_key()) == char
+
+    @pytest.mark.parametrize("char", ["é", "€", "😀"])
+    @pytest.mark.parametrize("read_size", [1, 2, 3])
+    def test_utf8_split_across_reads_is_one_key(
+        self, piped, monkeypatch, char: str, read_size: int
+    ) -> None:
+        """A read ending mid-character decodes to "" and must not be indexed."""
+        p, w = piped
+        read = os.read
+        monkeypatch.setattr(os, "read", lambda fd, n: read(fd, min(n, read_size)))
+        text = char + "é€😀abc"
+        os.write(w, text.encode())
+
+        async def drive() -> list[str]:
+            return [await asyncio.wait_for(p._read_key(), 1) for _ in text]
+
+        assert asyncio.run(drive()) == list(text)
+
+    def test_incomplete_first_read_waits_for_remaining_bytes(self, piped) -> None:
+        p, w = piped
+
+        async def drive() -> str:
+            task = asyncio.ensure_future(p._read_key())
+            for part in (b"\xf0", b"\x9f", b"\x98", b"\x80"):
+                os.write(w, part)
+                await asyncio.sleep(0.01)
+                assert task.done() == (part == b"\x80")
+            return await task
+
+        assert asyncio.run(drive()) == "😀"
+
+    def test_cancel_mid_character_keeps_decoder_state(self, piped) -> None:
+        p, w = piped
+        before = threading.enumerate()
+
+        async def drive() -> str:
+            os.write(w, b"\xe2")
+            task = asyncio.ensure_future(p._read_key())
+            await asyncio.sleep(0.01)
+            assert not task.done()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert asyncio.get_running_loop().remove_reader(p.fd) is False
+            os.write(w, b"\x82\xac")
+            return await asyncio.wait_for(p._read_key(), 1)
+
+        assert asyncio.run(drive()) == "€"
+        assert threading.enumerate() == before
 
     def test_cancelled_read_leaves_no_reader_and_no_thread(self, piped) -> None:
         """ctrl-c cancels the read. With run_in_executor the worker stayed blocked in

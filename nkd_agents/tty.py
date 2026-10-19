@@ -188,7 +188,7 @@ class Prompt:
         self._pending += self._decoder.decode(os.read(self.fd, 4096))
 
     async def _read_key(self) -> str:
-        if not self._pending:
+        while not self._pending:
             await self._fill()
         ch, self._pending = self._pending[0], self._pending[1:]
         if ch != ESC:
