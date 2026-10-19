@@ -58,12 +58,18 @@ class TestToolbar:
 
 
 class TestDelete:
-    def test_deletes_last_word(self, cli: CLI):
+    @pytest.mark.parametrize("key", ["\x17", "\x1b\x7f"])
+    def test_deletes_last_word(self, cli: CLI, key: str):
         cli.session.buf = "foo bar  "
-        cli.session._handle("\x7f")
+        cli.session._handle(key)
         assert cli.session.buf == "foo "
-        cli.session._handle("\x7f")
+        cli.session._handle(key)
         assert cli.session.buf == ""
+
+    def test_plain_delete_is_unbound(self, cli: CLI):
+        cli.session.buf = "foo"
+        cli.session._handle("\x7f")
+        assert cli.session.buf == "foo"
 
 
 class TestDefaultFns:
