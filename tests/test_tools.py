@@ -146,6 +146,31 @@ class TestWriteFile:
             await write_file(str(file_path), content="new content")
         assert file_path.read_text() == "original"
 
+    @pytest.mark.asyncio
+    async def test_dangling_symlink_is_not_followed(self, tmp_path):
+        target = tmp_path / "target.txt"
+        link = tmp_path / "link.txt"
+        link.symlink_to(target)
+        with pytest.raises(ValueError, match="already exists"):
+            await write_file(str(link), content="x")
+        assert not target.exists()
+
+    @pytest.mark.asyncio
+    async def test_file_created_after_check_is_not_overwritten(
+        self, tmp_path, monkeypatch
+    ):
+        file_path = tmp_path / "raced.txt"
+        real_mkdir = Path.mkdir
+
+        def mkdir_then_race(self, *args, **kwargs):
+            real_mkdir(self, *args, **kwargs)
+            file_path.write_text("winner")
+
+        monkeypatch.setattr(Path, "mkdir", mkdir_then_race)
+        with pytest.raises(ValueError, match="already exists"):
+            await write_file(str(file_path), content="loser")
+        assert file_path.read_text() == "winner"
+
 
 class TestEditFile:
     @pytest.mark.asyncio
