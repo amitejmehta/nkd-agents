@@ -151,12 +151,12 @@ async def test_anthropic_invoke_agent_span(otel_setup):
     span = agent_spans[0]
     assert "claude-sonnet-4-20250514" in span.name
     assert span.attributes["gen_ai.operation.name"] == "invoke_agent"
-    assert span.attributes["iterations"] == 0
+    assert span.attributes["turns"] == 0
 
 
 @pytest.mark.asyncio
-async def test_anthropic_iterations_with_tools(otel_setup):
-    """iterations increments on tool use loops."""
+async def test_anthropic_turns_with_tools(otel_setup):
+    """turns increments on tool use loops."""
     tool_call = ToolUseBlock(
         type="tool_use", id="tool_1", name="get_weather", input={"city": "Paris"}
     )
@@ -176,7 +176,7 @@ async def test_anthropic_iterations_with_tools(otel_setup):
 
     spans = _spans(otel_setup)
     agent_spans = [s for s in spans if s.name.startswith("invoke_agent")]
-    assert agent_spans[0].attributes["iterations"] == 1
+    assert agent_spans[0].attributes["turns"] == 1
 
 
 @pytest.mark.asyncio
@@ -292,12 +292,12 @@ async def test_openai_invoke_agent_span(otel_setup):
     span = agent_spans[0]
     assert "gpt-4o" in span.name
     assert span.attributes["gen_ai.operation.name"] == "invoke_agent"
-    assert span.attributes["iterations"] == 0
+    assert span.attributes["turns"] == 0
 
 
 @pytest.mark.asyncio
-async def test_openai_iterations_with_tools(otel_setup):
-    """iterations increments on tool use loops."""
+async def test_openai_turns_with_tools(otel_setup):
+    """turns increments on tool use loops."""
     tc = _openai_tool_call("call_1", "get_weather", '{"city": "Paris"}')
     client = _openai_client(
         _openai_response("Let me check.", [tc]),
@@ -309,7 +309,7 @@ async def test_openai_iterations_with_tools(otel_setup):
 
     spans = _spans(otel_setup)
     agent_spans = [s for s in spans if s.name.startswith("invoke_agent")]
-    assert agent_spans[0].attributes["iterations"] == 1
+    assert agent_spans[0].attributes["turns"] == 1
 
 
 @pytest.mark.asyncio
