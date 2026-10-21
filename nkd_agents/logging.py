@@ -30,6 +30,7 @@ def configure_logging(level: int = logging.INFO, metadata: bool = True) -> None:
     handler.addFilter(ContextFilter())
     logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
     logging.getLogger("httpx2").setLevel(logging.WARNING)
+    return handler
 
 
 def display_diff(old: str, new: str, path: str) -> None:

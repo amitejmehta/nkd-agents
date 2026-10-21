@@ -276,7 +276,7 @@ def _text_msg(text: str) -> ResponseOutputMessage:
 
 @pytest.mark.asyncio
 async def test_agent_logs_turn_format(caplog):
-    """Each turn logs `{i} · {status} · {model} · {usage}`."""
+    """Each turn logs `{i} {status} · {usage}`."""
 
     async def echo(text: str) -> str:
         """Echo"""
@@ -294,8 +294,9 @@ async def test_agent_logs_turn_format(caplog):
             input=[{"role": "user", "content": "hi"}],
         )
     lines = [r.getMessage() for r in caplog.records]
-    assert lines[0].startswith("0 · completed · gpt-4o · ")
-    assert lines[1].startswith("1 · completed · gpt-4o · ")
+    assert lines[0].startswith("0 completed · ")
+    assert lines[1].startswith("1 completed · ")
+    assert lines[2] == "gpt-4o: done"
 
 
 @pytest.mark.asyncio

@@ -1,12 +1,12 @@
 import asyncio
 import logging
 import os
-import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from anthropic import AsyncAnthropic
+from anthropic.types import Usage
 
 from .anthropic import agent, tool_schema
 from .logging import DIM, RED, RESET, configure_logging
@@ -82,13 +82,9 @@ class CLI:
                 ESC: lambda p: self.interrupt(),
                 "\t": lambda p: self.toggle_thinking(),
                 ESC + "[Z": lambda p: self.cycle_mode(),
-                **dict.fromkeys(["\x17", ESC + "\x7f"], self.delete),
             },
             toolbar=self.toolbar,
         )
-
-    def delete(self, p: Prompt) -> None:
-        p.buf = re.sub(r"\S*\s*$", "", p.buf)
 
     def build_system_prompt(self) -> str | None:
         paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
@@ -189,9 +185,24 @@ def default_fns() -> tuple[Callable[..., Any], ...]:
     return (*base, fetch_url, web_search)
 
 
+def fmt_usage(u: Usage) -> str:
+    think = u.output_tokens_details.thinking_tokens if u.output_tokens_details else 0
+    read, write = u.cache_read_input_tokens or 0, u.cache_creation_input_tokens or 0
+    return f"↑{u.input_tokens} ↓{u.output_tokens} t{think} · cache r{read} w{write}"
+
+
+class UsageFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                fmt_usage(a) if isinstance(a, Usage) else a for a in record.args
+            )
+        return True
+
+
 def main() -> None:
     try:
-        configure_logging(LOG_LEVEL, metadata=False)
+        configure_logging(LOG_LEVEL, metadata=False).addFilter(UsageFilter())
         asyncio.run(CLI(default_fns()).start())
     except (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")

@@ -1,15 +1,18 @@
 import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from anthropic.types import MessageParam
+from anthropic.types import MessageParam, Usage
 
 from nkd_agents.cli import (
     CLI,
     MODELS,
     MODES,
     START_PHRASE,
+    UsageFilter,
     default_fns,
+    fmt_usage,
 )
 from nkd_agents.tools import bash, edit_file, read_file, write_file
 from nkd_agents.tty import ESC
@@ -57,19 +60,21 @@ class TestToolbar:
         assert cli.toolbar().startswith(" ● ")
 
 
-class TestDelete:
-    @pytest.mark.parametrize("key", ["\x17", "\x1b\x7f"])
-    def test_deletes_last_word(self, cli: CLI, key: str):
-        cli.session.buf = "foo bar  "
-        cli.session._handle(key)
-        assert cli.session.buf == "foo "
-        cli.session._handle(key)
-        assert cli.session.buf == ""
+class TestUsageFormat:
+    def test_anthropic(self):
+        u = Usage(
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=3,
+            cache_creation_input_tokens=2,
+        )
+        assert fmt_usage(u) == "↑10 ↓5 t0 · cache r3 w2"
 
-    def test_plain_delete_is_unbound(self, cli: CLI):
-        cli.session.buf = "foo"
-        cli.session._handle("\x7f")
-        assert cli.session.buf == "foo"
+    def test_filter_formats_usage_args_only(self):
+        u = Usage(input_tokens=1, output_tokens=2)
+        rec = logging.LogRecord("n", logging.INFO, "", 0, "%s · %s", (0, u), None)
+        assert UsageFilter().filter(rec)
+        assert rec.getMessage() == "0 · ↑1 ↓2 t0 · cache r0 w0"
 
 
 class TestDefaultFns:
