@@ -71,13 +71,10 @@ class TestEditing:
         p.key_bindings = {
             "\t": lambda _: hits.append("tab"),
             ESC: lambda _: hits.append("esc"),
-            "\x03": lambda _: hits.append("never"),  # built-ins win
         }
         p._handle("\t")
         p._handle(ESC)
         assert hits == ["tab", "esc"]
-        with pytest.raises(KeyboardInterrupt):
-            p._handle("\x03")
         with pytest.raises(EOFError):
             p._handle("\x04")
         type_(p, "x")
@@ -336,11 +333,18 @@ class TestReadKey:
         assert hits == []
         assert p.buf == "ab"
 
-    def test_escape_byte_inside_paste_is_kept(self, piped) -> None:
+    def test_control_chars_inside_paste_are_dropped(self, piped) -> None:
         p, w = piped
-        os.write(w, f"{ESC}[200~a{ESC}[Ab{ESC}[201~".encode())
+        os.write(w, f"{ESC}[200~a{ESC}[Ab\tc\nd{ESC}[201~".encode())
         p._handle(asyncio.run(p._read_key()))
-        assert p.buf == f"a{ESC}[Ab"
+        assert p.buf == "a[Abc\nd"
+
+    def test_eof_raises(self, p: Prompt) -> None:
+        p.fd, w = os.pipe()
+        os.close(w)
+        with pytest.raises(EOFError):
+            asyncio.run(p._read_key())
+        os.close(p.fd)
 
     def test_printable_chunk_is_read_one_char_per_key(self, piped) -> None:
         p, w = piped

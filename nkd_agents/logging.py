@@ -21,7 +21,9 @@ class ContextFilter(logging.Filter):
         return True
 
 
-def configure_logging(level: int = logging.INFO, metadata: bool = True) -> None:
+def configure_logging(
+    level: int = logging.INFO, metadata: bool = True
+) -> logging.Handler:
     prefix = "%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)s - "
     if not metadata:
         prefix = ""
