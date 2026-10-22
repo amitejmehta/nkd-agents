@@ -154,7 +154,7 @@ class CLI:
         while True:
             self.messages.append(await self.queue.get())
             self.llm_task = asyncio.create_task(self.turn())
-            self.session.refresh()
+            self.session.screen.paint()
             try:
                 await self.llm_task
             except asyncio.CancelledError:
@@ -163,7 +163,7 @@ class CLI:
                 logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
             finally:
                 self.llm_task = None
-                self.session.refresh()
+                self.session.screen.paint()
 
     async def prompt_loop(self) -> None:
         while True:

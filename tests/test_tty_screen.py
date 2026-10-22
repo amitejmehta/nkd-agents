@@ -1,6 +1,6 @@
 """What the user actually sees, via a VT emulator.
 
-tests/test_tty.py asserts the escape stream `_render` *emits*. That cannot catch a
+tests/test_tty.py asserts the escape stream `Screen.paint` *emits*. That cannot catch a
 bug where correct-looking escapes produce a wrong screen - notably the claim the
 whole design rests on: output printed while the prompt is up scrolls above the box
 and never touches it. Here the same escapes drive pyte and we read the screen.
@@ -33,7 +33,8 @@ class Term:
         self.size = os.terminal_size((cols, lines))
         self.prompt = Prompt(toolbar=lambda: toolbar)
         self.prompt.label = "> "
-        self.prompt._write = self.feed  # type: ignore[method-assign]
+        self.prompt.screen.write = self.feed
+        self.prompt.screen.active = True
 
     def feed(self, text: str) -> None:
         """Anything a program writes to the terminal: box escapes or plain output."""
@@ -41,7 +42,7 @@ class Term:
 
     def render(self, resized: bool = False) -> None:
         with patch.object(os, "get_terminal_size", return_value=self.size):
-            self.prompt._render(resized)
+            self.prompt.screen.paint(resized)
 
     def type(self, text: str) -> None:
         for ch in text:
@@ -53,11 +54,11 @@ class Term:
 
     @property
     def box(self) -> list[str]:
-        return self.rows[-self.prompt._rows :]
+        return self.rows[-self.prompt.screen.rows :]
 
     @property
     def above(self) -> list[str]:
-        return self.rows[: -self.prompt._rows]
+        return self.rows[: -self.prompt.screen.rows]
 
     @property
     def last_output(self) -> str:
@@ -111,14 +112,14 @@ class TestCursorStaysInTheOutputArea:
     cursor sits above the box. Nothing else checks that."""
 
     def test_after_render_the_cursor_is_above_the_box(self, term: Term) -> None:
-        assert term.screen.cursor.y < term.screen.lines - term.prompt._rows
+        assert term.screen.cursor.y < term.screen.lines - term.prompt.screen.rows
 
     def test_still_above_after_output_and_renders(self, term: Term) -> None:
         for i in range(30):
             term.feed(f"out {i}\r\n")
             term.type("x")
             term.render()
-        assert term.screen.cursor.y < term.screen.lines - term.prompt._rows
+        assert term.screen.cursor.y < term.screen.lines - term.prompt.screen.rows
 
 
 class TestResizeToANewHeight:
@@ -138,7 +139,7 @@ class TestResizeToANewHeight:
         it. Returns the terminal and the rows as they were before the repaint."""
         t = Term(cols=20, lines=lines)
         t.feed("".join(f"out {i}\r\n" for i in range(5)))
-        t.prompt._rows = stale_rows
+        t.prompt.screen.rows = stale_rows
         t.screen.cursor_position(cursor_row, 1)
         before = t.rows
         t.render(resized=True)
@@ -147,12 +148,12 @@ class TestResizeToANewHeight:
     @pytest.mark.parametrize("cursor_row", [4, 7, 8], ids=["mid", "near", "bottom"])
     def test_rows_above_the_cursor_are_never_scrolled(self, cursor_row: int) -> None:
         t, before = self.arrive(lines=8, cursor_row=cursor_row)
-        keep = min(cursor_row, t.screen.lines - t.prompt._rows) - 1
+        keep = min(cursor_row, t.screen.lines - t.prompt.screen.rows) - 1
         assert keep and t.rows[:keep] == before[:keep], t.rows
 
     def test_cursor_is_anchored_one_row_above_the_box(self) -> None:
         t, _ = self.arrive(lines=8, cursor_row=8)  # the case that ate output
-        assert t.screen.cursor.y == t.screen.lines - t.prompt._rows - 1
+        assert t.screen.cursor.y == t.screen.lines - t.prompt.screen.rows - 1
 
     @pytest.mark.parametrize("lines", [8, 12, 20])
     def test_box_is_pinned_to_the_bottom_of_the_new_height(self, lines: int) -> None:
@@ -173,6 +174,17 @@ class TestBoxIntegrity:
         t.render()
         assert t.last_output == "output 3"  # not the toolbar's wrapped remainder
         assert len(t.box) == 4
+
+    @pytest.mark.parametrize("char", ["你", "😀"])
+    def test_wide_characters_cannot_scroll_the_screen(
+        self, term: Term, char: str
+    ) -> None:
+        """Two cells each, counted as one: the input row overflows. Autowrap is off
+        while painting, so the terminal clips it instead of scrolling output."""
+        term.type(char * 40)
+        term.render()
+        assert len(term.box) == 4
+        assert term.last_output == "output 3"
 
     def test_repeated_renders_do_not_drift(self, term: Term) -> None:
         term.type("hello")
@@ -196,7 +208,7 @@ class TestWholeSession:
 
     def run(self, t: Term, keys: bytes, monkeypatch) -> str:
         r, w = os.pipe()
-        t.prompt.fd = r
+        t.prompt.keys.fd = t.prompt.screen.fd = r
         monkeypatch.setattr(tty, "setcbreak", lambda *_: None)  # no real terminal here
         monkeypatch.setattr(termios, "tcgetattr", lambda *_: [0] * 7)
         monkeypatch.setattr(termios, "tcsetattr", lambda *_: None)
@@ -208,10 +220,25 @@ class TestWholeSession:
             os.close(r)
             os.close(w)
 
-    def test_refresh_repaints_toolbar_only_while_prompting(self, monkeypatch) -> None:
+    def test_failing_first_paint_leaves_the_screen_alone(self, monkeypatch) -> None:
+        t = Term(lines=12)
+        t.feed("".join(f"output {i}\r\n" for i in range(11)))
+        t.feed("bottom row")
+        before = t.rows
+
+        def boom(resized: bool = False) -> None:
+            raise OSError
+
+        t.prompt.screen.paint = boom
+        with pytest.raises(OSError):
+            self.run(t, b"", monkeypatch)
+        assert t.rows == before
+
+    def test_paint_repaints_toolbar_only_while_prompting(self, monkeypatch) -> None:
         state = {"tb": "idle"}
         t = Term(lines=12)
         t.prompt.toolbar = lambda: state["tb"]
+        t.prompt.screen.active = False
         seen = []
 
         async def go() -> str:
@@ -219,15 +246,15 @@ class TestWholeSession:
             await asyncio.sleep(0)
             seen.append(t.rows[-1])
             state["tb"] = "busy"
-            t.prompt.refresh()
+            t.prompt.screen.paint()
             seen.append(t.rows[-1])
             os.write(w, b"\r")
             result = await task
-            t.prompt.refresh()
+            t.prompt.screen.paint()
             return result
 
         r, w = os.pipe()
-        t.prompt.fd = r
+        t.prompt.keys.fd = t.prompt.screen.fd = r
         monkeypatch.setattr(tty, "setcbreak", lambda *_: None)
         monkeypatch.setattr(termios, "tcgetattr", lambda *_: [0] * 7)
         monkeypatch.setattr(termios, "tcsetattr", lambda *_: None)
@@ -278,11 +305,11 @@ class TestWholeSession:
         signal mid-session and check a resize-repaint actually ran."""
         t = Term(lines=12)
         resized: list[bool] = []
-        real = t.prompt._render
-        t.prompt._render = lambda r=False: (resized.append(r), real(r))[1]  # type: ignore[method-assign]
+        real = t.prompt.screen.paint
+        t.prompt.screen.paint = lambda r=False: (resized.append(r), real(r))[1]
 
         r, w = os.pipe()
-        t.prompt.fd = r
+        t.prompt.keys.fd = t.prompt.screen.fd = r
         monkeypatch.setattr(tty, "setcbreak", lambda *_: None)
         monkeypatch.setattr(termios, "tcgetattr", lambda *_: [0] * 7)
         monkeypatch.setattr(termios, "tcsetattr", lambda *_: None)

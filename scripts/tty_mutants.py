@@ -23,40 +23,44 @@ TESTS = ["tests/test_tty.py", "tests/test_tty_screen.py"]
 # (name, original source, replacement). Each must break exactly one invariant.
 MUTANTS: list[tuple[str, str, str]] = [
     (
-        "no clipping of chrome to the terminal width",
-        'return self.style + s.replace("\\n", " ")[:cols] + RESET',
-        "return self.style + s + RESET",
+        "autowrap stays on while painting (wide or long rows scroll the screen)",
+        "            + WRAP_OFF\n",
+        "",
     ),
     (
         "no newline strip (a newline is a second row)",
-        'return self.style + s.replace("\\n", " ")[:cols] + RESET',
-        "return self.style + s[:cols] + RESET",
+        'return self.style + s.replace("\\n", " ") + RESET',
+        "return self.style + s + RESET",
     ),
-    ("no room made for the box", "self._room(len(box))", "pass"),
+    (
+        "no room made for the box",
+        "+ IND * len(box)\n                + up(len(box))",
+        "",
+    ),
     (
         "no scroll region",
-        "SAVE_CURSOR\n            + scroll_region(top - 1)",
-        'SAVE_CURSOR\n            + ""',
+        "+ scroll_region(top - 1)\n",
+        "\n",
     ),
     (
         "box may claim row 1 (negative row escapes)",
-        "[rule, self._input_row(cols), rule, chrome(self.toolbar())][\n            : max(0, height - 1)\n        ]",
-        "[rule, self._input_row(cols), rule, chrome(self.toolbar())]",
+        "self.draw(cols)[: max(0, height - 1)]",
+        "self.draw(cols)",
     ),
     (
         "resize does not erase the reflowed box",
-        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
-        "self._write(RESET_SCROLL_REGION + goto(top - 1))",
+        "self.write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
+        "self.write(RESET_SCROLL_REGION + goto(top - 1))",
     ),
     (
         "resize makes room relative to the moved cursor",
-        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
-        "self._write(CLEAR_TO_END)\n            self._room(len(box))",
+        "self.write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
+        "self.write(CLEAR_TO_END + IND * len(box) + up(len(box)))",
     ),
     (
         "resize does not anchor the cursor above the box",
-        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
-        "self._write(CLEAR_TO_END + RESET_SCROLL_REGION)",
+        "self.write(CLEAR_TO_END + RESET_SCROLL_REGION + goto(top - 1))",
+        "self.write(CLEAR_TO_END + RESET_SCROLL_REGION)",
     ),
     (
         "room does not restore the cursor",
@@ -70,27 +74,32 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "room does not reset the previous render's scroll region",
-        "SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows",
-        'SAVE_CURSOR + "" + RESTORE_CURSOR + IND * rows',
+        "SAVE_CURSOR\n                + RESET_SCROLL_REGION\n                + RESTORE_CURSOR",
+        "SAVE_CURSOR\n                + RESTORE_CURSOR",
     ),
     (
         "room lets \\x1b[r home the cursor (real terminals do; pyte does not)",
-        "SAVE_CURSOR + RESET_SCROLL_REGION + RESTORE_CURSOR + IND * rows",
-        "RESET_SCROLL_REGION + IND * rows",
+        "SAVE_CURSOR\n                + RESET_SCROLL_REGION\n                + RESTORE_CURSOR",
+        "RESET_SCROLL_REGION",
+    ),
+    (
+        "teardown clears the bottom row when nothing was painted",
+        "        if not self.rows:\n            return RESET_SCROLL_REGION\n",
+        "",
     ),
     (
         "echo lands on a writer's half-written line",
-        'self._write(f"\\n{self.style}{label}',
-        'self._write(f"{self.style}{label}',
+        'self.screen.write(f"\\n{self.style}{label}',
+        'self.screen.write(f"{self.style}{label}',
     ),
     (
         "echo is not styled",
-        'self._write(f"\\n{self.style}{label}',
-        'self._write(f"\\n{label}',
+        'self.screen.write(f"\\n{self.style}{label}',
+        'self.screen.write(f"\\n{label}',
     ),
     (
         "no SIGWINCH handler",
-        "loop.add_signal_handler(signal.SIGWINCH, self._render, True)",
+        "loop.add_signal_handler(signal.SIGWINCH, self.paint, True)",
         "pass",
     ),
 ]
