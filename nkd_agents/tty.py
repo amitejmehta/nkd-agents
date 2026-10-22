@@ -7,8 +7,9 @@ Design choices that carry the weight; don't undo them without reading this.
    The alternative (prompt_toolkit's patch_stdout: erase, print, redraw) breaks on one
    stray print(). Cost: the real cursor is hidden and a reverse-video fake is drawn.
 
-2. A bracketed paste is one unit from _read_key, appended to `buf` raw, newlines
-   normalized to "\n".
+2. A bracketed paste is one unit from _read_key, appended to `buf` with newlines
+   normalized to "\n" and other control characters dropped (they would reach the
+   terminal raw and break the one-cell-per-char width assumption).
 
 3. The box owns *width* and *color*. `toolbar` is plain text painted in `style`; every
    chrome row is cut to the terminal width, since a row that wraps on the bottom row
@@ -20,8 +21,8 @@ Design choices that carry the weight; don't undo them without reading this.
    append and nothing mid-line is editable. Input is one row scrolling horizontally,
    so the box has constant height; newlines in buf display as spaces.
 
-Keys with built-in behavior: printable chars append; Enter submits; Ctrl-C raises
-KeyboardInterrupt; Ctrl-D on an empty line raises EOFError; a paste appends. Everything
+Keys with built-in behavior: printable chars append; Enter submits; Ctrl-C is SIGINT
+(ISIG stays on), surfacing as KeyboardInterrupt; Ctrl-D on an empty line raises EOFError; a paste appends. Everything
 else (backspace, arrows, Tab, ESC, Ctrl-W...) is a silent no-op until bound in
 key_bindings, whose callbacks may mutate `prompt.buf`.
 
@@ -116,9 +117,8 @@ class Prompt:
 
     def _handle(self, key: str) -> None:
         if key.startswith(PASTE):
-            self.buf += key[1:].replace("\r\n", "\n").replace("\r", "\n")
-        elif key == "\x03":  # ctrl-c
-            raise KeyboardInterrupt
+            text = key[1:].replace("\r\n", "\n").replace("\r", "\n")
+            self.buf += "".join(c for c in text if c.isprintable() or c == "\n")
         elif key == "\x04" and not self.buf:  # ctrl-d on empty line
             raise EOFError
         elif fn := self.key_bindings.get(key):
@@ -185,7 +185,9 @@ class Prompt:
             await readable
         finally:
             loop.remove_reader(self.fd)
-        self._pending += self._decoder.decode(os.read(self.fd, 4096))
+        if not (data := os.read(self.fd, 4096)):
+            raise EOFError
+        self._pending += self._decoder.decode(data)
 
     async def _read_key(self) -> str:
         while not self._pending:
@@ -209,7 +211,7 @@ class Prompt:
     @contextlib.contextmanager
     def _raw(self) -> Iterator[None]:
         old = termios.tcgetattr(self.fd)
-        tty.setcbreak(self.fd)  # no echo, no line buffering; ctrl-c still a keystroke
+        tty.setcbreak(self.fd)  # no echo, no line buffering
         mode = termios.tcgetattr(self.fd)
         mode[0] &= ~termios.ICRNL  # don't translate \r -> \n, so enter != ctrl-j
         termios.tcsetattr(self.fd, termios.TCSADRAIN, mode)
