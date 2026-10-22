@@ -51,6 +51,7 @@ def cells(text: str) -> int:
 def p() -> Prompt:
     prompt = Prompt()
     prompt.label = "> "
+    prompt.screen.active = True
     return prompt
 
 
@@ -135,7 +136,7 @@ class TestRender:
 
     def test_initial_box(self, screen) -> None:
         p, capsys = screen
-        p._render()
+        p.screen.paint()
         out = capsys.readouterr().out
         assert "\x1b[1;16r" in out  # scroll region ends above the 4-row box
         assert out.startswith(room(4))  # first draw scrolls output up to make room
@@ -151,11 +152,11 @@ class TestRender:
         self, screen
     ) -> None:
         p, capsys = screen
-        p._render()
+        p.screen.paint()
         capsys.readouterr()
 
         type_(p, "abcdefghijkl")  # "> " + 12 chars > 10 cols
-        p._render()
+        p.screen.paint()
         out = capsys.readouterr().out
         assert "\x1b[1;16r" in out and room(4) in out
         assert painted(out) == {
@@ -167,10 +168,10 @@ class TestRender:
 
     def test_resize_erases_the_reflowed_box(self, screen) -> None:
         p, capsys = screen
-        p._render()
+        p.screen.paint()
         capsys.readouterr()
 
-        p._render(resized=True)  # SIGWINCH: same size, but the box was reflowed
+        p.screen.paint(resized=True)  # SIGWINCH: same size, but the box was reflowed
         out = capsys.readouterr().out
         # erase whatever the box reflowed into, then re-make room and repaint
         assert out.startswith(anchor(top=17))
@@ -185,11 +186,11 @@ class TestRender:
     def test_resize_repaints_at_the_new_width(self, screen) -> None:
         p, capsys = screen
         p.buf = "abcdefgh"
-        p._render()
+        p.screen.paint()
         capsys.readouterr()
 
         self.COLS = 5
-        p._render(resized=True)
+        p.screen.paint(resized=True)
         out = capsys.readouterr().out
         assert anchor(top=17) in out
         assert painted(out) == {
@@ -199,29 +200,27 @@ class TestRender:
             20: dim("tb"),
         }
 
-    def test_no_row_ever_exceeds_cols(self, screen) -> None:
+    def test_rows_are_painted_with_autowrap_off(self, screen) -> None:
         """A row wider than the terminal wraps; on the bottom row that scrolls the
-        whole screen and the box walks upward. Clipping is what makes the painted
-        height equal the computed height, which every other calculation assumes."""
+        whole screen and the box walks upward. With autowrap off the terminal clips
+        it instead, whatever the width of the characters in it."""
         p, capsys = screen
-        p.toolbar = lambda: "model (ctrl-l)  mode (shift-tab)  think:off (tab)"
-        type_(p, "abcdefghijklmnop")
-        p._render()
-        rows = painted(capsys.readouterr().out)
-        assert rows and all(cells(text) <= self.COLS for text in rows.values())
-        assert rows[20] == dim("model (ctr")  # the toolbar is cut, not wrapped
+        p.screen.paint()
+        out = capsys.readouterr().out
+        assert out.index("\x1b[?7l") < out.index("\x1b[17;1H")
+        assert out.rindex("\x1b[20;1H") < out.index("\x1b[?7h")
 
     def test_toolbar_newline_cannot_scroll_the_screen(self, screen) -> None:
         p, capsys = screen
         p.toolbar = lambda: "a\nb"
-        p._render()
+        p.screen.paint()
         assert painted(capsys.readouterr().out)[20] == dim("a b")
 
     def test_style_and_border_are_honored(self, screen) -> None:
         p, capsys = screen
         p.style = GREEN
-        p.toolbar = lambda: "busy model (ctrl-l)  think:off (tab)"
-        p._render()
+        p.toolbar = lambda: "busy model"
+        p.screen.paint()
         rows = painted(capsys.readouterr().out)
         assert rows[17] == GREEN + "─" * 10 + RESET
         assert rows[20] == f"{GREEN}busy model{RESET}"
@@ -232,10 +231,10 @@ class TestRender:
         trailing newline. _room indexes with \\x1bD instead. This is the one guard on
         that: pyte does not model ONLCR, so no screen test can catch it."""
         p, capsys = screen
-        p._render()  # steady state, growth and resize all make room
+        p.screen.paint()  # steady state, growth and resize all make room
         type_(p, "abcdefghijkl")
-        p._render()
-        p._render(resized=True)
+        p.screen.paint()
+        p.screen.paint(resized=True)
         assert "\n" not in capsys.readouterr().out
 
 
@@ -265,9 +264,9 @@ class TestGeometryIsAlwaysOnScreen:
         monkeypatch.setattr(
             os, "get_terminal_size", lambda *_: os.terminal_size((cols, lines))
         )
-        p._render()  # first draw, then a redraw and a resize: all three must be safe
-        p._render()
-        p._render(resized=True)
+        p.screen.paint()  # first draw, then a redraw and a resize: all three must be safe
+        p.screen.paint()
+        p.screen.paint(resized=True)
         out = capsys.readouterr().out
         found = [int(g) for m in self.POSITIONS.finditer(out) for g in m.groups() if g]
         assert found and all(n >= 1 for n in found), out[:200]
@@ -284,7 +283,7 @@ class TestGeometryIsAlwaysOnScreen:
         monkeypatch.setattr(
             os, "get_terminal_size", lambda *_: os.terminal_size((cols, lines))
         )
-        p._render()
+        p.screen.paint()
         assert all(row >= 2 for row in painted(capsys.readouterr().out))
 
 
@@ -292,7 +291,7 @@ class TestReadKey:
     @pytest.fixture
     def piped(self, p: Prompt):
         r, w = os.pipe()
-        p.fd = r
+        p.keys.fd = r
         yield p, w
         os.close(r)
         os.close(w)
@@ -300,13 +299,13 @@ class TestReadKey:
     def test_plain_and_escape(self, piped) -> None:
         p, w = piped
         os.write(w, b"a" + ESC.encode() + b"[A")
-        assert asyncio.run(p._read_key()) == "a"
-        assert asyncio.run(p._read_key()) == ESC + "[A"
+        assert asyncio.run(p.keys.read()) == "a"
+        assert asyncio.run(p.keys.read()) == ESC + "[A"
 
     def test_bare_escape(self, piped) -> None:
         p, w = piped
         os.write(w, ESC.encode())
-        assert asyncio.run(p._read_key()) == ESC
+        assert asyncio.run(p.keys.read()) == ESC
 
     def test_alt_sequence_is_one_key_that_misses_the_bare_escape_binding(
         self, piped
@@ -316,7 +315,7 @@ class TestReadKey:
         p.key_bindings = {ESC: lambda _: hits.append("esc")}
         p.buf = "ab"
         os.write(w, (ESC + "\x7f").encode())
-        key = asyncio.run(p._read_key())
+        key = asyncio.run(p.keys.read())
         assert key == ESC + "\x7f"
         p._handle(key)
         assert hits == []
@@ -329,41 +328,41 @@ class TestReadKey:
         p.key_bindings = {ESC: lambda _: hits.append("esc")}
         p.buf = "ab"
         os.write(w, (ESC + seq).encode())
-        p._handle(asyncio.run(p._read_key()))
+        p._handle(asyncio.run(p.keys.read()))
         assert hits == []
         assert p.buf == "ab"
 
     def test_control_chars_inside_paste_are_dropped(self, piped) -> None:
         p, w = piped
         os.write(w, f"{ESC}[200~a{ESC}[Ab\tc\nd{ESC}[201~".encode())
-        p._handle(asyncio.run(p._read_key()))
+        p._handle(asyncio.run(p.keys.read()))
         assert p.buf == "a[Abc\nd"
 
     def test_eof_raises(self, p: Prompt) -> None:
-        p.fd, w = os.pipe()
+        p.keys.fd, w = os.pipe()
         os.close(w)
         with pytest.raises(EOFError):
-            asyncio.run(p._read_key())
-        os.close(p.fd)
+            asyncio.run(p.keys.read())
+        os.close(p.keys.fd)
 
     def test_printable_chunk_is_read_one_char_per_key(self, piped) -> None:
         p, w = piped
         os.write(w, b"abc")
-        keys = [asyncio.run(p._read_key()) for _ in range(3)]
+        keys = [asyncio.run(p.keys.read()) for _ in range(3)]
         assert keys == ["a", "b", "c"]
 
     def test_bracketed_paste_keeps_trailing_input(self, piped) -> None:
         p, w = piped
         os.write(w, f"{ESC}[200~x\ny{ESC}[201~z".encode())
-        assert asyncio.run(p._read_key()) == PASTE + "x\ny"
-        assert asyncio.run(p._read_key()) == "z"
+        assert asyncio.run(p.keys.read()) == PASTE + "x\ny"
+        assert asyncio.run(p.keys.read()) == "z"
 
     @pytest.mark.parametrize("char", ["a", "é", "€", "😀"])
     def test_multibyte_char_is_one_key(self, piped, char: str) -> None:
         """Reading a byte at a time split UTF-8 sequences into U+FFFD pairs."""
         p, w = piped
         os.write(w, char.encode())
-        assert asyncio.run(p._read_key()) == char
+        assert asyncio.run(p.keys.read()) == char
 
     @pytest.mark.parametrize("char", ["é", "€", "😀"])
     @pytest.mark.parametrize("read_size", [1, 2, 3])
@@ -378,7 +377,7 @@ class TestReadKey:
         os.write(w, text.encode())
 
         async def drive() -> list[str]:
-            return [await asyncio.wait_for(p._read_key(), 1) for _ in text]
+            return [await asyncio.wait_for(p.keys.read(), 1) for _ in text]
 
         assert asyncio.run(drive()) == list(text)
 
@@ -386,7 +385,7 @@ class TestReadKey:
         p, w = piped
 
         async def drive() -> str:
-            task = asyncio.ensure_future(p._read_key())
+            task = asyncio.ensure_future(p.keys.read())
             for part in (b"\xf0", b"\x9f", b"\x98", b"\x80"):
                 os.write(w, part)
                 await asyncio.sleep(0.01)
@@ -401,15 +400,15 @@ class TestReadKey:
 
         async def drive() -> str:
             os.write(w, b"\xe2")
-            task = asyncio.ensure_future(p._read_key())
+            task = asyncio.ensure_future(p.keys.read())
             await asyncio.sleep(0.01)
             assert not task.done()
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-            assert asyncio.get_running_loop().remove_reader(p.fd) is False
+            assert asyncio.get_running_loop().remove_reader(p.keys.fd) is False
             os.write(w, b"\x82\xac")
-            return await asyncio.wait_for(p._read_key(), 1)
+            return await asyncio.wait_for(p.keys.read(), 1)
 
         assert asyncio.run(drive()) == "€"
         assert threading.enumerate() == before
@@ -421,13 +420,13 @@ class TestReadKey:
         before = threading.enumerate()
 
         async def drive() -> bool:
-            task = asyncio.ensure_future(p._read_key())
+            task = asyncio.ensure_future(p.keys.read())
             await asyncio.sleep(0)  # let it register
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
             os.write(w, b"x")  # would wake a blocked worker; must reach nobody
-            return asyncio.get_running_loop().remove_reader(p.fd)
+            return asyncio.get_running_loop().remove_reader(p.keys.fd)
 
         assert asyncio.run(drive()) is False  # nothing was still registered
         assert threading.enumerate() == before
