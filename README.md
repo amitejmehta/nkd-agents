@@ -41,9 +41,6 @@ I deprecated a lot. Models got better, auto-compact made whole categories of mac
 - **Docker sandbox** (*built*). In practice I never used it or found sandbox-level isolation necessary for local dev workflows, and it's often impractical anyway: too many OS-level deps to reproduce in a dedicated container.
 - **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and thinking-off defaults give the speed.
 - **`prompt_toolkit`** (*built on it, replaced by `tty.py`*). Heavier than needed, and blocked queueing messages mid-response.
-- **Mid-line editing and arrow keys** (*built*). Removed on purpose; rationale is in the `tty.py` module docstring.
-- **Model routing / auto-escalation** (*built*). A `switch_model` tool let Haiku hand off to a stronger model. It was unreliable at recognizing when to escalate; replaced by `ctrl+l`.
-- **Session handoff summaries, skills, `manage_context`, ralph loop** (*built*). Workarounds for context limits and poor repo docs; auto-compact and maintained docs made them redundant.
 
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
