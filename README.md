@@ -24,7 +24,7 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 - Start Phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Coupled with thinking off by default, this makes the experience extremely fast. For harder problems, toggle thinking on with `tab` — one keystroke when you need it.
 - Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels (prepended to every user message), not separate code paths. Label-based > code-based because you can customize the full list without touching code — the mode name alone signals behavior shift.
 - Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. One LLM call, one failure surface, directly evalable. Much of what's deprecated below became irrelevant because of this.
-- `tty.py`, a fully async, tail-only input handler (no `prompt_toolkit`): you can queue messages while the model responds, but typing and pasting only append. No cursor, no mid-line edits, no deletion by default. Don't fix typos, the LLM understands anyway; think first, send short deliberate messages. Fully customized to my preferences.
+- `tty.py`, a fully async, tail-only input handler (no `prompt_toolkit`): you can queue messages while the model responds, but typing and pasting only append. No cursor, no mid-line edits, no deletion by default. Don't fix typos, the LLM understands anyway; think first, send short deliberate messages.
 - Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`), with plain `bash` as the main tool.
 
 **What I deprecated, and why:**
