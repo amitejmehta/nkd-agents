@@ -38,7 +38,7 @@ I deprecated a lot. Models got better, auto-compact made whole categories of mac
 - **Standalone `grep`/`glob` tools.** Pure `bash` (`rg`, `find`, `ls`) is chainable, so the model does in one turn what dedicated tools took several to do. An eval harness showed no accuracy or turn-count benefit, and the model fell back to `bash` even when offered. Same logic for single tool calls generally: composed shell commands favor single-turn over multi-turn workflows.
 - **Background bash** (*built*). Only helps if the result isn't on the critical path of the next action — rare enough not to justify the complexity.
 - **Edit approval** (*built*). Per-edit accept/reject diffs encode an outdated habit. If you don't trust the model to execute, that's a planning problem: use Plan mode, then let it run.
-- **Docker sandbox** (*built*). A dedicated container isn't practical: real projects have too many OS-level deps to reproduce in it. If you want a container, install `nkd` inside your own devcontainer. Secondary: I never needed sandbox-level isolation in my local dev workflows.
+- **Docker sandbox** (*built*). In practice I never used it or found sandbox-level isolation necessary for local dev workflows, and it's often impractical anyway: too many OS-level deps to reproduce in a dedicated container.
 - **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and thinking-off defaults give the speed.
 - **`prompt_toolkit`** (*built on it, replaced by `tty.py`*). Heavier than needed, and blocked queueing messages mid-response.
 - **Mid-line editing and arrow keys** (*built*). Removed on purpose; rationale is in the `tty.py` module docstring.
