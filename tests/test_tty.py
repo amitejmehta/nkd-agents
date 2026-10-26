@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from nkd_agents.tty import DIM, ESC, PASTE, RESET, REV, Prompt
+from nkd_agents.tty import DIM, ESC, PASTE, RESET, REV, Prompt, cell_width
 
 NORM = "\x1b[27m"
 GREEN = "\x1b[32m"
@@ -44,7 +44,7 @@ def painted(out: str) -> dict[int, str]:
 
 def cells(text: str) -> int:
     """Width of a painted row in terminal cells: colors take up none."""
-    return len(SGR.sub("", text))
+    return sum(map(cell_width, SGR.sub("", text)))
 
 
 @pytest.fixture
@@ -110,6 +110,20 @@ class TestInputRow:
     def test_is_always_at_most_cols_wide(self, p: Prompt) -> None:
         type_(p, "x" * 500)
         assert cells(p._input_row(cols=7)) == 7
+
+    def test_wide_chars_count_two_cells(self, p: Prompt) -> None:
+        type_(p, "日本語日本語")
+        row = p._input_row(cols=8)
+        assert cells(row) == 7
+        assert row == f"日本語{CUR}"
+
+    def test_wide_char_never_straddles_the_edge(self, p: Prompt) -> None:
+        type_(p, "a日本語")
+        assert cells(p._input_row(cols=6)) <= 6
+
+    def test_combining_mark_is_zero_width(self, p: Prompt) -> None:
+        type_(p, "e\u0301e\u0301")
+        assert p._input_row(cols=6) == f"> e\u0301e\u0301{CUR}"
 
     def test_paste_newline_shows_as_space(self, p: Prompt) -> None:
         p._handle(PASTE + "x\ny")
