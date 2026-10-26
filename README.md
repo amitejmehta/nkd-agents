@@ -19,22 +19,32 @@ I built the framework for control of low-level primitives with little overhead �
 
 ## The CLI (`read_file`, `write_file`, `edit_file`, `bash`, `fetch_url`, `web_search`)
 
-**What I didn't build:**
+**What I built:**
 
-- No streaming. Streaming adds unnecessary complexity to the base agent framework purely for interactive use cases like CLI. Our approach uses the framework's basic logging (nicely formatted) — speed comes from the start phrase and thinking-off defaults below.
-- No `prompt_toolkit`. Built a minimal async prompt handler (`tty.py`) instead — keeps the CLI lightweight and lets you queue a message while the model is still responding (async end to end). Input is tail-only: typing and pasting append to the end of the line; the cursor doesn't move and nothing mid-line is editable. Deletion isn't bound by default.
-- No edit approval. Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`) leads to faster, less constrained work.
-- No `grep`/`glob` as standalone tools. An eval harness showed no accuracy or turn-count benefit over `bash` (`rg`, `find`/`ls`), and the model fell back to `bash` even when offered — didn't earn its keep.
-- No background bash. Background commands only help if their result isn't on the critical path of the next action — rare enough in practice not to justify the complexity.
-- No cache warming. **Built, then removed.** It auto-warmed Anthropic's cache after each turn (TTL is only 5 minutes), but auto-compact made it unnecessary — context stays small enough that cache misses are cheap.
-- No sub-agents, no headless mode. **Built, then removed.** They were overkill for context management — auto-compact is simpler and more evaluable. Delegation only helps with independence/parallelism anyway, and a new terminal does that better, with you as the explicit channel and no context leakage risk.
-- No session persistence. **Built, then removed.** Auto-compact summarizes history into one message pair, making cached conversation history feel less crucial. This forced the best practice: capture state externally (writing, docs, research, git) instead of relying on session memory. Cuts costs and improves hygiene.
-
-**What I built instead:**
-
+- Keys: `esc` interrupts the running turn (if input is half-typed, the first `esc` clears it and the second interrupts), `tab` toggles thinking, `shift+tab` cycles modes, `ctrl+l` switches model, `ctrl+d` on an empty line exits.
 - Start phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Coupled with thinking off by default, this makes the experience extremely fast. For harder problems, toggle thinking on with `tab` — one keystroke when you need it.
 - Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels (prepended to every user message), not separate code paths. Label-based > code-based because you can customize the full list without touching code — the mode name alone signals behavior shift.
-- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. This is a simpler, more evaluable form of context management than sub-agents — one LLM call, one failure surface, directly evalable — which is why there are no sub-agents.
+- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. One LLM call, one failure surface, directly evalable. Much of what's deprecated below became irrelevant because of this.
+- `tty.py`, a minimal async prompt handler (no `prompt_toolkit`): lets you queue a message while the model is still responding (async end to end). Input is tail-only: typing and pasting append to the end of the line; the cursor doesn't move and nothing mid-line is editable. Deletion isn't bound by default. Wide (CJK, emoji) and combining characters are measured in terminal cells.
+- Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`), with plain `bash` as the main tool.
+
+**What I deprecated, and why:**
+
+I deprecated a lot. Models got better, auto-compact made whole categories of machinery irrelevant, and best practices moved. Everything marked *built* shipped and was used before being removed.
+
+- **Session persistence** (*built*). Auto-compact summarizes history into one message pair, so cached conversation history stopped mattering. This forced the better practice: capture state externally (writing, docs, research, git) instead of relying on session memory.
+- **Sub-agents and headless mode** (*built*). Overkill for context management: auto-compact is simpler and more evaluable. Delegation only helps with independence/parallelism, and a new terminal does that better, with you as the explicit channel and no context leakage.
+- **Cache warming** (*built*). Auto-warmed Anthropic's cache after each turn (5 minute TTL). Auto-compact keeps context small enough that cache misses are cheap.
+- **Standalone `grep`/`glob` tools.** Pure `bash` (`rg`, `find`, `ls`) is chainable, so the model does in one turn what dedicated tools took several to do. An eval harness showed no accuracy or turn-count benefit, and the model fell back to `bash` even when offered. Same logic for single tool calls generally: composed shell commands favor single-turn over multi-turn workflows.
+- **Background bash** (*built*). Only helps if the result isn't on the critical path of the next action — rare enough not to justify the complexity.
+- **Edit approval** (*built*). Per-edit accept/reject diffs encode an outdated habit. If you don't trust the model to execute, that's a planning problem: use Plan mode, then let it run.
+- **Docker sandbox** (*built*). Full autonomy runs on the host; isolate at the machine level (VM, container, throwaway checkout) if you need it.
+- **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and thinking-off defaults give the speed.
+- **`prompt_toolkit`** (*built on it, replaced by `tty.py`*). Heavier than needed, and blocked queueing messages mid-response.
+- **Mid-line editing and arrow keys** (*built*). Removed on purpose; rationale is in the `tty.py` module docstring.
+- **Model routing / auto-escalation** (*built*). A `switch_model` tool let Haiku hand off to a stronger model. It was unreliable at recognizing when to escalate; replaced by `ctrl+l`.
+- **Session handoff summaries, skills, `manage_context`, ralph loop** (*built*). Workarounds for context limits and poor repo docs; auto-compact and maintained docs made them redundant.
+
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
 I built the CLI to understand the tool I used 24/7. What started as an experiment quickly became my primary workflow because it's fully customized to how I think and work. Owning the tool also means I can deprecate features that encode outdated AI coding habits (like pausing to approve every edit) and force myself to work better. But the real value was the cognitive shift: when you build the tool you use all day, every interaction becomes a first-principles reminder of how LLMs work. You stop accepting black boxes and start thinking clearly about how to build with AI. I hope this project inspires you to do the same!
@@ -45,7 +55,7 @@ I built the CLI to understand the tool I used 24/7. What started as an experimen
 curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
 ```
 
-Installs [uv](https://docs.astral.sh/uv/), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-install` alias.
+Installs [uv](https://docs.astral.sh/uv/), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-install` alias (formerly `nkd-update`; `nkd-sandbox` is gone with the Docker sandbox). The `web` extra (`fetch_url`, `web_search`) is installed by default; there is no separate `[cli]` extra.
 
 To update later: `nkd-install`
 
