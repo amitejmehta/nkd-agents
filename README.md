@@ -15,10 +15,11 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 - `messages`/`input` mutated in-place, atomically, after each completed turn — an interrupt never leaves an orphaned `tool_use` block.
 - Two OTel spans following the GenAI semconv, `invoke_agent` and `execute_tool` (with `gen_ai.tool.name`, `gen_ai.tool.call.id`, `error.type`) — no dedicated LLM-call span since tracing providers' auto-instrumentation already covers the SDK call.
 
-## The CLI (`read_file`, `write_file`, `edit_file`, `bash`, `fetch_url`, `web_search`)
+## The CLI
 
 **What I built:**
 
+- Tools: `read_file` (text, images, PDF), `write_file`, `edit_file`, `bash`, `fetch_url` (saves the page as markdown on local disk), `web_search` (DuckDuckGo via headless Chrome with Playwright).
 - Keys: `esc` interrupts the running turn (if input is half-typed, the first `esc` clears it and the second interrupts), `tab` toggles thinking, `shift+tab` cycles modes, `ctrl+l` switches model.
 - Start phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Coupled with thinking off by default, this makes the experience extremely fast. For harder problems, toggle thinking on with `tab` — one keystroke when you need it.
 - Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels (prepended to every user message), not separate code paths. Label-based > code-based because you can customize the full list without touching code — the mode name alone signals behavior shift.
