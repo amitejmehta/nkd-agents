@@ -40,7 +40,7 @@ I deprecated a lot. Models got better, auto-compact made whole categories of mac
 - **Edit approval** (*built*). Per-edit accept/reject diffs encode an outdated habit. If you don't trust the model to execute, that's a planning problem: use Plan mode, then let it run.
 - **Docker sandbox** (*built*). In practice I never used it or found sandbox-level isolation necessary for local dev workflows, and it's often impractical anyway: too many OS-level deps to reproduce in a dedicated container.
 - **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and thinking-off defaults give the speed.
-- **`prompt_toolkit`** (*built on it, replaced by `tty.py`*). Heavier than needed, and blocked queueing messages mid-response.
+- **`prompt_toolkit`** (*built on it, replaced by `tty.py`*). Just wanted to drop the heavy dependency.
 
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
