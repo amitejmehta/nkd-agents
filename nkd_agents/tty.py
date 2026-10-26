@@ -53,6 +53,7 @@ import signal
 import sys
 import termios
 import tty
+import unicodedata
 from collections.abc import Callable, Iterator
 
 ESC = "\x1b"
@@ -219,6 +220,12 @@ class Screen:
                 self.rows = 0
 
 
+def cell_width(c: str) -> int:
+    if unicodedata.combining(c):
+        return 0
+    return 2 if unicodedata.east_asian_width(c) in "WF" else 1
+
+
 class Prompt:
     """Async prompt with key bindings, raw terminal only.
 
@@ -259,7 +266,11 @@ class Prompt:
 
     def _input_row(self, cols: int) -> str:
         text = (self.label + self.buf).replace("\n", " ")
-        r = text[max(0, len(text) + 1 - cols) :]
+        used, start = 0, len(text)
+        while start and used + cell_width(text[start - 1]) <= cols - 1:
+            start -= 1
+            used += cell_width(text[start])
+        r = text[start:]
         # REV = reverse video on, \x1b[27m = off: a 1-cell fake cursor
         return f"{r}{REV} \x1b[27m"
 
