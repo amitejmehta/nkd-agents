@@ -4,10 +4,8 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 
 `nkd-agents` is two things:
 
-1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI, built for control of low-level primitives with little overhead: no schema DSL, no message-object wrapping, no hidden retries, full access to the underlying SDK.
-2. **A Python terminal coding assistant** built on top of it (Claude only for now).
-
-I built the CLI to understand the tool I use 24/7. It became my primary workflow because it's fully customized to how I think. I build agents for production workflows every day, yet I used Claude Code as a black box. Owning the tool made me a producer instead of a consumer: I pay close attention to how it behaves, and every interaction is a first-principles lesson in how agents work. It also forces better habits, like deprecating features that encode outdated ones (approving every edit). I hope this inspires you to do the same.
+1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI. Built for control of low-level primitives with little overhead: no schema DSL, no message-object wrapping, no hidden retries, full SDK access.
+2. **A Python terminal coding assistant** built on top of it (Claude only for now). I build production agents daily, yet used Claude Code as a black box. Building my own made me a producer instead of a consumer: I watch closely how it behaves, which taught me more about agents than using one ever did. It's now my primary workflow because it's fully customized to how I think, and owning it lets me deprecate features that encode outdated habits, like approving every edit.
 
 ## The framework
 
