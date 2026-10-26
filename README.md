@@ -4,8 +4,10 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 
 `nkd-agents` is two things:
 
-1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI.
+1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI, built for control of low-level primitives with little overhead: no schema DSL, no message-object wrapping, no hidden retries, full access to the underlying SDK.
 2. **A Python terminal coding assistant** built on top of it (Claude only for now).
+
+I built the CLI to understand the tool I use 24/7. It became my primary workflow because it's fully customized to how I think. I build agents for production workflows every day, yet I used Claude Code as a black box. Owning the tool made me a producer instead of a consumer: I pay close attention to how it behaves, and every interaction is a first-principles lesson in how agents work. It also forces better habits, like deprecating features that encode outdated ones (approving every edit). I hope this inspires you to do the same.
 
 ## The framework
 
@@ -14,8 +16,6 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 - Auto schema gen from a docstring and type annotations, no DSL — `tool_schema(func)` supports `str`, `int`, `float`, `bool`, `Literal[...]`; `Literal` also constrains token generation to the enum's choices, which a plain string can't. Schemas are always `strict` with every param `required`, so the model writes every value on every call and tool functions can't have default values (they raise); put guidance like "use 30 unless..." in the docstring. Override with a custom `tools=` (the SDK's own type) if you need more.
 - `messages`/`input` mutated in-place, atomically, after each completed turn — an interrupt never leaves an orphaned `tool_use` block.
 - Two OTel spans following the GenAI semconv, `invoke_agent` and `execute_tool` (with `gen_ai.tool.name`, `gen_ai.tool.call.id`, `error.type`) — no dedicated LLM-call span since tracing providers' auto-instrumentation already covers the SDK call.
-
-I built the framework for control of low-level primitives with little overhead — no schema DSL, no message-object wrapping, no hidden retries, full access to the underlying SDK.
 
 ## The CLI (`read_file`, `write_file`, `edit_file`, `bash`, `fetch_url`, `web_search`)
 
@@ -42,8 +42,6 @@ I deprecated a lot. Models got better, auto-compact made whole categories of mac
 - **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and thinking-off defaults give the speed.
 
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
-
-I built the CLI to understand the tool I used 24/7. What started as an experiment quickly became my primary workflow because it's fully customized to how I think and work. Owning the tool also means I can deprecate features that encode outdated AI coding habits (like pausing to approve every edit) and force myself to work better. But the real value was the cognitive shift: when you build the tool you use all day, every interaction becomes a first-principles reminder of how LLMs work. You stop accepting black boxes and start thinking clearly about how to build with AI. I hope this project inspires you to do the same!
 
 ## Install
 
