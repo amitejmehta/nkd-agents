@@ -48,7 +48,7 @@ This README is the documentation — no separate `docs/` folder. The codebase is
 curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
 ```
 
-Installs [uv](https://docs.astral.sh/uv/), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-install` alias (formerly `nkd-update`; `nkd-sandbox` is gone with the Docker sandbox). The `web` extra (`fetch_url`, `web_search`) is installed by default; there is no separate `[cli]` extra.
+Installs [uv](https://docs.astral.sh/uv/), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-install` alias. The `web` extra (`fetch_url`, `web_search`) is installed by default.
 
 To update later: `nkd-install`
 
@@ -59,7 +59,7 @@ pip install git+https://github.com/amitejmehta/nkd-agents.git
 
 ## Configuration
 
-All config via environment variables, set in `~/.claude/nkd/.env` (loaded at startup) or the shell environment. The global system prompt is read from `~/.claude/CLAUDE.md` (plus `./CLAUDE.md`). Migrating: `~/.nkd-agents/.env` and `~/.nkd-agents/CLAUDE.md` are no longer read.
+All config via environment variables, set in `~/.claude/nkd/.env` (loaded at startup) or the shell environment. The global system prompt is read from `~/.claude/CLAUDE.md` (plus `./CLAUDE.md`).
 
 | Variable | Default | Description |
 |----------|---------|--------------|
