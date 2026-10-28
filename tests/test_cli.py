@@ -3,65 +3,287 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from anthropic.types import MessageParam, Usage
+from anthropic.types import Usage
 
+from nkd_agents import cli as cli_module
 from nkd_agents.cli import (
-    CLI,
     MODELS,
-    MODES,
-    START_PHRASE,
+    THINKING,
+    AgentCLI,
     UsageFilter,
     default_fns,
     fmt_usage,
 )
 from nkd_agents.tools import bash, edit_file, read_file, write_file
-from nkd_agents.tty import ESC
+from nkd_agents.tty import ESC, TUI
 
-NAMES = list(MODELS)
 FNS = (read_file, write_file, edit_file, bash)
 
 
-@pytest.fixture
-def cli(tmp_path, monkeypatch):
-    """Create a CLI instance with a mock API key, in a clean directory with no CLAUDE.md."""
+@pytest.fixture(autouse=True)
+def env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-    return CLI(FNS)
+    for name in ("NKD_MODES", "NKD_START_PHRASE", "NKD_COMPACT_TOKENS"):
+        monkeypatch.delenv(name, raising=False)
 
 
-class TestToolbar:
-    def test_shows_model(self, cli: CLI):
-        assert NAMES[0].split("-")[1].capitalize() in cli.toolbar()
+async def forever(*args) -> None:
+    await asyncio.Event().wait()
 
-    def test_shows_mode(self, cli: CLI):
-        assert "Act" in cli.toolbar()
 
-    def test_thinking_off(self, cli: CLI):
-        assert "think:✗" in cli.toolbar()
+@pytest.fixture
+def cli() -> AgentCLI:
+    cli = AgentCLI()
+    cli.ui.draw = MagicMock()
+    cli.ui.log = MagicMock()
+    cli.ui.input_loop = AsyncMock(side_effect=forever)
+    return cli
 
-    def test_thinking_on(self, cli: CLI):
-        cli.toggle_thinking()
-        assert "think:✓" in cli.toolbar()
 
-    def test_reflects_model_change(self, cli: CLI):
-        cli.switch_model()
-        assert NAMES[1].split("-")[1].capitalize() in cli.toolbar()
+@pytest.fixture
+def ui(cli: AgentCLI) -> TUI:
+    return cli.ui
 
-    def test_reflects_mode_change(self, cli: CLI):
+
+async def run_until_idle(cli: AgentCLI, delay: float = 0.05) -> None:
+    task = asyncio.create_task(cli.run())
+    await asyncio.sleep(delay)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+class TestInit:
+    def test_defaults(self, cli: AgentCLI):
+        assert cli.kwargs["model"] == MODELS[0]
+        assert cli.kwargs["thinking"] == THINKING
+        assert cli.kwargs["max_tokens"] == 20000
+        assert cli.messages == []
+        assert cli.current_task is None
+
+    def test_env_overrides(self, ui, monkeypatch):
+        monkeypatch.setenv("NKD_MODES", "A,B")
+        monkeypatch.setenv("NKD_START_PHRASE", "hey")
+        monkeypatch.setenv("NKD_COMPACT_TOKENS", "7")
+        c = AgentCLI()
+        assert (c.modes, c.mode, c.start_phrase, c.compact_tokens) == (
+            ["A", "B"],
+            "A",
+            "hey",
+            7,
+        )
+
+    def test_no_system_without_claude_md(self, cli: AgentCLI):
+        assert "system" not in cli.kwargs
+
+    def test_system_from_claude_md(self, ui, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("system prompt")
+        assert "system prompt" in AgentCLI().kwargs["system"]
+
+
+class TestSystemPrompt:
+    def test_global_then_local(self, ui, tmp_path):
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "CLAUDE.md").write_text("global")
+        (tmp_path / "CLAUDE.md").write_text("local")
+        assert AgentCLI().kwargs["system"] == "global\n\nlocal"
+
+    def test_empty_files_give_none(self, ui, tmp_path):
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "CLAUDE.md").write_text("")
+        (tmp_path / "CLAUDE.md").write_text("  \n")
+        assert "system" not in AgentCLI().kwargs
+
+
+class TestRun:
+    async def test_prepends_cwd_mode_and_phrase(self, cli: AgentCLI, tmp_path):
         cli.cycle_mode()
-        assert "Plan" in cli.toolbar()
+        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
+            cli.queue.put_nowait("hello")
+            await run_until_idle(cli)
+        assert cli.messages == [
+            {
+                "role": "user",
+                "content": f"CWD: {tmp_path} Mode: Plan. {cli.start_phrase} hello",
+            }
+        ]
+        kwargs = llm.call_args.kwargs
+        assert llm.call_args.args == (cli.client,)
+        assert kwargs["messages"] is cli.messages
+        assert kwargs["fns"] == cli.fns
+        assert kwargs["model"] == MODELS[0]
 
-    def test_idle_shows_hollow_circle(self, cli: CLI):
-        assert cli.toolbar().startswith(" ○ ")
+    async def test_batches_queued_submissions(self, cli: AgentCLI):
+        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
+            cli.queue.put_nowait("a")
+            cli.queue.put_nowait("b")
+            await run_until_idle(cli)
+        llm.assert_called_once()
+        assert cli.messages[0]["content"].endswith("a\nb")
 
-    def test_running_shows_filled_circle(self, cli: CLI):
-        cli.llm_task = MagicMock(done=lambda: False)
-        assert cli.toolbar().startswith(" ● ")
+    async def test_survives_cancelled_turn(self, cli: AgentCLI):
+        calls = 0
+
+        async def fake(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise asyncio.CancelledError
+
+        with patch.object(cli_module, "agent", side_effect=fake):
+            cli.queue.put_nowait("first")
+            task = asyncio.create_task(cli.run())
+            await asyncio.sleep(0.02)
+            cli.queue.put_nowait("second")
+            await asyncio.sleep(0.02)
+            task.cancel()
+        assert calls == 2
+
+    async def test_logs_error_and_continues(self, cli: AgentCLI, caplog):
+        fake = AsyncMock(side_effect=[RuntimeError("boom"), None])
+        with patch.object(cli_module, "agent", fake):
+            cli.queue.put_nowait("first")
+            task = asyncio.create_task(cli.run())
+            await asyncio.sleep(0.02)
+            cli.queue.put_nowait("second")
+            await asyncio.sleep(0.02)
+            task.cancel()
+        assert fake.call_count == 2
+        assert "boom" in caplog.text
+
+    async def test_current_task_during_turn_and_redraws(self, cli: AgentCLI, ui: TUI):
+        seen: list[bool] = []
+
+        async def fake(*args, **kwargs):
+            seen.append(cli.current_task is not None)
+
+        with patch.object(cli_module, "agent", side_effect=fake):
+            cli.queue.put_nowait("x")
+            await run_until_idle(cli)
+        assert seen == [True]
+        assert cli.current_task is None
+        assert ui.draw.call_count == 2
+
+
+class TestCompact:
+    async def test_single_message_not_compacted(self, cli: AgentCLI):
+        cli.compact_tokens = 0
+        cli.messages.append({"role": "user", "content": "hi"})
+        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
+            await cli.turn()
+        llm.assert_awaited_once()
+        assert cli.messages == [{"role": "user", "content": "hi"}]
+
+    async def test_summarizes_history_keeps_latest(self, cli: AgentCLI):
+        cli.compact_tokens = 1
+        cli.messages.extend({"role": "user", "content": f"m{i}"} for i in range(10))
+        llm = AsyncMock(side_effect=["the summary", None])
+        with patch.object(cli_module, "agent", llm):
+            await cli.turn()
+        sent = llm.call_args_list[0].kwargs["messages"]
+        assert len(sent) == 10
+        assert sent[-1]["content"] == cli_module.COMPACT_PROMPT
+        assert [m["role"] for m in cli.messages] == ["user", "assistant", "user"]
+        assert "the summary" in cli.messages[0]["content"]
+        assert cli.messages[2] == {"role": "user", "content": "m9"}
+        assert llm.call_args_list[1].kwargs["messages"] is cli.messages
+
+    async def test_skips_compact_under_threshold(self, cli: AgentCLI):
+        cli.messages.extend({"role": "user", "content": "x"} for _ in range(3))
+        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
+            await cli.turn()
+        llm.assert_awaited_once()
+
+
+class TestCLI:
+    def test_binds_ui_label(self, cli: AgentCLI):
+        assert cli.ui.label() == cli.label()
+
+    def test_bindings(self, cli: AgentCLI):
+        assert cli.bindings["\r"] == cli.submit
+        assert cli.bindings["\x03"] == cli.quit
+        assert cli.bindings[ESC] == cli.escape
+        assert cli.bindings["\t"] == cli.switch_model
+        assert cli.bindings[ESC + "[Z"] == cli.cycle_mode
+
+    def test_switch_model_cycles_and_wraps(self, cli: AgentCLI):
+        seen = []
+        for _ in range(len(MODELS) + 1):
+            cli.switch_model()
+            seen.append(cli.kwargs["model"])
+        assert seen == [*MODELS[1:], MODELS[0], MODELS[1]]
+
+    def test_cycle_mode_wraps(self, cli: AgentCLI):
+        seen = []
+        for _ in range(len(cli.modes)):
+            cli.cycle_mode()
+            seen.append(cli.mode)
+        assert seen == [*cli.modes[1:], cli.modes[0]]
+
+    def test_label_idle(self, cli: AgentCLI):
+        assert cli.label() == "S Act ○ "
+
+    def test_label_busy(self, cli: AgentCLI):
+        cli.current_task = MagicMock()
+        assert cli.label() == "S Act ● "
+
+    def test_label_tracks_model_and_mode(self, cli: AgentCLI):
+        cli.switch_model()
+        cli.cycle_mode()
+        assert cli.label() == "O Plan ○ "
+
+    def test_submit_logs_queues_and_clears(self, cli: AgentCLI, ui: TUI):
+        ui.buf = "  hello \n"
+        cli.submit()
+        assert cli.queue.get_nowait() == "hello"
+        assert ui.buf == ""
+        ui.log.assert_called_once()
+        assert "hello" in ui.log.call_args.args[0]
+
+    def test_submit_blank_does_nothing(self, cli: AgentCLI, ui: TUI):
+        ui.buf = "   "
+        cli.submit()
+        assert cli.queue.empty()
+        assert ui.buf == ""
+        ui.log.assert_not_called()
+
+    def test_escape_clears_buffer_first(self, cli: AgentCLI, ui: TUI):
+        cli.current_task = MagicMock()
+        ui.buf = "typed"
+        cli.escape()
+        assert ui.buf == ""
+        cli.current_task.cancel.assert_not_called()
+
+    def test_escape_without_task_is_noop(self, cli: AgentCLI):
+        cli.escape()
+
+    def test_escape_interrupts_when_buffer_empty(self, cli: AgentCLI):
+        cli.current_task = MagicMock()
+        cli.escape()
+        cli.current_task.cancel.assert_called_once()
+
+    def test_quit_raises_eof(self, cli: AgentCLI, capsys):
+        with pytest.raises(EOFError):
+            cli.quit()
+        assert capsys.readouterr().out == "\r\x1b[K"
+
+
+class TestRunWiring:
+    async def test_starts_input_loop_with_bindings(self, cli: AgentCLI, ui: TUI):
+        await run_until_idle(cli)
+        ui.input_loop.assert_awaited_once_with(cli.bindings)
+
+    async def test_quit_ends_run(self, cli: AgentCLI, ui: TUI):
+        ui.input_loop = AsyncMock(side_effect=EOFError)
+        with pytest.raises(ExceptionGroup) as e:
+            await cli.run()
+        assert e.group_contains(EOFError)
 
 
 class TestUsageFormat:
-    def test_anthropic(self):
+    def test_fmt_usage(self):
         u = Usage(
             input_tokens=10,
             output_tokens=5,
@@ -99,408 +321,11 @@ class TestDefaultFns:
         assert "web tools unavailable" in caplog.text
 
 
-class TestInit:
-    def test_missing_api_key(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("NKD_AGENTS_ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        CLI(FNS)  # should not raise
-
-    def test_defaults(self, cli: CLI):
-        assert cli.kwargs["model"] == NAMES[0]
-        assert cli.kwargs["max_tokens"] > 0
-        assert cli.kwargs["thinking"] == {"type": "between_tools"}
-        assert cli.messages == []
-        assert cli.llm_task is None
-
-    def test_loads_claude_md(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "CLAUDE.md").write_text("system prompt")
-        assert "system prompt" in CLI(FNS).kwargs["system"]
-
-    def test_no_claude_md(self, cli: CLI):
-        assert "system" not in cli.kwargs
-
-
-class TestSwitchModel:
-    def test_cycles_through_models(self, cli: CLI):
-        assert cli.kwargs["model"] == NAMES[0]
-        cli.switch_model()
-        assert cli.kwargs["model"] == NAMES[1]
-
-    def test_wraps_around(self, cli: CLI):
-        for _ in range(len(NAMES)):
-            cli.switch_model()
-        assert cli.kwargs["model"] == NAMES[0]
-
-
-class TestToggleThinking:
-    def test_sonnet_5_5_toggles(self, cli: CLI):
-        assert cli.kwargs["model"] == "claude-sonnet-5-5"
-        assert cli.kwargs["thinking"] == {"type": "between_tools"}
-        cli.toggle_thinking()
-        assert cli.kwargs["thinking"]["type"] == "adaptive"
-        cli.toggle_thinking()
-        assert cli.kwargs["thinking"] == {"type": "between_tools"}
-
-    def test_opus_5_5_never_disabled(self, cli: CLI):
-        cli.switch_model()
-        assert cli.kwargs["model"] == "claude-opus-5-5"
-        assert cli.kwargs["thinking"]["type"] == "adaptive"
-        cli.toggle_thinking()
-        assert cli.kwargs["thinking"]["type"] == "adaptive"
-
-    def test_haiku_5_5_toggles(self, cli: CLI):
-        cli.switch_model()
-        cli.switch_model()
-        assert cli.kwargs["model"] == "claude-haiku-5-5"
-        assert cli.kwargs["thinking"] == {"type": "disabled"}
-        cli.toggle_thinking()
-        assert cli.kwargs["thinking"]["type"] == "adaptive"
-        cli.toggle_thinking()
-        assert cli.kwargs["thinking"] == {"type": "disabled"}
-
-    def test_switch_model_resets_thinking(self, cli: CLI):
-        cli.toggle_thinking()
-        for _ in range(len(NAMES)):
-            cli.switch_model()
-        assert cli.kwargs["thinking"] == {"type": "between_tools"}
-
-
-class TestCycleMode:
-    def test_cycles_modes(self, cli: CLI):
-        initial = cli.mode
-        cli.cycle_mode()
-        assert cli.mode != initial
-
-    def test_wraps_around(self, cli: CLI):
-        for _ in range(len(MODES)):
-            cli.cycle_mode()
-        assert cli.mode == MODES[0]
-
-
-class TestPromptLoop:
-    async def test_queues_cwd_mode_and_phrase_prefixed_message(
-        self, cli: CLI, tmp_path
-    ):
-        cli.mode = MODES[1]
-        with patch.object(
-            cli.session,
-            "prompt_async",
-            AsyncMock(side_effect=["hello", asyncio.CancelledError]),
-        ):
-            with pytest.raises(asyncio.CancelledError):
-                await cli.prompt_loop()
-
-        message = await cli.queue.get()
-        assert message["role"] == "user"
-        assert message["content"] == (
-            f"CWD: {tmp_path} Mode: {MODES[1]}. {START_PHRASE} hello"
-        )
-
-    async def test_skips_blank_input(self, cli: CLI):
-        with patch.object(
-            cli.session,
-            "prompt_async",
-            AsyncMock(side_effect=["   ", asyncio.CancelledError]),
-        ):
-            with pytest.raises(asyncio.CancelledError):
-                await cli.prompt_loop()
-        assert cli.queue.empty()
-
-
-class TestInterrupt:
-    def test_escape_binding(self, cli: CLI):
-        assert ESC in cli.session.key_bindings
-
-    def test_no_task(self, cli: CLI):
-        cli.llm_task = None
-        cli.interrupt()  # should not raise
-
-    def test_done_task(self, cli: CLI):
-        cli.llm_task = MagicMock()
-        cli.llm_task.done.return_value = True
-        cli.interrupt()
-        cli.llm_task.cancel.assert_not_called()
-
-    def test_running_task(self, cli: CLI):
-        cli.llm_task = MagicMock()
-        cli.llm_task.done.return_value = False
-        cli.interrupt()
-        cli.llm_task.cancel.assert_called_once()
-
-    def test_clears_buffer_when_text_present(self, cli: CLI):
-        cli.llm_task = MagicMock()
-        cli.llm_task.done.return_value = False
-        cli.session.buf = "some input"
-        cli.interrupt()
-        assert cli.session.buf == ""
-        cli.llm_task.cancel.assert_not_called()
-
-    def test_cancels_task_when_buffer_empty(self, cli: CLI):
-        cli.llm_task = MagicMock()
-        cli.llm_task.done.return_value = False
-        cli.interrupt()
-        cli.llm_task.cancel.assert_called_once()
-
-
-class TestLLMLoop:
-    async def test_processes_queue(self, cli: CLI):
-        with (
-            patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm,
-            patch.object(cli, "count_tokens", AsyncMock(return_value=0)),
-        ):
-            msg: MessageParam = {
-                "role": "user",
-                "content": [{"type": "text", "text": "hi"}],
-            }
-            await cli.queue.put(msg)
-            loop_task = asyncio.create_task(cli.llm_loop())
-            await asyncio.sleep(0.05)
-            loop_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await loop_task
-            assert len(cli.messages) == 1
-            assert cli.messages[0] is msg
-            mock_llm.assert_called_once()
-            call_kwargs = mock_llm.call_args
-            assert call_kwargs.args == (cli.client,)
-            assert call_kwargs.kwargs["messages"] is cli.messages
-            assert call_kwargs.kwargs["fns"] == FNS
-
-    async def test_survives_cancelled_llm_task(self, cli: CLI):
-        call_count = 0
-
-        async def mock_llm(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise asyncio.CancelledError()
-
-        with (
-            patch("nkd_agents.cli.agent", side_effect=mock_llm),
-            patch.object(cli, "count_tokens", AsyncMock(return_value=0)),
-        ):
-            await cli.queue.put(
-                {"role": "user", "content": [{"type": "text", "text": "first"}]}
-            )
-            await cli.queue.put(
-                {"role": "user", "content": [{"type": "text", "text": "second"}]}
-            )
-            loop_task = asyncio.create_task(cli.llm_loop())
-            await asyncio.sleep(0.05)
-            loop_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await loop_task
-            assert call_count == 2
-            assert len(cli.messages) == 2
-
-    async def test_count_tokens_failure_does_not_kill_loop(self, cli: CLI):
-        cli.messages.append({"role": "user", "content": "earlier"})
-        counter = AsyncMock(side_effect=[RuntimeError("boom"), 0])
-
-        with (
-            patch("nkd_agents.cli.agent", new_callable=AsyncMock) as mock_llm,
-            patch.object(cli, "count_tokens", counter),
-        ):
-            await cli.queue.put({"role": "user", "content": "first"})
-            await cli.queue.put({"role": "user", "content": "second"})
-            loop_task = asyncio.create_task(cli.llm_loop())
-            await asyncio.sleep(0.05)
-            loop_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await loop_task
-        assert counter.call_count == 2
-        mock_llm.assert_called_once()
-        assert cli.messages[-1]["content"] == "second"
-
-
-class TestCountTokens:
-    async def test_returns_api_input_tokens(self, cli: CLI):
-        mock_resp = MagicMock(input_tokens=42)
-        with patch.object(
-            cli.client.messages, "count_tokens", AsyncMock(return_value=mock_resp)
-        ) as mock_count:
-            result = await cli.count_tokens()
-        assert result == 42
-        mock_count.assert_called_once()
-        call_kwargs = mock_count.call_args.kwargs
-        assert call_kwargs["messages"] is cli.messages
-        assert "max_tokens" not in call_kwargs
-
-
-def _mock_create_response(text: str) -> MagicMock:
-    block = MagicMock(type="text", text=text)
-    return MagicMock(content=[block])
-
-
-class TestCompact:
-    async def test_noop_when_only_latest_message(self, cli: CLI):
-        cli.messages.append(_user_text("hi"))
-        with patch.object(
-            cli.client.messages, "create", new_callable=AsyncMock
-        ) as mock_create:
-            await cli.compact()
-            mock_create.assert_not_called()
-        assert cli.messages == [_user_text("hi")]
-
-    async def test_summarizes_history_and_keeps_latest(self, cli: CLI):
-        cli.messages.extend({"role": "user", "content": f"msg{i}"} for i in range(10))
-
-        with patch.object(
-            cli.client.messages,
-            "create",
-            AsyncMock(return_value=_mock_create_response("summary text")),
-        ) as mock_create:
-            await cli.compact()
-            call_kwargs = mock_create.call_args.kwargs
-            assert len(call_kwargs["messages"]) == 11
-
-        assert len(cli.messages) == 3
-        assert "summary text" in cli.messages[0]["content"]
-        assert cli.messages[1]["role"] == "assistant"
-        assert cli.messages[2] == {"role": "user", "content": "msg9"}
-
-    async def test_handles_tool_use_pairs_without_splitting(self, cli: CLI):
-        cli.messages.extend(
-            [
-                _user_text("earlier"),
-                _assistant_tool_use(),
-                _user_tool_result(),
-                _user_text("latest"),
-            ]
-        )
-
-        with patch.object(
-            cli.client.messages,
-            "create",
-            AsyncMock(return_value=_mock_create_response("summary text")),
-        ):
-            await cli.compact()
-
-        assert len(cli.messages) == 3
-        assert "summary text" in cli.messages[0]["content"]
-        assert cli.messages[2] == _user_text("latest")
-
-
-class TestLLMLoopCompactTrigger:
-    async def test_triggers_compact_over_threshold(self, cli: CLI, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKENS", 1)
-        cli.messages.append({"role": "user", "content": "earlier"})
-        seen: list[int] = []
-
-        async def mock_compact():
-            seen.append(len(cli.messages))
-            cli.messages[:] = [cli.messages[-1]]
-
-        with (
-            patch("nkd_agents.cli.agent", new_callable=AsyncMock),
-            patch.object(cli, "count_tokens", AsyncMock(return_value=100)),
-            patch.object(cli, "compact", side_effect=mock_compact),
-        ):
-            await cli.queue.put({"role": "user", "content": "hello"})
-            loop_task = asyncio.create_task(cli.llm_loop())
-            await asyncio.sleep(0.05)
-            loop_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await loop_task
-        assert seen == [2]
-        assert [m["content"] for m in cli.messages] == ["hello"]
-
-    async def test_skips_compact_under_threshold(self, cli: CLI, monkeypatch):
-        monkeypatch.setattr("nkd_agents.cli.COMPACT_TOKENS", 10_000_000)
-        cli.messages.append({"role": "user", "content": "earlier"})
-
-        with (
-            patch("nkd_agents.cli.agent", new_callable=AsyncMock),
-            patch.object(cli, "count_tokens", AsyncMock(return_value=100)),
-            patch.object(cli, "compact", new_callable=AsyncMock) as mock_compact,
-        ):
-            await cli.queue.put({"role": "user", "content": "hello"})
-            loop_task = asyncio.create_task(cli.llm_loop())
-            await asyncio.sleep(0.05)
-            loop_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await loop_task
-            mock_compact.assert_not_called()
-
-
-class TestBuildSystemPrompt:
-    def test_neither_exists(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        assert CLI(FNS).build_system_prompt() is None
-
-    def test_global_only(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        global_md = tmp_path / ".claude" / "CLAUDE.md"
-        global_md.parent.mkdir()
-        global_md.write_text("global content")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        result = CLI(FNS).build_system_prompt()
-        assert result is not None
-        assert "global content" in result
-
-    def test_local_only(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        (tmp_path / "CLAUDE.md").write_text("local content")
-        result = CLI(FNS).build_system_prompt()
-        assert result is not None
-        assert "local content" in result
-
-    def test_both_global_first(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        global_md = tmp_path / ".claude" / "CLAUDE.md"
-        global_md.parent.mkdir()
-        global_md.write_text("global content")
-        (tmp_path / "CLAUDE.md").write_text("local content")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        result = CLI(FNS).build_system_prompt()
-        assert result is not None
-        assert result.index("global content") < result.index("local content")
-
-    def test_empty_files(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        global_md = tmp_path / ".claude" / "CLAUDE.md"
-        global_md.parent.mkdir()
-        global_md.write_text("")
-        (tmp_path / "CLAUDE.md").write_text("")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        assert CLI(FNS).build_system_prompt() is None
-
-
-# --- helpers for auto_compact tests ---
-
-
-def _user_text(text: str) -> MessageParam:
-    return {"role": "user", "content": [{"type": "text", "text": text}]}
-
-
-def _assistant_tool_use(tool_id: str = "t1") -> MessageParam:
-    return {
-        "role": "assistant",
-        "content": [{"type": "tool_use", "id": tool_id, "name": "bash", "input": {}}],
-    }
-
-
-def _user_tool_result(tool_id: str = "t1") -> MessageParam:
-    return {
-        "role": "user",
-        "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": "ok"}],
-    }
-
-
-def _assistant_text(text: str = "done") -> MessageParam:
-    return {"role": "assistant", "content": [{"type": "text", "text": text}]}
-
-
-def _mock_client() -> AsyncMock:
-    client = AsyncMock()
-    client.messages.create = AsyncMock()
-    return client
+class TestUIHandler:
+    def test_emit_logs_through_ui(self, ui: TUI):
+        handler = cli_module.UIHandler(ui)
+        rec = logging.LogRecord("n", logging.INFO, "", 0, "msg", None, None)
+        rec.context = ""
+        handler.emit(rec)
+        ui.log.assert_called_once()
+        assert "msg" in ui.log.call_args.args[0]
