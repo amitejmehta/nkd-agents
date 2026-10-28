@@ -51,7 +51,7 @@ symbols; exact errors only when the error itself is the fact). Output only the s
 
 class AgentCLI:
     def __init__(self) -> None:
-        self.ui = TUI(self.label)
+        self.tui = TUI(self.label)
         self.fns = default_fns()
         self.client = AsyncAnthropic(max_retries=4)
         self.messages = []
@@ -91,16 +91,16 @@ class AgentCLI:
         self.mode = self.modes[(self.modes.index(self.mode) + 1) % len(self.modes)]
 
     def escape(self) -> None:
-        if self.ui.buf:
-            self.ui.buf = ""
+        if self.tui.buf:
+            self.tui.buf = ""
         elif self.current_task:
             self.current_task.cancel()
 
     def submit(self) -> None:
-        if line := self.ui.buf.strip():
-            self.ui.log(f"{DIM}❯ {line}{RESET}\n")
+        if line := self.tui.buf.strip():
+            self.tui.log(f"{DIM}❯ {line}{RESET}\n")
             self.queue.put_nowait(line)
-        self.ui.buf = ""
+        self.tui.buf = ""
 
     def quit(self) -> None:
         write("\r\x1b[K")
@@ -134,7 +134,7 @@ class AgentCLI:
 
     async def run(self) -> None:
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(self.ui.input_loop(self.bindings))
+            tg.create_task(self.tui.input_loop(self.bindings))
             while True:
                 parts = [await self.queue.get()]
                 while not self.queue.empty():
@@ -144,7 +144,7 @@ class AgentCLI:
                     {"role": "user", "content": prefix + "\n".join(parts)}
                 )
                 self.current_task = asyncio.create_task(self.turn())
-                self.ui.draw()
+                self.tui.draw()
                 try:
                     await self.current_task
                 except asyncio.CancelledError:
@@ -153,7 +153,7 @@ class AgentCLI:
                     logger.exception(f"{RED}error: {e}{RESET}")
                 finally:
                     self.current_task = None
-                    self.ui.draw()
+                    self.tui.draw()
 
 
 def default_fns() -> tuple[Callable[..., Any], ...]:
@@ -181,17 +181,17 @@ class UsageFilter(logging.Filter):
         return True
 
 
-class UIHandler(logging.Handler):
-    def __init__(self, ui: TUI) -> None:
+class TUIHandler(logging.Handler):
+    def __init__(self, tui: TUI) -> None:
         super().__init__()
-        self.ui = ui
+        self.tui = tui
         self.setFormatter(
             logging.Formatter(f"%(message)s{RESET}{DIM}%(context)s{RESET}")
         )
         self.addFilter(UsageFilter())
 
     def emit(self, record: logging.LogRecord) -> None:
-        self.ui.log(self.format(record))
+        self.tui.log(self.format(record))
 
 
 def main() -> None:
@@ -199,7 +199,7 @@ def main() -> None:
     try:
         cli = AgentCLI()
         root = logging.getLogger()
-        root.addHandler(UIHandler(cli.ui))
+        root.addHandler(TUIHandler(cli.tui))
         root.setLevel(int(os.environ.get("NKD_LOG_LEVEL", logging.INFO)))
         logging.getLogger("httpx2").setLevel(logging.WARNING)
         asyncio.run(cli.run())

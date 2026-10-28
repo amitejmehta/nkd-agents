@@ -36,15 +36,15 @@ async def forever(*args) -> None:
 @pytest.fixture
 def cli() -> AgentCLI:
     cli = AgentCLI()
-    cli.ui.draw = MagicMock()
-    cli.ui.log = MagicMock()
-    cli.ui.input_loop = AsyncMock(side_effect=forever)
+    cli.tui.draw = MagicMock()
+    cli.tui.log = MagicMock()
+    cli.tui.input_loop = AsyncMock(side_effect=forever)
     return cli
 
 
 @pytest.fixture
-def ui(cli: AgentCLI) -> TUI:
-    return cli.ui
+def tui(cli: AgentCLI) -> TUI:
+    return cli.tui
 
 
 async def run_until_idle(cli: AgentCLI, delay: float = 0.05) -> None:
@@ -63,7 +63,7 @@ class TestInit:
         assert cli.messages == []
         assert cli.current_task is None
 
-    def test_env_overrides(self, ui, monkeypatch):
+    def test_env_overrides(self, tui, monkeypatch):
         monkeypatch.setenv("NKD_MODES", "A,B")
         monkeypatch.setenv("NKD_START_PHRASE", "hey")
         monkeypatch.setenv("NKD_COMPACT_TOKENS", "7")
@@ -78,19 +78,19 @@ class TestInit:
     def test_no_system_without_claude_md(self, cli: AgentCLI):
         assert "system" not in cli.kwargs
 
-    def test_system_from_claude_md(self, ui, tmp_path):
+    def test_system_from_claude_md(self, tui, tmp_path):
         (tmp_path / "CLAUDE.md").write_text("system prompt")
         assert "system prompt" in AgentCLI().kwargs["system"]
 
 
 class TestSystemPrompt:
-    def test_global_then_local(self, ui, tmp_path):
+    def test_global_then_local(self, tui, tmp_path):
         (tmp_path / ".claude").mkdir()
         (tmp_path / ".claude" / "CLAUDE.md").write_text("global")
         (tmp_path / "CLAUDE.md").write_text("local")
         assert AgentCLI().kwargs["system"] == "global\n\nlocal"
 
-    def test_empty_files_give_none(self, ui, tmp_path):
+    def test_empty_files_give_none(self, tui, tmp_path):
         (tmp_path / ".claude").mkdir()
         (tmp_path / ".claude" / "CLAUDE.md").write_text("")
         (tmp_path / "CLAUDE.md").write_text("  \n")
@@ -153,7 +153,7 @@ class TestRun:
         assert fake.call_count == 2
         assert "boom" in caplog.text
 
-    async def test_current_task_during_turn_and_redraws(self, cli: AgentCLI, ui: TUI):
+    async def test_current_task_during_turn_and_redraws(self, cli: AgentCLI, tui: TUI):
         seen: list[bool] = []
 
         async def fake(*args, **kwargs):
@@ -164,7 +164,7 @@ class TestRun:
             await run_until_idle(cli)
         assert seen == [True]
         assert cli.current_task is None
-        assert ui.draw.call_count == 2
+        assert tui.draw.call_count == 2
 
 
 class TestCompact:
@@ -199,7 +199,7 @@ class TestCompact:
 
 class TestCLI:
     def test_binds_ui_label(self, cli: AgentCLI):
-        assert cli.ui.label() == cli.label()
+        assert cli.tui.label() == cli.label()
 
     def test_bindings(self, cli: AgentCLI):
         assert cli.bindings["\r"] == cli.submit
@@ -234,26 +234,26 @@ class TestCLI:
         cli.cycle_mode()
         assert cli.label() == "O Plan ○ "
 
-    def test_submit_logs_queues_and_clears(self, cli: AgentCLI, ui: TUI):
-        ui.buf = "  hello \n"
+    def test_submit_logs_queues_and_clears(self, cli: AgentCLI, tui: TUI):
+        tui.buf = "  hello \n"
         cli.submit()
         assert cli.queue.get_nowait() == "hello"
-        assert ui.buf == ""
-        ui.log.assert_called_once()
-        assert "hello" in ui.log.call_args.args[0]
+        assert tui.buf == ""
+        tui.log.assert_called_once()
+        assert "hello" in tui.log.call_args.args[0]
 
-    def test_submit_blank_does_nothing(self, cli: AgentCLI, ui: TUI):
-        ui.buf = "   "
+    def test_submit_blank_does_nothing(self, cli: AgentCLI, tui: TUI):
+        tui.buf = "   "
         cli.submit()
         assert cli.queue.empty()
-        assert ui.buf == ""
-        ui.log.assert_not_called()
+        assert tui.buf == ""
+        tui.log.assert_not_called()
 
-    def test_escape_clears_buffer_first(self, cli: AgentCLI, ui: TUI):
+    def test_escape_clears_buffer_first(self, cli: AgentCLI, tui: TUI):
         cli.current_task = MagicMock()
-        ui.buf = "typed"
+        tui.buf = "typed"
         cli.escape()
-        assert ui.buf == ""
+        assert tui.buf == ""
         cli.current_task.cancel.assert_not_called()
 
     def test_escape_without_task_is_noop(self, cli: AgentCLI):
@@ -271,12 +271,12 @@ class TestCLI:
 
 
 class TestRunWiring:
-    async def test_starts_input_loop_with_bindings(self, cli: AgentCLI, ui: TUI):
+    async def test_starts_input_loop_with_bindings(self, cli: AgentCLI, tui: TUI):
         await run_until_idle(cli)
-        ui.input_loop.assert_awaited_once_with(cli.bindings)
+        tui.input_loop.assert_awaited_once_with(cli.bindings)
 
-    async def test_quit_ends_run(self, cli: AgentCLI, ui: TUI):
-        ui.input_loop = AsyncMock(side_effect=EOFError)
+    async def test_quit_ends_run(self, cli: AgentCLI, tui: TUI):
+        tui.input_loop = AsyncMock(side_effect=EOFError)
         with pytest.raises(ExceptionGroup) as e:
             await cli.run()
         assert e.group_contains(EOFError)
@@ -322,10 +322,10 @@ class TestDefaultFns:
 
 
 class TestUIHandler:
-    def test_emit_logs_through_ui(self, ui: TUI):
-        handler = cli_module.UIHandler(ui)
+    def test_emit_logs_through_ui(self, tui: TUI):
+        handler = cli_module.TUIHandler(tui)
         rec = logging.LogRecord("n", logging.INFO, "", 0, "msg", None, None)
         rec.context = ""
         handler.emit(rec)
-        ui.log.assert_called_once()
-        assert "msg" in ui.log.call_args.args[0]
+        tui.log.assert_called_once()
+        assert "msg" in tui.log.call_args.args[0]
