@@ -8,19 +8,16 @@ from typing import Any
 from anthropic import AsyncAnthropic
 from anthropic.types import Usage
 
-from .anthropic import agent, tool_schema
-from .logging import DIM, RED, RESET, configure_logging
+from .anthropic import agent
+from .logging import DIM, RED, RESET
 from .tools import bash, edit_file, read_file, write_file
-from .tty import ESC, Prompt
+from .tty import ESC, TUI, write
 from .utils import load_env
 
 logger = logging.getLogger(__name__)
 
-MODELS = {
-    "claude-sonnet-5-5": {"type": "between_tools"},
-    "claude-opus-5-5": {"type": "adaptive", "display": "summarized"},
-    "claude-haiku-5-5": {"type": "disabled"},
-}
+MODELS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+THINKING = {"type": "adaptive", "display": "summarized"}
 COMPACT_PROMPT = """The above is a coding session transcript. Compact it into a summary that \
 replaces the raw history.
 
@@ -50,129 +47,113 @@ carry forward what is still relevant, drop what later work made obsolete.
 
 Write for an engineer with repo and shell access who was not present. Be specific (paths, \
 symbols; exact errors only when the error itself is the fact). Output only the summary."""
-load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
-LOG_LEVEL = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
-MAX_TOKENS = int(os.environ.get("NKD_MAX_TOKENS", 20000))
-COMPACT_TOKENS = int(os.environ.get("NKD_COMPACT_TOKENS", 20000))
-START_PHRASE = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
-MODES = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
 
 
-class CLI:
-    def __init__(self, fns: tuple[Callable[..., Any], ...]) -> None:
-        self.fns = fns
-        self.tools = [tool_schema(fn) for fn in fns]
+class AgentCLI:
+    def __init__(self) -> None:
+        self.ui = TUI(self.label)
+        self.fns = default_fns()
         self.client = AsyncAnthropic(max_retries=4)
         self.messages = []
-        self.queue = asyncio.Queue()
-        self.llm_task: asyncio.Task | None = None
-        self.mode = MODES[0]
-        model = next(iter(MODELS))
+        self.queue: asyncio.Queue[str] = asyncio.Queue()
+        self.current_task: asyncio.Task | None = None
+        self.modes = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
+        self.mode = self.modes[0]
+        self.start_phrase = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
+        self.compact_tokens = int(os.environ.get("NKD_COMPACT_TOKENS", 20000))
         self.kwargs = {
-            "model": model,
-            "max_tokens": MAX_TOKENS,
-            "thinking": MODELS[model],
+            "model": MODELS[0],
+            "max_tokens": 20000,
+            "thinking": THINKING,
         }
-        if system := self.build_system_prompt():
-            self.kwargs["system"] = system
-
-        self.session = Prompt(
-            key_bindings={
-                "\x0c": lambda p: self.switch_model(),
-                ESC: lambda p: self.interrupt(),
-                "\t": lambda p: self.toggle_thinking(),
-                ESC + "[Z": lambda p: self.cycle_mode(),
-            },
-            toolbar=self.toolbar,
-        )
-
-    def build_system_prompt(self) -> str | None:
         paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
         parts = [p.read_text(encoding="utf-8").strip() for p in paths if p.exists()]
-        return "\n\n".join(parts).strip() or None
+        if system := "\n\n".join(parts).strip():
+            self.kwargs["system"] = system
+        self.bindings = {
+            "\r": self.submit,
+            "\x03": self.quit,
+            ESC: self.escape,
+            "\t": self.switch_model,
+            ESC + "[Z": self.cycle_mode,
+        }
+
+    def label(self) -> str:
+        busy = "●" if self.current_task else "○"
+        model = self.kwargs["model"].split("-")[1][0].upper()
+        return f"{model} {self.mode} {busy} "
 
     def switch_model(self) -> None:
-        models = list(MODELS)
-        next_model_idx = (models.index(self.kwargs["model"]) + 1) % len(models)
-        self.kwargs["model"] = models[next_model_idx]
-        self.kwargs["thinking"] = MODELS[self.kwargs["model"]]
-
-    def toggle_thinking(self) -> None:
-        on = {"type": "adaptive", "display": "summarized"}
-        enabled = self.kwargs["thinking"] == on
-        self.kwargs["thinking"] = MODELS[self.kwargs["model"]] if enabled else on
-
-    def interrupt(self) -> None:
-        if self.session.buf:
-            self.session.buf = ""
-            return
-        if self.llm_task and not self.llm_task.done():
-            self.llm_task.cancel()
-
-    def toolbar(self) -> str:
-        busy = "●" if self.llm_task and not self.llm_task.done() else "○"
-        model = self.kwargs["model"].split("-")[1].capitalize()
-        think = "✓" if self.kwargs["thinking"]["type"] == "adaptive" else "✗"
-        return f" {busy} {self.mode} (shift+tab) {model} (ctrl+l) think:{think} (tab)"
+        i = MODELS.index(self.kwargs["model"])
+        self.kwargs["model"] = MODELS[(i + 1) % len(MODELS)]
 
     def cycle_mode(self) -> None:
-        self.mode = MODES[(MODES.index(self.mode) + 1) % len(MODES)]
+        self.mode = self.modes[(self.modes.index(self.mode) + 1) % len(self.modes)]
 
-    async def count_tokens(self) -> int:
-        kwargs = {k: v for k, v in self.kwargs.items() if k != "max_tokens"}
-        resp = await self.client.messages.count_tokens(
-            messages=self.messages, tools=self.tools, **kwargs
-        )
-        return resp.input_tokens
+    def escape(self) -> None:
+        if self.ui.buf:
+            self.ui.buf = ""
+        elif self.current_task:
+            self.current_task.cancel()
 
-    async def compact(self) -> None:
-        *history, latest = self.messages
-        if not history:
-            return
-        summary = await agent(
-            self.client,
-            messages=[*history, {"role": "user", "content": COMPACT_PROMPT}],
-            model="claude-haiku-5-5",
-            max_tokens=4096,
-            thinking={"type": "disabled"},
-        )
-        self.messages[:] = [
-            {
-                "role": "user",
-                "content": f"[compacted summary of earlier session]\n{summary}",
-            },
-            {"role": "assistant", "content": "Understood, continuing from summary."},
-            latest,
-        ]
+    def submit(self) -> None:
+        if line := self.ui.buf.strip():
+            self.ui.log(f"{DIM}❯ {line}{RESET}\n")
+            self.queue.put_nowait(line)
+        self.ui.buf = ""
+
+    def quit(self) -> None:
+        write("\r\x1b[K")
+        raise EOFError
 
     async def turn(self) -> None:
-        if await self.count_tokens() > COMPACT_TOKENS:
-            await self.compact()
+        if (
+            len(str(self.messages)) // 4 > self.compact_tokens
+            and len(self.messages) > 1
+        ):
+            *history, latest = self.messages
+            summary = await agent(
+                self.client,
+                messages=[*history, {"role": "user", "content": COMPACT_PROMPT}],
+                model="claude-haiku-5-5",
+                max_tokens=4096,
+                thinking={"type": "disabled"},
+            )
+            self.messages[:] = [
+                {
+                    "role": "user",
+                    "content": f"[compacted summary of earlier session]\n{summary}",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Understood, continuing from summary.",
+                },
+                latest,
+            ]
         await agent(self.client, fns=self.fns, messages=self.messages, **self.kwargs)
 
-    async def llm_loop(self) -> None:
-        while True:
-            self.messages.append(await self.queue.get())
-            self.llm_task = asyncio.create_task(self.turn())
-            self.session.screen.paint()
-            try:
-                await self.llm_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                logger.exception(f"{RED}Error in agent loop: {e}{RESET}")
-            finally:
-                self.llm_task = None
-                self.session.screen.paint()
-
-    async def prompt_loop(self) -> None:
-        while True:
-            if text := (await self.session.prompt_async()).strip():
-                content = f"CWD: {Path.cwd()} Mode: {self.mode}. {START_PHRASE} {text}"
-                await self.queue.put({"role": "user", "content": content})
-
-    async def start(self) -> None:
-        await asyncio.gather(self.llm_loop(), self.prompt_loop())
+    async def run(self) -> None:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(self.ui.input_loop(self.bindings))
+            while True:
+                parts = [await self.queue.get()]
+                while not self.queue.empty():
+                    parts.append(self.queue.get_nowait())
+                prefix = f"CWD: {Path.cwd()} Mode: {self.mode}. {self.start_phrase} "
+                self.messages.append(
+                    {"role": "user", "content": prefix + "\n".join(parts)}
+                )
+                self.current_task = asyncio.create_task(self.turn())
+                self.ui.draw()
+                try:
+                    await self.current_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.exception(f"{RED}error: {e}{RESET}")
+                finally:
+                    self.current_task = None
+                    self.ui.draw()
 
 
 def default_fns() -> tuple[Callable[..., Any], ...]:
@@ -200,11 +181,29 @@ class UsageFilter(logging.Filter):
         return True
 
 
+class UIHandler(logging.Handler):
+    def __init__(self, ui: TUI) -> None:
+        super().__init__()
+        self.ui = ui
+        self.setFormatter(
+            logging.Formatter(f"%(message)s{RESET}{DIM}%(context)s{RESET}")
+        )
+        self.addFilter(UsageFilter())
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.ui.log(self.format(record))
+
+
 def main() -> None:
+    load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
     try:
-        configure_logging(LOG_LEVEL, metadata=False).addFilter(UsageFilter())
-        asyncio.run(CLI(default_fns()).start())
-    except (KeyboardInterrupt, EOFError):
+        cli = AgentCLI()
+        root = logging.getLogger()
+        root.addHandler(UIHandler(cli.ui))
+        root.setLevel(int(os.environ.get("NKD_LOG_LEVEL", logging.INFO)))
+        logging.getLogger("httpx2").setLevel(logging.WARNING)
+        asyncio.run(cli.run())
+    except* (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
 
 

@@ -20,8 +20,8 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 **What I built:**
 
 - Tools: `read_file` (text, images, PDF), `write_file`, `edit_file`, `bash`, `fetch_url` (saves the page as markdown on local disk), `web_search` (DuckDuckGo via headless Chrome with Playwright).
-- Keys: `esc` interrupts the running turn (if input is half-typed, the first `esc` clears it and the second interrupts), `tab` toggles thinking, `shift+tab` cycles modes, `ctrl+l` switches model.
-- Start Phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Coupled with thinking off by default, this makes the experience extremely fast. For harder problems, toggle thinking on with `tab` — one keystroke when you need it.
+- Keys: `esc` interrupts the running turn (if input is half-typed, the first `esc` clears it and the second interrupts), `tab` switches model, `shift+tab` cycles modes.
+- Start Phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Adaptive thinking keeps the experience fast on simple prompts.
 - Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels (prepended to every user message), not separate code paths. Label-based > code-based because you can customize the full list without touching code — the mode name alone signals behavior shift.
 - Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. One LLM call, one failure surface, directly evalable. Much of what's deprecated below became irrelevant because of this.
 - `tty.py`, a fully async, tail-only input handler (no `prompt_toolkit`): you can queue messages while the model responds, but typing and pasting only append. No cursor, no mid-line edits, no deletion by default. Don't fix typos, the LLM understands anyway; think first, send short deliberate messages.
@@ -38,7 +38,8 @@ I deprecated a lot. Models got better, auto-compact made whole categories of mac
 - **Background bash** (*built*). Only helps if the result isn't on the critical path of the next action — rare enough not to justify the complexity.
 - **Edit approval** (*built*). Per-edit accept/reject diffs encode an outdated habit. If you don't trust the model to execute, that's a planning problem: use Plan mode, then let it run.
 - **Docker sandbox** (*built*). In practice I never used it or found sandbox-level isolation necessary for local dev workflows, and it's often impractical anyway: too many OS-level deps to reproduce in a dedicated container.
-- **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and thinking-off defaults give the speed.
+- **Thinking toggle** (*built*). Thinking was off by default, with `tab` to turn it on. Newer models no longer accept `disabled`, and adaptive thinking already skips it on simple prompts. If needed, typing "no think" in the message works.
+- **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and adaptive thinking give the speed.
 
 This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
 
@@ -65,7 +66,6 @@ All config via environment variables, set in `~/.claude/nkd/.env` (loaded at sta
 |----------|---------|--------------|
 | `ANTHROPIC_API_KEY` | *(required)* | Anthropic API key |
 | `NKD_LOG_LEVEL` | `20` (INFO) | Python logging level integer |
-| `NKD_MAX_TOKENS` | `20000` | Max tokens per response |
 | `NKD_COMPACT_TOKENS` | `20000` | Token count that triggers auto-compact |
 | `NKD_START_PHRASE` | `"Be brief and exacting."` | Prefix prepended to every user message |
 | `NKD_MODES` | `"Act,Plan,Socratic"` | Comma-separated list cycled by `shift+tab` |
