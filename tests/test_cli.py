@@ -1,21 +1,18 @@
 import asyncio
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from anthropic.types import Usage
 
 from nkd_agents import cli as cli_module
 from nkd_agents.cli import (
     MODELS,
     THINKING,
     AgentCLI,
-    UsageFilter,
-    default_fns,
-    fmt_usage,
 )
 from nkd_agents.tools import bash, edit_file, read_file, write_file
-from nkd_agents.tty import ESC, TUI
+from nkd_agents.tty import TUI
+
+ESC = "\x1b"
 
 FNS = (read_file, write_file, edit_file, bash)
 
@@ -60,7 +57,7 @@ class TestInit:
         assert cli.kwargs["model"] == MODELS[0]
         assert cli.kwargs["thinking"] == THINKING
         assert cli.kwargs["max_tokens"] == 20000
-        assert cli.messages == []
+        assert cli.msgs == []
         assert cli.current_task is None
 
     def test_env_overrides(self, tui, monkeypatch):
@@ -101,9 +98,9 @@ class TestRun:
     async def test_prepends_cwd_mode_and_phrase(self, cli: AgentCLI, tmp_path):
         cli.cycle_mode()
         with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
-            cli.queue.put_nowait("hello")
+            cli.q.put_nowait("hello")
             await run_until_idle(cli)
-        assert cli.messages == [
+        assert cli.msgs == [
             {
                 "role": "user",
                 "content": f"CWD: {tmp_path} Mode: Plan. {cli.start_phrase} hello",
@@ -111,17 +108,17 @@ class TestRun:
         ]
         kwargs = llm.call_args.kwargs
         assert llm.call_args.args == (cli.client,)
-        assert kwargs["messages"] is cli.messages
+        assert kwargs["messages"] is cli.msgs
         assert kwargs["fns"] == cli.fns
         assert kwargs["model"] == MODELS[0]
 
     async def test_batches_queued_submissions(self, cli: AgentCLI):
         with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
-            cli.queue.put_nowait("a")
-            cli.queue.put_nowait("b")
+            cli.q.put_nowait("a")
+            cli.q.put_nowait("b")
             await run_until_idle(cli)
         llm.assert_called_once()
-        assert cli.messages[0]["content"].endswith("a\nb")
+        assert cli.msgs[0]["content"].endswith("a\nb")
 
     async def test_survives_cancelled_turn(self, cli: AgentCLI):
         calls = 0
@@ -133,10 +130,10 @@ class TestRun:
                 raise asyncio.CancelledError
 
         with patch.object(cli_module, "agent", side_effect=fake):
-            cli.queue.put_nowait("first")
+            cli.q.put_nowait("first")
             task = asyncio.create_task(cli.run())
             await asyncio.sleep(0.02)
-            cli.queue.put_nowait("second")
+            cli.q.put_nowait("second")
             await asyncio.sleep(0.02)
             task.cancel()
         assert calls == 2
@@ -144,10 +141,10 @@ class TestRun:
     async def test_logs_error_and_continues(self, cli: AgentCLI, caplog):
         fake = AsyncMock(side_effect=[RuntimeError("boom"), None])
         with patch.object(cli_module, "agent", fake):
-            cli.queue.put_nowait("first")
+            cli.q.put_nowait("first")
             task = asyncio.create_task(cli.run())
             await asyncio.sleep(0.02)
-            cli.queue.put_nowait("second")
+            cli.q.put_nowait("second")
             await asyncio.sleep(0.02)
             task.cancel()
         assert fake.call_count == 2
@@ -160,7 +157,7 @@ class TestRun:
             seen.append(cli.current_task is not None)
 
         with patch.object(cli_module, "agent", side_effect=fake):
-            cli.queue.put_nowait("x")
+            cli.q.put_nowait("x")
             await run_until_idle(cli)
         assert seen == [True]
         assert cli.current_task is None
@@ -170,28 +167,28 @@ class TestRun:
 class TestCompact:
     async def test_single_message_not_compacted(self, cli: AgentCLI):
         cli.compact_tokens = 0
-        cli.messages.append({"role": "user", "content": "hi"})
+        cli.msgs.append({"role": "user", "content": "hi"})
         with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
             await cli.turn()
         llm.assert_awaited_once()
-        assert cli.messages == [{"role": "user", "content": "hi"}]
+        assert cli.msgs == [{"role": "user", "content": "hi"}]
 
     async def test_summarizes_history_keeps_latest(self, cli: AgentCLI):
         cli.compact_tokens = 1
-        cli.messages.extend({"role": "user", "content": f"m{i}"} for i in range(10))
+        cli.msgs.extend({"role": "user", "content": f"m{i}"} for i in range(10))
         llm = AsyncMock(side_effect=["the summary", None])
         with patch.object(cli_module, "agent", llm):
             await cli.turn()
         sent = llm.call_args_list[0].kwargs["messages"]
         assert len(sent) == 10
         assert sent[-1]["content"] == cli_module.COMPACT_PROMPT
-        assert [m["role"] for m in cli.messages] == ["user", "assistant", "user"]
-        assert "the summary" in cli.messages[0]["content"]
-        assert cli.messages[2] == {"role": "user", "content": "m9"}
-        assert llm.call_args_list[1].kwargs["messages"] is cli.messages
+        assert [m["role"] for m in cli.msgs] == ["user", "assistant", "user"]
+        assert "the summary" in cli.msgs[0]["content"]
+        assert cli.msgs[2] == {"role": "user", "content": "m9"}
+        assert llm.call_args_list[1].kwargs["messages"] is cli.msgs
 
     async def test_skips_compact_under_threshold(self, cli: AgentCLI):
-        cli.messages.extend({"role": "user", "content": "x"} for _ in range(3))
+        cli.msgs.extend({"role": "user", "content": "x"} for _ in range(3))
         with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
             await cli.turn()
         llm.assert_awaited_once()
@@ -207,6 +204,10 @@ class TestCLI:
         assert cli.bindings[ESC] == cli.escape
         assert cli.bindings["\t"] == cli.switch_model
         assert cli.bindings[ESC + "[Z"] == cli.cycle_mode
+
+    def test_quit_raises_eof(self, cli: AgentCLI):
+        with pytest.raises(EOFError):
+            cli.quit()
 
     def test_switch_model_cycles_and_wraps(self, cli: AgentCLI):
         seen = []
@@ -237,7 +238,7 @@ class TestCLI:
     def test_submit_logs_queues_and_clears(self, cli: AgentCLI, tui: TUI):
         tui.buf = "  hello \n"
         cli.submit()
-        assert cli.queue.get_nowait() == "hello"
+        assert cli.q.get_nowait() == "hello"
         assert tui.buf == ""
         tui.log.assert_called_once()
         assert "hello" in tui.log.call_args.args[0]
@@ -245,7 +246,7 @@ class TestCLI:
     def test_submit_blank_does_nothing(self, cli: AgentCLI, tui: TUI):
         tui.buf = "   "
         cli.submit()
-        assert cli.queue.empty()
+        assert cli.q.empty()
         assert tui.buf == ""
         tui.log.assert_not_called()
 
@@ -264,11 +265,6 @@ class TestCLI:
         cli.escape()
         cli.current_task.cancel.assert_called_once()
 
-    def test_quit_raises_eof(self, cli: AgentCLI, capsys):
-        with pytest.raises(EOFError):
-            cli.quit()
-        assert capsys.readouterr().out == "\r\x1b[K"
-
 
 class TestRunWiring:
     async def test_starts_input_loop_with_bindings(self, cli: AgentCLI, tui: TUI):
@@ -282,28 +278,11 @@ class TestRunWiring:
         assert e.group_contains(EOFError)
 
 
-class TestUsageFormat:
-    def test_fmt_usage(self):
-        u = Usage(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=3,
-            cache_creation_input_tokens=2,
-        )
-        assert fmt_usage(u) == "↑10 ↓5 t0 · cache r3 w2"
-
-    def test_filter_formats_usage_args_only(self):
-        u = Usage(input_tokens=1, output_tokens=2)
-        rec = logging.LogRecord("n", logging.INFO, "", 0, "%s · %s", (0, u), None)
-        assert UsageFilter().filter(rec)
-        assert rec.getMessage() == "0 · ↑1 ↓2 t0 · cache r0 w0"
-
-
-class TestDefaultFns:
+class TestFns:
     def test_includes_web_tools_when_available(self):
         from nkd_agents.web import fetch_url, web_search
 
-        assert default_fns()[-2:] == (fetch_url, web_search)
+        assert AgentCLI().fns[-2:] == (fetch_url, web_search)
 
     def test_falls_back_without_web_extra(self, monkeypatch, caplog):
         import builtins
@@ -317,15 +296,5 @@ class TestDefaultFns:
 
         monkeypatch.setattr(builtins, "__import__", blocked)
         with caplog.at_level("WARNING"):
-            assert default_fns() == FNS
+            assert AgentCLI().fns == FNS
         assert "web tools unavailable" in caplog.text
-
-
-class TestUIHandler:
-    def test_emit_logs_through_ui(self, tui: TUI):
-        handler = cli_module.TUIHandler(tui)
-        rec = logging.LogRecord("n", logging.INFO, "", 0, "msg", None, None)
-        rec.context = ""
-        handler.emit(rec)
-        tui.log.assert_called_once()
-        assert "msg" in tui.log.call_args.args[0]

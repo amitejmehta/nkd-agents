@@ -22,13 +22,15 @@ class ContextFilter(logging.Filter):
 
 
 def configure_logging(
-    level: int = logging.INFO, metadata: bool = True
-) -> logging.Handler:
+    handler: logging.Handler | None = None,
+    level: int = logging.INFO,
+    metadata: bool = True,
+):
     prefix = "%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)s - "
     if not metadata:
         prefix = ""
     fmt = f"\n{DIM}{prefix}{RESET}%(message)s{RESET}{DIM}%(context)s{RESET}"
-    handler = logging.StreamHandler(sys.stderr)
+    handler = handler or logging.StreamHandler(sys.stderr)
     handler.addFilter(ContextFilter())
     logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
     logging.getLogger("httpx2").setLevel(logging.WARNING)

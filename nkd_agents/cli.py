@@ -1,17 +1,14 @@
 import asyncio
 import logging
 import os
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 from anthropic import AsyncAnthropic
-from anthropic.types import Usage
 
 from .anthropic import agent
-from .logging import DIM, RED, RESET
+from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, write_file
-from .tty import ESC, TUI, write
+from .tty import TUI, TUIHandler
 from .utils import load_env
 
 logger = logging.getLogger(__name__)
@@ -52,10 +49,16 @@ symbols; exact errors only when the error itself is the fact). Output only the s
 class AgentCLI:
     def __init__(self) -> None:
         self.tui = TUI(self.label)
-        self.fns = default_fns()
+        self.fns = (read_file, write_file, edit_file, bash)
+        try:
+            from .web import fetch_url, web_search
+
+            self.fns += (fetch_url, web_search)
+        except ImportError:
+            logger.warning("web tools unavailable; install via [web] extra")
         self.client = AsyncAnthropic(max_retries=4)
-        self.messages = []
-        self.queue: asyncio.Queue[str] = asyncio.Queue()
+        self.msgs = []
+        self.q: asyncio.Queue[str] = asyncio.Queue()
         self.current_task: asyncio.Task | None = None
         self.modes = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
         self.mode = self.modes[0]
@@ -71,11 +74,11 @@ class AgentCLI:
         if system := "\n\n".join(parts).strip():
             self.kwargs["system"] = system
         self.bindings = {
-            "\r": self.submit,
-            "\x03": self.quit,
-            ESC: self.escape,
-            "\t": self.switch_model,
-            ESC + "[Z": self.cycle_mode,
+            "\r": self.submit,  # enter
+            "\x03": self.quit,  # ctrl-c
+            "\x1b": self.escape,  # esc
+            "\t": self.switch_model,  # tab
+            "\x1b[Z": self.cycle_mode,  # shift-tab
         }
 
     def label(self) -> str:
@@ -99,19 +102,15 @@ class AgentCLI:
     def submit(self) -> None:
         if line := self.tui.buf.strip():
             self.tui.log(f"{DIM}❯ {line}{RESET}\n")
-            self.queue.put_nowait(line)
+            self.q.put_nowait(line)
         self.tui.buf = ""
 
     def quit(self) -> None:
-        write("\r\x1b[K")
         raise EOFError
 
     async def turn(self) -> None:
-        if (
-            len(str(self.messages)) // 4 > self.compact_tokens
-            and len(self.messages) > 1
-        ):
-            *history, latest = self.messages
+        if len(str(self.msgs)) // 4 > self.compact_tokens and len(self.msgs) > 1:
+            *history, latest = self.msgs
             summary = await agent(
                 self.client,
                 messages=[*history, {"role": "user", "content": COMPACT_PROMPT}],
@@ -119,7 +118,7 @@ class AgentCLI:
                 max_tokens=4096,
                 thinking={"type": "disabled"},
             )
-            self.messages[:] = [
+            self.msgs[:] = [
                 {
                     "role": "user",
                     "content": f"[compacted summary of earlier session]\n{summary}",
@@ -130,19 +129,17 @@ class AgentCLI:
                 },
                 latest,
             ]
-        await agent(self.client, fns=self.fns, messages=self.messages, **self.kwargs)
+        await agent(self.client, fns=self.fns, messages=self.msgs, **self.kwargs)
 
     async def run(self) -> None:
         async with asyncio.TaskGroup() as tg:
             tg.create_task(self.tui.input_loop(self.bindings))
             while True:
-                parts = [await self.queue.get()]
-                while not self.queue.empty():
-                    parts.append(self.queue.get_nowait())
+                parts = [await self.q.get()]
+                while not self.q.empty():
+                    parts.append(self.q.get_nowait())
                 prefix = f"CWD: {Path.cwd()} Mode: {self.mode}. {self.start_phrase} "
-                self.messages.append(
-                    {"role": "user", "content": prefix + "\n".join(parts)}
-                )
+                self.msgs.append({"role": "user", "content": prefix + "\n".join(parts)})
                 self.current_task = asyncio.create_task(self.turn())
                 self.tui.draw()
                 try:
@@ -156,52 +153,12 @@ class AgentCLI:
                     self.tui.draw()
 
 
-def default_fns() -> tuple[Callable[..., Any], ...]:
-    base = (read_file, write_file, edit_file, bash)
-    try:
-        from .web import fetch_url, web_search
-    except ImportError:
-        logger.warning("web tools unavailable; install the [web] extra to enable them")
-        return base
-    return (*base, fetch_url, web_search)
-
-
-def fmt_usage(u: Usage) -> str:
-    think = u.output_tokens_details.thinking_tokens if u.output_tokens_details else 0
-    read, write = u.cache_read_input_tokens or 0, u.cache_creation_input_tokens or 0
-    return f"↑{u.input_tokens} ↓{u.output_tokens} t{think} · cache r{read} w{write}"
-
-
-class UsageFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.args, tuple):
-            record.args = tuple(
-                fmt_usage(a) if isinstance(a, Usage) else a for a in record.args
-            )
-        return True
-
-
-class TUIHandler(logging.Handler):
-    def __init__(self, tui: TUI) -> None:
-        super().__init__()
-        self.tui = tui
-        self.setFormatter(
-            logging.Formatter(f"%(message)s{RESET}{DIM}%(context)s{RESET}")
-        )
-        self.addFilter(UsageFilter())
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self.tui.log(self.format(record))
-
-
 def main() -> None:
     load_env((Path.home() / ".claude" / "nkd" / ".env").as_posix())
+    level = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
     try:
         cli = AgentCLI()
-        root = logging.getLogger()
-        root.addHandler(TUIHandler(cli.tui))
-        root.setLevel(int(os.environ.get("NKD_LOG_LEVEL", logging.INFO)))
-        logging.getLogger("httpx2").setLevel(logging.WARNING)
+        configure_logging(TUIHandler(cli.tui), level=level, metadata=False)
         asyncio.run(cli.run())
     except* (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
