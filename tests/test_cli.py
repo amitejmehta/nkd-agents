@@ -22,7 +22,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-    for name in ("NKD_MODES", "NKD_START_PHRASE", "NKD_COMPACT_TOKENS"):
+    for name in ("NKD_MODES", "NKD_START_PHRASE"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -58,18 +58,16 @@ class TestInit:
         assert cli.kwargs["thinking"] == THINKING
         assert cli.kwargs["max_tokens"] == 20000
         assert cli.msgs == []
-        assert cli.current_task is None
+        assert cli.turn is None
 
     def test_env_overrides(self, tui, monkeypatch):
         monkeypatch.setenv("NKD_MODES", "A,B")
         monkeypatch.setenv("NKD_START_PHRASE", "hey")
-        monkeypatch.setenv("NKD_COMPACT_TOKENS", "7")
         c = AgentCLI()
-        assert (c.modes, c.mode, c.start_phrase, c.compact_tokens) == (
+        assert (c.modes, c.mode, c.start_phrase) == (
             ["A", "B"],
             "A",
             "hey",
-            7,
         )
 
     def test_no_system_without_claude_md(self, cli: AgentCLI):
@@ -150,48 +148,18 @@ class TestRun:
         assert fake.call_count == 2
         assert "boom" in caplog.text
 
-    async def test_current_task_during_turn_and_redraws(self, cli: AgentCLI, tui: TUI):
+    async def test_turn_during_run_and_redraws(self, cli: AgentCLI, tui: TUI):
         seen: list[bool] = []
 
         async def fake(*args, **kwargs):
-            seen.append(cli.current_task is not None)
+            seen.append(cli.turn is not None)
 
         with patch.object(cli_module, "agent", side_effect=fake):
             cli.q.put_nowait("x")
             await run_until_idle(cli)
         assert seen == [True]
-        assert cli.current_task is None
+        assert cli.turn is None
         assert tui.draw.call_count == 2
-
-
-class TestCompact:
-    async def test_single_message_not_compacted(self, cli: AgentCLI):
-        cli.compact_tokens = 0
-        cli.msgs.append({"role": "user", "content": "hi"})
-        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
-            await cli.turn()
-        llm.assert_awaited_once()
-        assert cli.msgs == [{"role": "user", "content": "hi"}]
-
-    async def test_summarizes_history_keeps_latest(self, cli: AgentCLI):
-        cli.compact_tokens = 1
-        cli.msgs.extend({"role": "user", "content": f"m{i}"} for i in range(10))
-        llm = AsyncMock(side_effect=["the summary", None])
-        with patch.object(cli_module, "agent", llm):
-            await cli.turn()
-        sent = llm.call_args_list[0].kwargs["messages"]
-        assert len(sent) == 10
-        assert sent[-1]["content"] == cli_module.COMPACT_PROMPT
-        assert [m["role"] for m in cli.msgs] == ["user", "assistant", "user"]
-        assert "the summary" in cli.msgs[0]["content"]
-        assert cli.msgs[2] == {"role": "user", "content": "m9"}
-        assert llm.call_args_list[1].kwargs["messages"] is cli.msgs
-
-    async def test_skips_compact_under_threshold(self, cli: AgentCLI):
-        cli.msgs.extend({"role": "user", "content": "x"} for _ in range(3))
-        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
-            await cli.turn()
-        llm.assert_awaited_once()
 
 
 class TestCLI:
@@ -227,7 +195,7 @@ class TestCLI:
         assert cli.label() == "act|sonnet|○ "
 
     def test_label_busy(self, cli: AgentCLI):
-        cli.current_task = MagicMock()
+        cli.turn = MagicMock()
         assert cli.label() == "act|sonnet|● "
 
     def test_label_tracks_model_and_mode(self, cli: AgentCLI):
@@ -251,19 +219,19 @@ class TestCLI:
         tui.log.assert_not_called()
 
     def test_escape_clears_buffer_first(self, cli: AgentCLI, tui: TUI):
-        cli.current_task = MagicMock()
+        cli.turn = MagicMock()
         tui.buf = "typed"
         cli.escape()
         assert tui.buf == ""
-        cli.current_task.cancel.assert_not_called()
+        cli.turn.cancel.assert_not_called()
 
     def test_escape_without_task_is_noop(self, cli: AgentCLI):
         cli.escape()
 
     def test_escape_interrupts_when_buffer_empty(self, cli: AgentCLI):
-        cli.current_task = MagicMock()
+        cli.turn = MagicMock()
         cli.escape()
-        cli.current_task.cancel.assert_called_once()
+        cli.turn.cancel.assert_called_once()
 
 
 class TestRunWiring:
