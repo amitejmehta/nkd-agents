@@ -43,7 +43,7 @@ def display_diff(old: str, new: str, path: str) -> None:
     body = diff[2:]
     added = sum(line.startswith("+") for line in body)
     removed = sum(line.startswith("-") for line in body)
-    lines = [f"{DIM}±{RESET} {path} {GREEN}+{added}{RESET} {RED}-{removed}{RESET}"]
+    lines = [f"± {path} {GREEN}+{added}{RESET} {RED}-{removed}{RESET}"]
     for line in body:
         color = GREEN if line[0] == "+" else RED if line[0] == "-" else ""
         lines.append(f"  {color}{line}{RESET}")
