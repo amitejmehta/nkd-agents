@@ -19,7 +19,7 @@ ESC = "\x1b"
 def cols(monkeypatch: pytest.MonkeyPatch) -> Callable[[int], None]:
     def set_cols(n: int) -> None:
         monkeypatch.setattr(
-            tty.shutil, "get_terminal_size", lambda: os.terminal_size((n, 24))
+            tty.shutil, "get_terminal_size", lambda *a, **k: os.terminal_size((n, 24))
         )
 
     set_cols(20)
