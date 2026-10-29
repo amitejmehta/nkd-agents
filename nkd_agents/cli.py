@@ -15,35 +15,6 @@ logger = logging.getLogger(__name__)
 
 MODELS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
 THINKING = {"type": "adaptive", "display": "summarized"}
-COMPACT_PROMPT = """The above is a coding session transcript. Compact it into a summary that \
-replaces the raw history.
-
-Principle: keep only what cannot be cheaply recovered. The repo, filesystem, git history, and \
-command output are the source of truth for state; a fresh reader can re-read and re-run them. \
-What compaction destroys is the intent, reasoning, and judgment around that state. Capture that.
-
-Keep:
-- The goal, plus any constraints or preferences the user stated, even once.
-- Decisions and their rationale, including options rejected and why, and conclusions that \
-something is a non-issue or out of scope.
-- Findings that live nowhere in the code: open issues, unresolved questions, pending work, \
-next steps.
-- Hard-won facts that were expensive to discover.
-
-Drop anything recoverable from the environment: file contents, lists of modified files, \
-command output, test status, code structure. Also drop process narrative, dead ends with no \
-lasting lesson, and retries.
-
-Most sessions have only one or two things worth remembering; a short summary is correct. Let the \
-session decide what matters. A review: the open issues found, and why other candidates are \
-non-issues. A debugging session: the root cause, and what was ruled out and why. An \
-implementation: the chosen design and why alternatives lost.
-
-If the transcript begins with a "[compacted summary of earlier session]" message, merge it in: \
-carry forward what is still relevant, drop what later work made obsolete.
-
-Write for an engineer with repo and shell access who was not present. Be specific (paths, \
-symbols; exact errors only when the error itself is the fact). Output only the summary."""
 
 
 class AgentCLI:
@@ -57,13 +28,10 @@ class AgentCLI:
         except ImportError:
             logger.warning("web tools unavailable; install via [web] extra")
         self.client = AsyncAnthropic(max_retries=4)
-        self.msgs = []
-        self.q: asyncio.Queue[str] = asyncio.Queue()
-        self.current_task: asyncio.Task | None = None
+        self.msgs, self.q, self.turn = [], asyncio.Queue(), None
         self.modes = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
         self.mode = self.modes[0]
         self.start_phrase = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
-        self.compact_tokens = int(os.environ.get("NKD_COMPACT_TOKENS", 50000))
         self.kwargs = {
             "model": MODELS[0],
             "max_tokens": 20000,
@@ -82,7 +50,7 @@ class AgentCLI:
         }
 
     def label(self) -> str:
-        busy = "●" if self.current_task else "○"
+        busy = "●" if self.turn else "○"
         model = self.kwargs["model"].split("-")[1]
         return f"{self.mode.lower()}|{model}|{busy} "
 
@@ -96,8 +64,8 @@ class AgentCLI:
     def escape(self) -> None:
         if self.tui.buf:
             self.tui.buf = ""
-        elif self.current_task:
-            self.current_task.cancel()
+        elif self.turn:
+            self.turn.cancel()
 
     def submit(self) -> None:
         if line := self.tui.buf.strip():
@@ -108,29 +76,6 @@ class AgentCLI:
     def quit(self) -> None:
         raise EOFError
 
-    async def turn(self) -> None:
-        if len(str(self.msgs)) // 4 > self.compact_tokens and len(self.msgs) > 1:
-            *history, latest = self.msgs
-            summary = await agent(
-                self.client,
-                messages=[*history, {"role": "user", "content": COMPACT_PROMPT}],
-                model="claude-haiku-5-5",
-                max_tokens=4096,
-                thinking={"type": "disabled"},
-            )
-            self.msgs[:] = [
-                {
-                    "role": "user",
-                    "content": f"[compacted summary of earlier session]\n{summary}",
-                },
-                {
-                    "role": "assistant",
-                    "content": "Understood, continuing from summary.",
-                },
-                latest,
-            ]
-        await agent(self.client, fns=self.fns, messages=self.msgs, **self.kwargs)
-
     async def run(self) -> None:
         async with asyncio.TaskGroup() as tg:
             tg.create_task(self.tui.input_loop(self.bindings))
@@ -140,16 +85,18 @@ class AgentCLI:
                     parts.append(self.q.get_nowait())
                 prefix = f"CWD: {Path.cwd()} Mode: {self.mode}. {self.start_phrase} "
                 self.msgs.append({"role": "user", "content": prefix + "\n".join(parts)})
-                self.current_task = asyncio.create_task(self.turn())
+                self.turn = asyncio.create_task(
+                    agent(self.client, fns=self.fns, messages=self.msgs, **self.kwargs)
+                )
                 self.tui.draw()
                 try:
-                    await self.current_task
+                    await self.turn
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
                     logger.exception(f"{RED}error: {e}{RESET}")
                 finally:
-                    self.current_task = None
+                    self.turn = None
                     self.tui.draw()
 
 

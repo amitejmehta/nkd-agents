@@ -17,31 +17,39 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 
 ## The CLI
 
-**What I built:**
+Over time, I've actually removed more than I've added. Here's what remains.
 
-- Tools: `read_file` (text, images, PDF), `write_file`, `edit_file`, `bash`, `fetch_url` (saves the page as markdown on local disk), `web_search` (DuckDuckGo via headless Chrome with Playwright).
-- Keys: `esc` interrupts the running turn (if input is half-typed, the first `esc` clears it and the second interrupts), `tab` switches model, `shift+tab` cycles modes.
-- Start Phrase: `Be brief and exacting` prepended to every user message (customize via `NKD_START_PHRASE`) steers behavior reliably over long contexts. Adaptive thinking keeps the experience fast on simple prompts.
-- Custom Modes: `NKD_MODES` (e.g. `Act`, `Plan`, `Socratic`) cycle via `shift+tab` and are prompt-injected labels (prepended to every user message), not separate code paths. Label-based > code-based because you can customize the full list without touching code — the mode name alone signals behavior shift.
-- Aggressive auto-compact: once the conversation exceeds `NKD_COMPACT_TOKENS`, history gets summarized by Haiku into one message pair. One LLM call, one failure surface, directly evalable. Much of what's deprecated below became irrelevant because of this.
-- `tty.py`, a fully async, tail-only input handler (no `prompt_toolkit`): you can queue messages while the model responds, but typing and pasting only append. No cursor, no mid-line edits, no deletion by default. Don't fix typos, the LLM understands anyway; think first, send short deliberate messages.
-- Full autonomy by default (same paradigm as `claude --dangerously-skip-permissions`), with plain `bash` as the main tool.
+- tools:
+  - shell: `bash`
+  - read: `read_file` (text, images, PDF)
+  - write: `write_file` · `edit_file`
+  - web: `fetch_url` (saves to local md) · `web_search` (DuckDuckGo via Playwright/Chrome)
+  - note: models prefer `bash` (customizable, chainable) over `write_file`/`edit_file`; I kept them occasionaly prefer the colored diffs
+- input: `tty.py` is an async, tail-only (no cursor or cursor movement) raw-terminal handler; consumers bind all keys, including `enter`.
+- keys: `enter` send · `ctrl+c` quit · `esc` clear buffer / interrupt LLM · `tab` cycle model · `shift+tab` cycle mode
+  - `backspace` and `option+backspace` intentionally unbound: encourages faster typing, since the LLM understands typos.
+- prefix: each message is sent as `CWD: <cwd> Mode: <mode>. <start phrase> <message>`, e.g. `CWD: /Users/me/proj Mode: Act. Be brief and exacting. fix the bug`
+  - mode: a label from `NKD_MODES` (default `Act,Plan,Socratic`): all that's required to shift behavior.
+  - start phrase: `NKD_START_PHRASE` (default `Be brief and exacting.`) steers behavior reliably over long contexts.
+- autonomy: full by default because this is the way.
 
-**What I deprecated, and why:**
+Here's what I've deprecated and why:
 
-I deprecated a lot. Models got better, auto-compact made whole categories of machinery irrelevant, and best practices moved. Everything marked *built* shipped and was used before being removed.
+- edit approval: clicking "yes" forever isn't oversight.
+- standalone `grep`/`glob` tools: `bash` (`grep`, `rg`, `find`, `ls`) is chainable, so one turn replaces several.
+- docker sandbox: rarely used, impractical (too many OS-level deps).
+- thinking toggle: newer Claude models don't accept `disabled` (and think fairly judiciously anyway).
+- context management:
+  - cache warming (auto-warmed Anthropic's cache each turn, 5 min TTL): misses are cheap when context stays small.
+  - saved conversation history: most relevant state is already external (code, git), and fresh starts on new tasks force capturing the rest externally (writing, docs, research).
+  - subagents (via tool or headless mode): overkill.
+  - auto-compact (Haiku summarized history past a token threshold): replaced, see below.
 
-- **Session persistence** (*built*). Auto-compact summarizes history into one message pair, so cached conversation history stopped mattering. This forced the better practice: capture state externally (writing, docs, research, git) instead of relying on session memory.
-- **Sub-agents and headless mode** (*built*). Overkill for context management: auto-compact is simpler and more evaluable. Delegation only helps with independence/parallelism, and a new terminal does that better, with you as the explicit channel and no context leakage.
-- **Cache warming** (*built*). Auto-warmed Anthropic's cache after each turn (5 minute TTL). Auto-compact keeps context small enough that cache misses are cheap.
-- **Standalone `grep`/`glob` tools.** Pure `bash` (`rg`, `find`, `ls`) is chainable, so the model does in one turn what dedicated tools took several to do. The model fell back to `bash` even when the dedicated tools were offered. Same logic for single tool calls generally: composed shell commands favor single-turn over multi-turn workflows.
-- **Background bash** (*built*). Only helps if the result isn't on the critical path of the next action — rare enough not to justify the complexity.
-- **Edit approval** (*built*). Per-edit accept/reject diffs encode an outdated habit. If you don't trust the model to execute, that's a planning problem: use Plan mode, then let it run.
-- **Docker sandbox** (*built*). In practice I never used it or found sandbox-level isolation necessary for local dev workflows, and it's often impractical anyway: too many OS-level deps to reproduce in a dedicated container.
-- **Thinking toggle** (*built*). Thinking was off by default, with `tab` to turn it on. Newer models no longer accept `disabled`, and adaptive thinking already skips it on simple prompts. If needed, typing "no think" in the message works.
-- **Streaming.** Complexity in the base framework purely for interactive use. The framework's basic logging plus the start phrase and adaptive thinking give the speed.
+I've replaced all forms of context management with the following line in my global `~/.claude/CLAUDE.md`.
 
-This README is the documentation — no separate `docs/` folder. The codebase is small enough that reading it directly (for you or an LLM) beats maintaining docs that quickly go stale.
+> When my entire message is just the word "end": write a short handoff note to `/Users/amitej/Desktop/scratch/handoffs/<task-slug>.md` (new name, never overwrite), then reply with just the path. Keep only what can't be recovered from the repo/git: goal, my constraints/preferences, decisions with why (incl. rejected options and non-issues), open questions, next steps, hard-won facts. Skip file lists, command output, and process narrative.
+
+This, plus good hygiene (killing sessions, keeping state external), works great.
 
 ## Install
 
@@ -66,6 +74,5 @@ All config via environment variables, set in `~/.claude/nkd/.env` (loaded at sta
 |----------|---------|--------------|
 | `ANTHROPIC_API_KEY` | *(required)* | Anthropic API key |
 | `NKD_LOG_LEVEL` | `20` (INFO) | Python logging level integer |
-| `NKD_COMPACT_TOKENS` | `50000` | Token count that triggers auto-compact |
 | `NKD_START_PHRASE` | `"Be brief and exacting."` | Prefix prepended to every user message |
 | `NKD_MODES` | `"Act,Plan,Socratic"` | Comma-separated list cycled by `shift+tab` |
