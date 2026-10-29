@@ -10,6 +10,7 @@ from anthropic.types import (
     ToolParam,
     ToolResultBlockParam,
     ToolUseBlock,
+    Usage,
 )
 from anthropic.types.json_output_format_param import JSONOutputFormatParam
 from anthropic.types.message_create_params import MessageCreateParamsBase
@@ -49,6 +50,12 @@ def tool_schema(
         },
         "strict": True,
     }
+
+
+def fmt_usage(u: Usage) -> str:
+    think = u.output_tokens_details.thinking_tokens if u.output_tokens_details else 0
+    read, write = u.cache_read_input_tokens or 0, u.cache_creation_input_tokens or 0
+    return f"↑{u.input_tokens} ↓{u.output_tokens} t{think} · cache r{read} w{write}"
 
 
 def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlock]]:
@@ -135,7 +142,7 @@ async def agent(
         while True:
             span.set_attribute("turns", i)
             resp = await client.messages.create(**kwargs)
-            logger.info("%s %s · %s", i, resp.stop_reason, resp.usage)
+            logger.info("%s %s · %s", i, resp.stop_reason, fmt_usage(resp.usage))
 
             text, tool_calls = extract_text_and_tool_calls(resp)
             results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])

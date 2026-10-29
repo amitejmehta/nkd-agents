@@ -15,6 +15,7 @@ from nkd_agents.anthropic import (
     agent,
     bytes_to_content,
     extract_text_and_tool_calls,
+    fmt_usage,
     output_format,
     tool,
     tool_schema,
@@ -303,7 +304,7 @@ async def test_agent_logs_turn_format(caplog):
     assert lines[0].startswith("0 tool_use · ")
     assert lines[1].startswith("1 end_turn · ")
     assert lines[2] == "claude-3-5-sonnet-20241022: done"
-    assert "Usage(" in lines[0] or "input_tokens=10" in lines[0]
+    assert "↑10 ↓5" in lines[0]
 
 
 @pytest.mark.asyncio
@@ -418,3 +419,13 @@ async def test_read_file_tool_preserves_text(tmp_path, text):
         "tool_use_id": "read_1",
         "content": [{"type": "text", "text": text}],
     }
+
+
+def test_fmt_usage():
+    u = Usage(
+        input_tokens=10,
+        output_tokens=5,
+        cache_read_input_tokens=3,
+        cache_creation_input_tokens=2,
+    )
+    assert fmt_usage(u) == "↑10 ↓5 t0 · cache r3 w2"

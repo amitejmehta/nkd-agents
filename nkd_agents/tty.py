@@ -1,6 +1,7 @@
 import asyncio
 import codecs
 import contextlib
+import logging
 import os
 import shutil
 import sys
@@ -8,8 +9,6 @@ import termios
 import unicodedata
 from collections.abc import AsyncGenerator, Callable, Iterator
 
-ESC = "\x1b"
-DIM, RESET = "\x1b[38;5;242m", "\x1b[0m"
 PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
 
 
@@ -33,10 +32,12 @@ def raw(fd: int) -> Iterator[None]:
     new[6][termios.VMIN], new[6][termios.VTIME] = 1, 0
     termios.tcsetattr(fd, termios.TCSANOW, new)
     write("\x1b[?2004h")  # paste on
+
     try:
         yield
     finally:
         write("\x1b[?2004l")  # paste off
+
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
@@ -66,7 +67,7 @@ class TUI:
         while start and used + cell_width(text[start - 1]) <= cols - 1:
             start -= 1
             used += cell_width(text[start])
-        write(f"\r\x1b[K{DIM}{label}{RESET}{text[start:]}")
+        write(f"\r\x1b[K{label}{text[start:]}")
 
     def log(self, line: str) -> None:
         write("\r\x1b[K" + line.replace("\n", "\r\n") + "\r\n")
@@ -87,10 +88,19 @@ class TUI:
                     pasting = not end
                 if fn := bindings.get(s):
                     fn()
-                elif not s.startswith(ESC):
+                elif not s.startswith("\x1b"):  # esc
                     for c in s:
                         if fn := bindings.get(c):
                             fn()
                         elif c.isprintable():
                             self.buf += c
                 self.draw()
+
+
+class TUIHandler(logging.Handler):
+    def __init__(self, tui: TUI) -> None:
+        super().__init__()
+        self.tui = tui
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.tui.log(self.format(record))

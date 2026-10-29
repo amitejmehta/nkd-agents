@@ -10,14 +10,20 @@ from openai.types.responses import (
     ResponseOutputMessage,
     ResponseOutputText,
     ResponseReasoningItem,
+    ResponseUsage,
 )
 from openai.types.responses.response_reasoning_item import Summary
+from openai.types.responses.response_usage import (
+    InputTokensDetails,
+    OutputTokensDetails,
+)
 from pydantic import BaseModel
 
 from nkd_agents.openai import (
     agent,
     bytes_to_content,
     extract_text_and_tool_calls,
+    fmt_usage,
     output_format,
     tool,
     tool_schema,
@@ -386,3 +392,18 @@ async def test_read_file_tool_preserves_text(tmp_path, text):
         "call_id": "read_1",
         "output": text,
     }
+
+
+def test_fmt_usage():
+    u = ResponseUsage(
+        input_tokens=10,
+        output_tokens=5,
+        total_tokens=15,
+        input_tokens_details=InputTokensDetails(cached_tokens=3, cache_write_tokens=2),
+        output_tokens_details=OutputTokensDetails(reasoning_tokens=4),
+    )
+    assert fmt_usage(u) == "↑10 ↓5 t4 · cache r3 w2"
+
+
+def test_fmt_usage_none():
+    assert fmt_usage(None) == ""

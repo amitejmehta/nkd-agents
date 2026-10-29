@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 import os
 import sys
 import termios
@@ -9,7 +10,9 @@ from types import SimpleNamespace
 import pytest
 
 from nkd_agents import tty
-from nkd_agents.tty import DIM, ESC, PASTE_END, PASTE_START, RESET, TUI, cell_width
+from nkd_agents.tty import PASTE_END, PASTE_START, TUI, TUIHandler, cell_width
+
+ESC = "\x1b"
 
 
 @pytest.fixture
@@ -44,36 +47,36 @@ def test_cell_width(char: str, width: int) -> None:
 
 
 class TestDraw:
-    def test_label_dimmed_then_buffer(self, cols, capsys) -> None:
+    def test_label_then_buffer(self, cols, capsys) -> None:
         ui = TUI(lambda: "> ")
         ui.buf = "abc"
         ui.draw()
-        assert capsys.readouterr().out == f"\r\x1b[K{DIM}> {RESET}abc"
+        assert capsys.readouterr().out == "\r\x1b[K> abc"
 
     def test_keeps_tail_within_cols_minus_one(self, cols, capsys) -> None:
         cols(6)
         ui = TUI(lambda: "> ")
         ui.buf = "abcdefghij"
         ui.draw()
-        assert capsys.readouterr().out.endswith(f"{RESET}hij")
+        assert capsys.readouterr().out.endswith("hij")
 
     def test_wide_char_never_straddles_edge(self, cols, capsys) -> None:
         cols(6)
         ui = TUI(lambda: "> ")
         ui.buf = "a日本語"
         ui.draw()
-        assert capsys.readouterr().out.endswith(f"{RESET}語")
+        assert capsys.readouterr().out.endswith("語")
 
     def test_newlines_become_spaces(self, cols, capsys) -> None:
         ui = TUI(lambda: "a\nb ")
         ui.buf = "x\ny"
         ui.draw()
-        assert capsys.readouterr().out == f"\r\x1b[K{DIM}a b {RESET}x y"
+        assert capsys.readouterr().out == "\r\x1b[Ka b x y"
 
     def test_empty_buffer_shows_label_only(self, cols, capsys) -> None:
         ui = TUI(lambda: "> ")
         ui.draw()
-        assert capsys.readouterr().out == f"\r\x1b[K{DIM}> {RESET}"
+        assert capsys.readouterr().out == "\r\x1b[K> "
 
 
 class TestLog:
@@ -81,9 +84,16 @@ class TestLog:
         ui = TUI(lambda: "> ")
         ui.buf = "hi"
         ui.log("a\nb")
-        assert capsys.readouterr().out == (
-            f"\r\x1b[Ka\r\nb\r\n\r\x1b[K{DIM}> {RESET}hi"
-        )
+        assert capsys.readouterr().out == ("\r\x1b[Ka\r\nb\r\n\r\x1b[K> hi")
+
+
+class TestTUIHandler:
+    def test_emit_logs_through_tui(self, cols, capsys) -> None:
+        ui = TUI(lambda: "> ")
+        ui.buf = "hi"
+        rec = logging.LogRecord("n", logging.INFO, "", 0, "msg", None, None)
+        TUIHandler(ui).emit(rec)
+        assert capsys.readouterr().out == "\r\x1b[Kmsg\r\n\r\x1b[K> hi"
 
 
 class TestPaste:
