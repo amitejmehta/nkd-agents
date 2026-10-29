@@ -3,6 +3,7 @@ import codecs
 import contextlib
 import logging
 import os
+import re
 import shutil
 import sys
 import termios
@@ -39,15 +40,29 @@ def raw(fd: int) -> Iterator[None]:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
+TOKEN = re.compile(
+    r"\x1b\[200~(?P<paste>.*?)\x1b\[201~|\x1b(?:\[[0-9;]*[@-~]|O?.)?|.", re.S
+)
+
+
 async def keys() -> AsyncGenerator[str]:
     fd, q = sys.stdin.fileno(), asyncio.Queue[str]()
     dec = codecs.getincrementaldecoder("utf-8")("replace")
     loop = asyncio.get_running_loop()
     loop.add_reader(fd, lambda: q.put_nowait(dec.decode(os.read(fd, 4096))))
+    buf = ""
     try:
         with raw(fd):
             while True:
-                yield await q.get()
+                buf += await q.get()
+                if (cut := buf.rfind("\x1b[200~")) <= buf.rfind("\x1b[201~"):
+                    start = "\x1b[200~"
+                    cut = len(buf) - next(
+                        (n for n in range(5, 1, -1) if buf.endswith(start[:n])), 0
+                    )
+                if cut:
+                    yield buf[:cut]
+                    buf = buf[cut:]
     finally:
         loop.remove_reader(fd)
 
@@ -77,21 +92,15 @@ class TUI:
 
     async def input_loop(self, bindings: dict[str, Callable[[], None]]) -> None:
         self.draw()
-        pasting = False
         async with contextlib.aclosing(keys()) as ks:
             async for s in ks:
-                if pasting or s.startswith("\x1b[200~"):  # paste start and paste end
-                    text, end, s = s.removeprefix("\x1b[200~").partition("\x1b[201~")
-                    self.paste(text)
-                    pasting = not end
-                if fn := bindings.get(s):
-                    fn()
-                elif not s.startswith("\x1b"):  # esc
-                    for c in s:
-                        if fn := bindings.get(c):
-                            fn()
-                        elif c.isprintable():
-                            self.buf += c
+                for m in TOKEN.finditer(s):
+                    if m["paste"] is not None:
+                        self.paste(m["paste"])
+                    elif fn := bindings.get(m[0]):
+                        fn()
+                    elif m[0].isprintable():
+                        self.buf += m[0]
                 self.draw()
 
 

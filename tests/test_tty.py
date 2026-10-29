@@ -170,11 +170,6 @@ class TestPrompt:
         drive(ui, ["\x1b[200~l1\nl2\x1b[201~y"])
         assert ui.buf == "l1\nl2y"
 
-    def test_paste_split_across_chunks(self, cols, drive) -> None:
-        ui = TUI()
-        drive(ui, ["\x1b[200~a\r", "b\t", "c\x1b[201~z"])
-        assert ui.buf == "a\nbcz"
-
     def test_paste_content_does_not_trigger_bindings(self, cols, drive) -> None:
         hits: list[str] = []
         ui = TUI()
@@ -227,6 +222,39 @@ class TestKeys:
                 return out
 
         assert asyncio.run(go()) == char + "!"
+
+    @pytest.mark.parametrize(
+        "parts,tokens",
+        [
+            (
+                ["\x1b[200~a\r", "b\t", "c\x1b[201~z"],
+                ["\x1b[200~a\rb\tc\x1b[201~", "z"],
+            ),
+            (["hi\x1b[200~x", "\x1b[201~"], ["h", "i", "\x1b[200~x\x1b[201~"]),
+            (["hi\x1b[20", "0~x\x1b[201~"], ["h", "i", "\x1b[200~x\x1b[201~"]),
+            (["\x1b[200~ab\x1b[20", "1~c"], ["\x1b[200~ab\x1b[201~", "c"]),
+        ],
+    )
+    def test_paste_never_split_across_yields(self, pipe, parts, tokens) -> None:
+        _, w = pipe
+
+        async def feed() -> None:
+            for p in parts:
+                os.write(w, p.encode())
+                await asyncio.sleep(0.01)
+
+        async def go() -> list[str]:
+            got = ""
+            task = asyncio.ensure_future(feed())
+            async with contextlib.aclosing(tty.keys()) as ks:
+                while got != "".join(parts):
+                    chunk = await asyncio.wait_for(anext(ks), 1)
+                    assert chunk.count("\x1b[200~") == chunk.count("\x1b[201~")
+                    got += chunk
+            await task
+            return [m[0] for m in tty.TOKEN.finditer(got)]
+
+        assert asyncio.run(go()) == tokens
 
     def test_reader_removed_on_close(self, pipe) -> None:
         r, _ = pipe
