@@ -63,7 +63,7 @@ class AgentCLI:
         self.modes = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
         self.mode = self.modes[0]
         self.start_phrase = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
-        self.compact_tokens = int(os.environ.get("NKD_COMPACT_TOKENS", 20000))
+        self.compact_tokens = int(os.environ.get("NKD_COMPACT_TOKENS", 50000))
         self.kwargs = {
             "model": MODELS[0],
             "max_tokens": 20000,
