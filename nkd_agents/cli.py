@@ -84,7 +84,7 @@ class AgentCLI:
     def label(self) -> str:
         busy = "●" if self.current_task else "○"
         model = self.kwargs["model"].split("-")[1]
-        return f"{model}|{self.mode.lower()} {busy} "
+        return f"{self.mode.lower()}|{model}|{busy} "
 
     def switch_model(self) -> None:
         i = MODELS.index(self.kwargs["model"])
