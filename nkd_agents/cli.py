@@ -101,7 +101,7 @@ class AgentCLI:
 
     def submit(self) -> None:
         if line := self.tui.buf.strip():
-            self.tui.log(f"{DIM}❯ {line}{RESET}\n")
+            self.tui.log(f"{DIM}{self.label()}{line}{RESET}\n")
             self.q.put_nowait(line)
         self.tui.buf = ""
 
