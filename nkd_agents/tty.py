@@ -9,8 +9,6 @@ import termios
 import unicodedata
 from collections.abc import AsyncGenerator, Callable, Iterator
 
-PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
-
 
 def write(s: str) -> None:
     sys.stdout.write(s)
@@ -82,8 +80,8 @@ class TUI:
         pasting = False
         async with contextlib.aclosing(keys()) as ks:
             async for s in ks:
-                if pasting or s.startswith(PASTE_START):
-                    text, end, s = s.removeprefix(PASTE_START).partition(PASTE_END)
+                if pasting or s.startswith("\x1b[200~"):  # paste start and paste end
+                    text, end, s = s.removeprefix("\x1b[200~").partition("\x1b[201~")
                     self.paste(text)
                     pasting = not end
                 if fn := bindings.get(s):

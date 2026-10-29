@@ -224,16 +224,16 @@ class TestCLI:
         assert seen == [*cli.modes[1:], cli.modes[0]]
 
     def test_label_idle(self, cli: AgentCLI):
-        assert cli.label() == "S Act ○ "
+        assert cli.label() == "sonnet|act ○ "
 
     def test_label_busy(self, cli: AgentCLI):
         cli.current_task = MagicMock()
-        assert cli.label() == "S Act ● "
+        assert cli.label() == "sonnet|act ● "
 
     def test_label_tracks_model_and_mode(self, cli: AgentCLI):
         cli.switch_model()
         cli.cycle_mode()
-        assert cli.label() == "O Plan ○ "
+        assert cli.label() == "opus|plan ○ "
 
     def test_submit_logs_queues_and_clears(self, cli: AgentCLI, tui: TUI):
         tui.buf = "  hello \n"

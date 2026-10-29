@@ -55,7 +55,7 @@ def tool_schema(
 def fmt_usage(u: Usage) -> str:
     think = u.output_tokens_details.thinking_tokens if u.output_tokens_details else 0
     read, write = u.cache_read_input_tokens or 0, u.cache_creation_input_tokens or 0
-    return f"↑{u.input_tokens} ↓{u.output_tokens} t{think} · cache r{read} w{write}"
+    return f"↑{u.input_tokens} ↓{u.output_tokens} t{think} | cache r{read} w{write}"
 
 
 def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlock]]:
@@ -141,13 +141,13 @@ async def agent(
         i = 0
         while True:
             span.set_attribute("turns", i)
-            resp = await client.messages.create(**kwargs)
-            logger.info("%s %s · %s", i, resp.stop_reason, fmt_usage(resp.usage))
+            msg = await client.messages.create(**kwargs)
+            logger.info("%s | %s | %s", i, msg.stop_reason, fmt_usage(msg.usage))
 
-            text, tool_calls = extract_text_and_tool_calls(resp)
+            text, tool_calls = extract_text_and_tool_calls(msg)
             results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])
 
-            kwargs["messages"].append({"role": "assistant", "content": resp.content})
+            kwargs["messages"].append({"role": "assistant", "content": msg.content})
             if not tool_calls:
                 return text
             kwargs["messages"].append({"role": "user", "content": results})
