@@ -69,7 +69,7 @@ def fmt_usage(u: ResponseUsage | None) -> str:
     think = u.output_tokens_details.reasoning_tokens
     read = u.input_tokens_details.cached_tokens
     write = u.input_tokens_details.cache_write_tokens
-    return f"↑{u.input_tokens} ↓{u.output_tokens} t{think} · cache r{read} w{write}"
+    return f"↑{u.input_tokens} ↓{u.output_tokens} t{think} | cache r{read} w{write}"
 
 
 def extract_text_and_tool_calls(
@@ -167,7 +167,7 @@ async def agent(
         while True:
             span.set_attribute("turns", i)
             resp = await client.responses.create(**kwargs)
-            logger.info("%s %s · %s", i, resp.status, fmt_usage(resp.usage))
+            logger.info("%s | %s | %s", i, resp.status, fmt_usage(resp.usage))
 
             text, tool_calls = extract_text_and_tool_calls(resp)
             results = await asyncio.gather(*[tool(tc, fns) for tc in tool_calls])

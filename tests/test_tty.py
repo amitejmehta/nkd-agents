@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from nkd_agents import tty
-from nkd_agents.tty import PASTE_END, PASTE_START, TUI, TUIHandler, cell_width
+from nkd_agents.tty import TUI, TUIHandler, cell_width
 
 ESC = "\x1b"
 
@@ -167,12 +167,12 @@ class TestPrompt:
 
     def test_paste_in_one_chunk_keeps_trailing_input(self, cols, drive) -> None:
         ui = TUI()
-        drive(ui, [f"{PASTE_START}l1\nl2{PASTE_END}y"])
+        drive(ui, ["\x1b[200~l1\nl2\x1b[201~y"])
         assert ui.buf == "l1\nl2y"
 
     def test_paste_split_across_chunks(self, cols, drive) -> None:
         ui = TUI()
-        drive(ui, [f"{PASTE_START}a\r", "b\t", f"c{PASTE_END}z"])
+        drive(ui, ["\x1b[200~a\r", "b\t", "c\x1b[201~z"])
         assert ui.buf == "a\nbcz"
 
     def test_paste_content_does_not_trigger_bindings(self, cols, drive) -> None:
@@ -180,7 +180,7 @@ class TestPrompt:
         ui = TUI()
         drive(
             ui,
-            [f"{PASTE_START}a\rb{PASTE_END}"],
+            ["\x1b[200~a\rb\x1b[201~"],
             {"\r": lambda: hits.append("cr")},
         )
         assert hits == []

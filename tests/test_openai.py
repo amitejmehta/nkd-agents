@@ -282,7 +282,7 @@ def _text_msg(text: str) -> ResponseOutputMessage:
 
 @pytest.mark.asyncio
 async def test_agent_logs_turn_format(caplog):
-    """Each turn logs `{i} {status} · {usage}`."""
+    """Each turn logs `{i} | {status} | {usage}`."""
 
     async def echo(text: str) -> str:
         """Echo"""
@@ -300,8 +300,8 @@ async def test_agent_logs_turn_format(caplog):
             input=[{"role": "user", "content": "hi"}],
         )
     lines = [r.getMessage() for r in caplog.records]
-    assert lines[0].startswith("0 completed · ")
-    assert lines[1].startswith("1 completed · ")
+    assert lines[0].startswith("0 | completed | ")
+    assert lines[1].startswith("1 | completed | ")
     assert lines[2] == "gpt-4o: done"
 
 
@@ -402,7 +402,7 @@ def test_fmt_usage():
         input_tokens_details=InputTokensDetails(cached_tokens=3, cache_write_tokens=2),
         output_tokens_details=OutputTokensDetails(reasoning_tokens=4),
     )
-    assert fmt_usage(u) == "↑10 ↓5 t4 · cache r3 w2"
+    assert fmt_usage(u) == "↑10 ↓5 t4 | cache r3 w2"
 
 
 def test_fmt_usage_none():
