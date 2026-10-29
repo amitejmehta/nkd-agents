@@ -63,7 +63,7 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
 
     for block in response.content:
         if block.type == "thinking":
-            logger.info("%s thinking: %s", response.model, block.thinking)
+            logger.info("%s thinking: %s", response.model, block.thinking.strip())
         if block.type == "text":
             text += block.text
             logger.info("%s: %s", response.model, block.text)

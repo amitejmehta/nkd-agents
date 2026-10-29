@@ -29,7 +29,7 @@ def configure_logging(
     prefix = "%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)s - "
     if not metadata:
         prefix = ""
-    fmt = f"\n{DIM}{prefix}{RESET}%(message)s{RESET}{DIM}%(context)s{RESET}"
+    fmt = f"{DIM}{prefix}{RESET}%(message)s{RESET}{DIM}%(context)s{RESET}\n"
     handler = handler or logging.StreamHandler(sys.stderr)
     handler.addFilter(ContextFilter())
     logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
