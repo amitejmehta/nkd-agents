@@ -136,6 +136,21 @@ class TestRun:
             task.cancel()
         assert calls == 2
 
+    async def test_quit_during_busy_turn_exits(self, cli: AgentCLI, tui: TUI):
+        async def slow(*args, **kwargs):
+            await asyncio.sleep(10)
+
+        async def quit_soon(bindings):
+            await asyncio.sleep(0.02)
+            raise EOFError
+
+        tui.input_loop = quit_soon
+        cli.q.put_nowait("go")
+        with patch.object(cli_module, "agent", side_effect=slow):
+            with pytest.raises(ExceptionGroup) as e:
+                await asyncio.wait_for(cli.run(), 1)
+        assert e.group_contains(EOFError)
+
     async def test_logs_error_and_continues(self, cli: AgentCLI, caplog):
         fake = AsyncMock(side_effect=[RuntimeError("boom"), None])
         with patch.object(cli_module, "agent", fake):

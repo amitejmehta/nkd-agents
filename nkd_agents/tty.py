@@ -46,15 +46,25 @@ TOKEN = re.compile(
 
 
 async def keys() -> AsyncGenerator[str]:
-    fd, q = sys.stdin.fileno(), asyncio.Queue[str]()
+    fd, q = sys.stdin.fileno(), asyncio.Queue[bytes]()
     dec = codecs.getincrementaldecoder("utf-8")("replace")
     loop = asyncio.get_running_loop()
-    loop.add_reader(fd, lambda: q.put_nowait(dec.decode(os.read(fd, 4096))))
+
+    def on_readable() -> None:
+        try:
+            q.put_nowait(os.read(fd, 4096))
+        except OSError:
+            q.put_nowait(b"")
+
+    loop.add_reader(fd, on_readable)
     buf = ""
     try:
         with raw(fd):
             while True:
-                buf += await q.get()
+                data = await q.get()
+                if not data:
+                    raise EOFError
+                buf += dec.decode(data)
                 if (cut := buf.rfind("\x1b[200~")) <= buf.rfind("\x1b[201~"):
                     start = "\x1b[200~"
                     cut = len(buf) - next(
@@ -75,7 +85,7 @@ class TUI:
     def draw(self) -> None:
         cols = shutil.get_terminal_size().columns
         label = self.label().replace("\n", " ")
-        text = self.buf.replace("\n", " ")
+        text = self.buf.replace("\n", " ").replace("\t", " ")
         used, start = sum(map(cell_width, label)), len(text)
         while start and used + cell_width(text[start - 1]) <= cols - 1:
             start -= 1
@@ -88,7 +98,7 @@ class TUI:
 
     def paste(self, text: str) -> None:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
-        self.buf += "".join(c for c in text if c.isprintable() or c == "\n")
+        self.buf += "".join(c for c in text if c.isprintable() or c in "\n\t")
 
     async def input_loop(self, bindings: dict[str, Callable[[], None]]) -> None:
         self.draw()

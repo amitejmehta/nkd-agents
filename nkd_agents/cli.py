@@ -92,7 +92,8 @@ class AgentCLI:
                 try:
                     await self.turn
                 except asyncio.CancelledError:
-                    pass
+                    if (task := asyncio.current_task()) and task.cancelling():
+                        raise
                 except Exception as e:
                     logger.exception(f"{RED}error: {e}{RESET}")
                 finally:
