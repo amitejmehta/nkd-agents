@@ -105,8 +105,8 @@ class TestPaste:
 
     def test_control_chars_dropped_newlines_kept(self) -> None:
         ui = TUI()
-        ui.paste(f"a{ESC}[Ab\tc\nd")
-        assert ui.buf == "a[Abc\nd"
+        ui.paste(f"a{ESC}[Ab\tc\nd\x01")
+        assert ui.buf == "a[Ab\tc\nd"
 
     def test_appends_to_existing_buffer(self) -> None:
         ui = TUI()
@@ -123,7 +123,7 @@ class TestPrompt:
 
     def test_control_chars_not_inserted(self, cols, drive) -> None:
         ui = TUI()
-        drive(ui, ["a\x01\x7fb"])
+        drive(ui, ["a\x01b"])
         assert ui.buf == "ab"
 
     def test_whole_key_binding(self, cols, drive) -> None:
@@ -194,7 +194,8 @@ class TestKeys:
         monkeypatch.setattr(tty, "raw", lambda fd: contextlib.nullcontext())
         yield r, w
         os.close(r)
-        os.close(w)
+        with contextlib.suppress(OSError):
+            os.close(w)
 
     def test_yields_read_chunks(self, pipe) -> None:
         _, w = pipe
@@ -256,6 +257,17 @@ class TestKeys:
 
         assert asyncio.run(go()) == tokens
 
+    def test_eof_raises(self, pipe) -> None:
+        _, w = pipe
+        os.close(w)
+
+        async def go() -> None:
+            async with contextlib.aclosing(tty.keys()) as ks:
+                await asyncio.wait_for(anext(ks), 1)
+
+        with pytest.raises(EOFError):
+            asyncio.run(go())
+
     def test_reader_removed_on_close(self, pipe) -> None:
         r, _ = pipe
 
@@ -290,3 +302,10 @@ class TestRaw:
         assert not new[3] & (termios.ECHO | termios.ICANON | termios.ISIG)
         assert new[6][termios.VMIN] == 1
         assert old[3] == 0xFFFF
+
+
+def test_draw_shows_tab_as_one_cell(capsys) -> None:
+    ui = TUI()
+    ui.buf = "a\tb"
+    ui.draw()
+    assert capsys.readouterr().out == "\r\x1b[Ka b"
