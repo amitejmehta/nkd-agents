@@ -43,7 +43,6 @@ class AgentCLI:
             self.kwargs["system"] = system
         self.bindings = {
             "\r": self.submit,  # enter
-            "\x03": self.quit,  # ctrl-c
             "\x1b": self.escape,  # esc
             "\t": self.switch_model,  # tab
             "\x1b[Z": self.cycle_mode,  # shift-tab
@@ -52,7 +51,8 @@ class AgentCLI:
     def label(self) -> str:
         busy = "●" if self.turn else "○"
         model = self.kwargs["model"].split("-")[1]
-        return f"{self.mode.lower()}|{model}|{busy} "
+        queued = self.q.qsize() or ""
+        return f"{self.mode.lower()}|{model}|{busy}{queued} "
 
     def switch_model(self) -> None:
         i = MODELS.index(self.kwargs["model"])
@@ -69,12 +69,8 @@ class AgentCLI:
 
     def submit(self) -> None:
         if line := self.tui.buf.strip():
-            self.tui.log(f"{DIM}{self.label()}{line}{RESET}\n")
             self.q.put_nowait(line)
         self.tui.buf = ""
-
-    def quit(self) -> None:
-        raise EOFError
 
     async def run(self) -> None:
         async with asyncio.TaskGroup() as tg:
@@ -83,8 +79,10 @@ class AgentCLI:
                 parts = [await self.q.get()]
                 while not self.q.empty():
                     parts.append(self.q.get_nowait())
+                text = "\n".join(parts)
+                self.tui.log(f"{DIM}{self.label()}{text}{RESET}\n")
                 prefix = f"CWD: {Path.cwd()} Mode: {self.mode}. {self.start_phrase} "
-                self.msgs.append({"role": "user", "content": prefix + "\n".join(parts)})
+                self.msgs.append({"role": "user", "content": prefix + text})
                 self.turn = asyncio.create_task(
                     agent(self.client, fns=self.fns, messages=self.msgs, **self.kwargs)
                 )

@@ -27,7 +27,7 @@ def raw(fd: int) -> Iterator[None]:
     old = termios.tcgetattr(fd)
     new = termios.tcgetattr(fd)
     new[0] &= ~(termios.IXON | termios.ICRNL)
-    new[3] &= ~(termios.ECHO | termios.ICANON | termios.ISIG | termios.IEXTEN)
+    new[3] &= ~(termios.ECHO | termios.ICANON | termios.IEXTEN)
     new[6][termios.VMIN], new[6][termios.VTIME] = 1, 0
     termios.tcsetattr(fd, termios.TCSANOW, new)
     write("\x1b[?2004h")  # paste on
