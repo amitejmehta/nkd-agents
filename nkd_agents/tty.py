@@ -22,12 +22,22 @@ def cell_width(c: str) -> int:
     return 2 if unicodedata.east_asian_width(c) in "WF" else 1
 
 
+def clip(s: str, room: int) -> str:
+    used = 0
+    for i, c in enumerate(s):
+        used += cell_width(c)
+        if used > room:
+            return s[:i]
+    return s
+
+
 @contextlib.contextmanager
 def raw(fd: int) -> Iterator[None]:
     old = termios.tcgetattr(fd)
     new = termios.tcgetattr(fd)
     new[0] &= ~(termios.IXON | termios.ICRNL)
     new[3] &= ~(termios.ECHO | termios.ICANON | termios.IEXTEN)
+    new[6][termios.VSUSP] = bytes([os.fpathconf(fd, "PC_VDISABLE")])
     new[6][termios.VMIN], new[6][termios.VTIME] = 1, 0
     termios.tcsetattr(fd, termios.TCSANOW, new)
     write("\x1b[?2004h")  # paste on
@@ -84,7 +94,7 @@ class TUI:
 
     def draw(self) -> None:
         cols = shutil.get_terminal_size().columns
-        label = self.label().replace("\n", " ")
+        label = clip(self.label().replace("\n", " "), cols // 2)
         text = self.buf.replace("\n", " ").replace("\t", " ")
         used, start = sum(map(cell_width, label)), len(text)
         while start and used + cell_width(text[start - 1]) <= cols - 1:

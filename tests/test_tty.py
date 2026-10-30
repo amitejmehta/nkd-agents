@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from nkd_agents import tty
-from nkd_agents.tty import TUI, TUIHandler, cell_width
+from nkd_agents.tty import TUI, TUIHandler, cell_width, clip
 
 ESC = "\x1b"
 
@@ -46,7 +46,28 @@ def test_cell_width(char: str, width: int) -> None:
     assert cell_width(char) == width
 
 
+@pytest.mark.parametrize(
+    "text,room,expected",
+    [
+        ("abc", 5, "abc"),
+        ("abc", 2, "ab"),
+        ("a日b", 2, "a"),
+        ("a日b", 3, "a日"),
+        ("abc", 0, ""),
+    ],
+)
+def test_clip(text: str, room: int, expected: str) -> None:
+    assert clip(text, room) == expected
+
+
 class TestDraw:
+    def test_label_capped_at_half_cols(self, cols, capsys) -> None:
+        cols(10)
+        ui = TUI(lambda: "0123456789abcdef")
+        ui.buf = "xy"
+        ui.draw()
+        assert capsys.readouterr().out == "\r\x1b[K01234xy"
+
     def test_label_then_buffer(self, cols, capsys) -> None:
         ui = TUI(lambda: "> ")
         ui.buf = "abc"
@@ -293,6 +314,7 @@ class TestRaw:
         monkeypatch.setattr(
             termios, "tcsetattr", lambda fd, when, attrs: calls.append((when, attrs))
         )
+        monkeypatch.setattr(os, "fpathconf", lambda fd, name: 0xFF)
         with pytest.raises(RuntimeError), tty.raw(0):
             assert capsys.readouterr().out == "\x1b[?2004h"
             raise RuntimeError
@@ -301,6 +323,7 @@ class TestRaw:
         assert (when1, when2) == (termios.TCSANOW, termios.TCSADRAIN)
         assert not new[3] & (termios.ECHO | termios.ICANON)
         assert new[3] & termios.ISIG
+        assert new[6][termios.VSUSP] == b"\xff"
         assert new[6][termios.VMIN] == 1
         assert old[3] == 0xFFFF
 
