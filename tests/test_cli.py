@@ -117,6 +117,8 @@ class TestRun:
             await run_until_idle(cli)
         llm.assert_called_once()
         assert cli.msgs[0]["content"].endswith("a\nb")
+        cli.tui.log.assert_called_once()
+        assert "a\nb" in cli.tui.log.call_args.args[0]
 
     async def test_survives_cancelled_turn(self, cli: AgentCLI):
         calls = 0
@@ -183,14 +185,9 @@ class TestCLI:
 
     def test_bindings(self, cli: AgentCLI):
         assert cli.bindings["\r"] == cli.submit
-        assert cli.bindings["\x03"] == cli.quit
         assert cli.bindings[ESC] == cli.escape
         assert cli.bindings["\t"] == cli.switch_model
         assert cli.bindings[ESC + "[Z"] == cli.cycle_mode
-
-    def test_quit_raises_eof(self, cli: AgentCLI):
-        with pytest.raises(EOFError):
-            cli.quit()
 
     def test_switch_model_cycles_and_wraps(self, cli: AgentCLI):
         seen = []
@@ -218,13 +215,17 @@ class TestCLI:
         cli.cycle_mode()
         assert cli.label() == "plan|opus|○ "
 
-    def test_submit_logs_queues_and_clears(self, cli: AgentCLI, tui: TUI):
+    def test_submit_queues_and_clears(self, cli: AgentCLI, tui: TUI):
         tui.buf = "  hello \n"
         cli.submit()
         assert cli.q.get_nowait() == "hello"
         assert tui.buf == ""
-        tui.log.assert_called_once()
-        assert "hello" in tui.log.call_args.args[0]
+        tui.log.assert_not_called()
+
+    def test_label_shows_queue_count(self, cli: AgentCLI):
+        cli.q.put_nowait("a")
+        cli.q.put_nowait("b")
+        assert cli.label() == "act|sonnet|○2 "
 
     def test_submit_blank_does_nothing(self, cli: AgentCLI, tui: TUI):
         tui.buf = "   "

@@ -299,7 +299,8 @@ class TestRaw:
         assert capsys.readouterr().out == "\x1b[?2004l"
         (when1, new), (when2, old) = calls
         assert (when1, when2) == (termios.TCSANOW, termios.TCSADRAIN)
-        assert not new[3] & (termios.ECHO | termios.ICANON | termios.ISIG)
+        assert not new[3] & (termios.ECHO | termios.ICANON)
+        assert new[3] & termios.ISIG
         assert new[6][termios.VMIN] == 1
         assert old[3] == 0xFFFF
 
