@@ -6,7 +6,6 @@ import pytest
 from nkd_agents import cli as cli_module
 from nkd_agents.cli import (
     MODELS,
-    THINKING,
     AgentCLI,
 )
 from nkd_agents.tools import bash, edit_file, read_file, write_file
@@ -34,7 +33,7 @@ async def forever(*args) -> None:
 def cli() -> AgentCLI:
     cli = AgentCLI()
     cli.tui.draw = MagicMock()
-    cli.tui.log = MagicMock()
+    cli.tui.write = MagicMock()
     cli.tui.input_loop = AsyncMock(side_effect=forever)
     return cli
 
@@ -55,7 +54,10 @@ async def run_until_idle(cli: AgentCLI, delay: float = 0.05) -> None:
 class TestInit:
     def test_defaults(self, cli: AgentCLI):
         assert cli.kwargs["model"] == MODELS[0]
-        assert cli.kwargs["thinking"] == THINKING
+        assert cli.kwargs["thinking"] == {
+            "type": "adaptive",
+            "display": "summarized",
+        }
         assert cli.kwargs["max_tokens"] == 20000
         assert cli.msgs == []
         assert cli.turn is None
@@ -94,7 +96,7 @@ class TestSystemPrompt:
 
 class TestRun:
     async def test_prepends_cwd_mode_and_phrase(self, cli: AgentCLI, tmp_path):
-        cli.cycle_mode()
+        cli.on_key(ESC + "[Z")
         with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
             cli.q.put_nowait("hello")
             await run_until_idle(cli)
@@ -117,8 +119,8 @@ class TestRun:
             await run_until_idle(cli)
         llm.assert_called_once()
         assert cli.msgs[0]["content"].endswith("a\nb")
-        cli.tui.log.assert_called_once()
-        assert "a\nb" in cli.tui.log.call_args.args[0]
+        cli.tui.write.assert_called_once()
+        assert "a\nb" in cli.tui.write.call_args.args[0]
 
     async def test_survives_cancelled_turn(self, cli: AgentCLI):
         calls = 0
@@ -142,7 +144,7 @@ class TestRun:
         async def slow(*args, **kwargs):
             await asyncio.sleep(10)
 
-        async def quit_soon(bindings):
+        async def quit_soon(on_key):
             await asyncio.sleep(0.02)
             raise EOFError
 
@@ -183,77 +185,70 @@ class TestCLI:
     def test_binds_ui_label(self, cli: AgentCLI):
         assert cli.tui.label() == cli.label()
 
-    def test_bindings(self, cli: AgentCLI):
-        assert cli.bindings["\r"] == cli.submit
-        assert cli.bindings[ESC] == cli.escape
-        assert cli.bindings["\t"] == cli.switch_model
-        assert cli.bindings[ESC + "[Z"] == cli.cycle_mode
-
     def test_switch_model_cycles_and_wraps(self, cli: AgentCLI):
         seen = []
         for _ in range(len(MODELS) + 1):
-            cli.switch_model()
+            cli.on_key("\t")
             seen.append(cli.kwargs["model"])
         assert seen == [*MODELS[1:], MODELS[0], MODELS[1]]
 
     def test_cycle_mode_wraps(self, cli: AgentCLI):
         seen = []
         for _ in range(len(cli.modes)):
-            cli.cycle_mode()
+            cli.on_key(ESC + "[Z")
             seen.append(cli.mode)
         assert seen == [*cli.modes[1:], cli.modes[0]]
 
     def test_label_idle(self, cli: AgentCLI):
-        assert cli.label() == "act|sonnet|○ "
+        assert cli.label() == "act|sonnet|0 "
 
     def test_label_busy(self, cli: AgentCLI):
         cli.turn = MagicMock()
-        assert cli.label() == "act|sonnet|● "
+        assert cli.label() == "act|sonnet|1 "
 
     def test_label_tracks_model_and_mode(self, cli: AgentCLI):
-        cli.switch_model()
-        cli.cycle_mode()
-        assert cli.label() == "plan|opus|○ "
+        cli.on_key("\t")
+        cli.on_key(ESC + "[Z")
+        assert cli.label() == "plan|opus|0 "
 
-    def test_submit_queues_and_clears(self, cli: AgentCLI, tui: TUI):
-        tui.buf = "  hello \n"
-        cli.submit()
-        assert cli.q.get_nowait() == "hello"
-        assert tui.buf == ""
-        tui.log.assert_not_called()
-
-    def test_label_shows_queue_count(self, cli: AgentCLI):
+    def test_label_counts_queued_plus_busy(self, cli: AgentCLI):
         cli.q.put_nowait("a")
         cli.q.put_nowait("b")
-        assert cli.label() == "act|sonnet|○2 "
-
-    def test_submit_blank_does_nothing(self, cli: AgentCLI, tui: TUI):
-        tui.buf = "   "
-        cli.submit()
-        assert cli.q.empty()
-        assert tui.buf == ""
-        tui.log.assert_not_called()
-
-    def test_escape_clears_buffer_first(self, cli: AgentCLI, tui: TUI):
         cli.turn = MagicMock()
-        tui.buf = "typed"
-        cli.escape()
-        assert tui.buf == ""
+        assert cli.label() == "act|sonnet|3 "
+
+    def test_enter_queues_and_clears(self, cli: AgentCLI):
+        cli.tui.buf = "  hello \n"
+        cli.on_key("\r")
+        assert cli.q.get_nowait() == "hello"
+        assert cli.tui.buf == ""
+
+    def test_enter_blank_does_nothing(self, cli: AgentCLI):
+        cli.tui.buf = "   "
+        cli.on_key("\r")
+        assert cli.q.empty()
+        assert cli.tui.buf == ""
+
+    def test_escape_clears_buffer_first(self, cli: AgentCLI):
+        cli.turn = MagicMock()
+        cli.tui.buf = "typed"
+        cli.on_key(ESC)
+        assert cli.tui.buf == ""
         cli.turn.cancel.assert_not_called()
 
     def test_escape_without_task_is_noop(self, cli: AgentCLI):
-        cli.escape()
+        cli.on_key(ESC)
 
     def test_escape_interrupts_when_buffer_empty(self, cli: AgentCLI):
         cli.turn = MagicMock()
-        cli.escape()
+        cli.on_key(ESC)
         cli.turn.cancel.assert_called_once()
 
 
 class TestRunWiring:
-    async def test_starts_input_loop_with_bindings(self, cli: AgentCLI, tui: TUI):
+    async def test_starts_input_loop_with_on_key(self, cli: AgentCLI, tui: TUI):
         await run_until_idle(cli)
-        tui.input_loop.assert_awaited_once_with(cli.bindings)
+        tui.input_loop.assert_awaited_once_with(cli.on_key)
 
     async def test_quit_ends_run(self, cli: AgentCLI, tui: TUI):
         tui.input_loop = AsyncMock(side_effect=EOFError)

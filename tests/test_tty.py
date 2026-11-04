@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from nkd_agents import tty
-from nkd_agents.tty import TUI, TUIHandler, cell_width, clip
+from nkd_agents.tty import TUI
 
 ESC = "\x1b"
 
@@ -27,182 +27,103 @@ def cols(monkeypatch: pytest.MonkeyPatch) -> Callable[[int], None]:
 
 
 @pytest.fixture
-def drive(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
-    def run(ui: TUI, chunks: list[str], bindings: dict | None = None) -> None:
+def drive(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[str]]:
+    def run(ui: TUI, chunks: list[str]) -> list[str]:
+        got: list[str] = []
+
         async def fake_keys() -> AsyncGenerator[str]:
             for chunk in chunks:
                 yield chunk
 
         monkeypatch.setattr(tty, "keys", fake_keys)
-        asyncio.run(ui.input_loop(bindings or {}))
+        asyncio.run(ui.input_loop(got.append))
+        return got
 
     return run
 
 
-@pytest.mark.parametrize(
-    "char,width", [("a", 1), ("日", 2), ("\u0301", 0), ("😀", 2), ("ｗ", 2)]
-)
-def test_cell_width(char: str, width: int) -> None:
-    assert cell_width(char) == width
-
-
-@pytest.mark.parametrize(
-    "text,room,expected",
-    [
-        ("abc", 5, "abc"),
-        ("abc", 2, "ab"),
-        ("a日b", 2, "a"),
-        ("a日b", 3, "a日"),
-        ("abc", 0, ""),
-    ],
-)
-def test_clip(text: str, room: int, expected: str) -> None:
-    assert clip(text, room) == expected
-
-
 class TestDraw:
-    def test_label_capped_at_half_cols(self, cols, capsys) -> None:
-        cols(10)
-        ui = TUI(lambda: "0123456789abcdef")
-        ui.buf = "xy"
-        ui.draw()
-        assert capsys.readouterr().out == "\r\x1b[K01234xy"
-
-    def test_label_then_buffer(self, cols, capsys) -> None:
-        ui = TUI(lambda: "> ")
-        ui.buf = "abc"
-        ui.draw()
-        assert capsys.readouterr().out == "\r\x1b[K> abc"
+    def test_renders_text(self, cols, capsys) -> None:
+        TUI(lambda: "> hi").draw()
+        assert capsys.readouterr().out == "\r\x1b[K> hi"
 
     def test_keeps_tail_within_cols_minus_one(self, cols, capsys) -> None:
         cols(6)
-        ui = TUI(lambda: "> ")
-        ui.buf = "abcdefghij"
-        ui.draw()
-        assert capsys.readouterr().out.endswith("hij")
+        TUI(lambda: "abcdefghij").draw()
+        assert capsys.readouterr().out == "\r\x1b[Kfghij"
 
-    def test_wide_char_never_straddles_edge(self, cols, capsys) -> None:
-        cols(6)
-        ui = TUI(lambda: "> ")
-        ui.buf = "a日本語"
-        ui.draw()
-        assert capsys.readouterr().out.endswith("語")
-
-    def test_newlines_become_spaces(self, cols, capsys) -> None:
-        ui = TUI(lambda: "a\nb ")
-        ui.buf = "x\ny"
-        ui.draw()
-        assert capsys.readouterr().out == "\r\x1b[Ka b x y"
-
-    def test_empty_buffer_shows_label_only(self, cols, capsys) -> None:
-        ui = TUI(lambda: "> ")
-        ui.draw()
-        assert capsys.readouterr().out == "\r\x1b[K> "
-
-
-class TestLog:
-    def test_clears_line_converts_newlines_and_redraws(self, cols, capsys) -> None:
-        ui = TUI(lambda: "> ")
-        ui.buf = "hi"
-        ui.log("a\nb")
-        assert capsys.readouterr().out == ("\r\x1b[Ka\r\nb\r\n\r\x1b[K> hi")
-
-
-class TestTUIHandler:
-    def test_emit_logs_through_tui(self, cols, capsys) -> None:
-        ui = TUI(lambda: "> ")
-        ui.buf = "hi"
-        rec = logging.LogRecord("n", logging.INFO, "", 0, "msg", None, None)
-        TUIHandler(ui).emit(rec)
-        assert capsys.readouterr().out == "\r\x1b[Kmsg\r\n\r\x1b[K> hi"
-
-
-class TestPaste:
-    @pytest.mark.parametrize("ending", ["\n", "\r", "\r\n"], ids=["lf", "cr", "crlf"])
-    def test_line_endings_become_newline(self, ending: str) -> None:
+    def test_newlines_and_tabs_become_spaces(self, cols, capsys) -> None:
         ui = TUI()
-        ui.paste(ending.join(["l1", "l2", "l3"]))
-        assert ui.buf == "l1\nl2\nl3"
+        ui.buf = "a\nb\tc"
+        ui.draw()
+        assert capsys.readouterr().out == "\r\x1b[Ka b c"
+
+
+class TestWrite:
+    def test_clears_line_writes_and_redraws(self, cols, capsys) -> None:
+        TUI(lambda: "> ").write("hello\n")
+        assert capsys.readouterr().out == "\r\x1b[Khello\n\r\x1b[K> "
+
+    def test_flush_is_noop(self) -> None:
+        TUI().flush()
+
+    def test_works_as_logging_stream(self, cols, capsys) -> None:
+        log = logging.getLogger("test_tui_stream")
+        log.propagate = False
+        log.setLevel(logging.INFO)
+        handler = logging.StreamHandler(TUI(lambda: "> "))
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        log.addHandler(handler)
+        try:
+            log.info("hi")
+        finally:
+            log.removeHandler(handler)
+        assert capsys.readouterr().out == "\r\x1b[Khi\n\r\x1b[K> "
+
+
+class TestClean:
+    @pytest.mark.parametrize("ending", ["\r\n", "\r", "\n"])
+    def test_line_endings_become_newline(self, ending: str) -> None:
+        assert tty.clean(f"a{ending}b") == "a\nb"
 
     def test_control_chars_dropped_newlines_kept(self) -> None:
-        ui = TUI()
-        ui.paste(f"a{ESC}[Ab\tc\nd\x01")
-        assert ui.buf == "a[Ab\tc\nd"
+        assert tty.clean("a\x00b\x07\nc") == "ab\nc"
 
-    def test_appends_to_existing_buffer(self) -> None:
-        ui = TUI()
-        ui.buf = "see "
-        ui.paste("x")
-        assert ui.buf == "see x"
+    def test_tab_becomes_spaces(self) -> None:
+        assert tty.clean("a\tb") == "a    b"
 
 
-class TestPrompt:
-    def test_typing_appends_printable(self, cols, drive) -> None:
+class TestInputLoop:
+    def test_typed_chars_go_to_buf(self, cols, drive) -> None:
         ui = TUI()
-        drive(ui, ["a", "bc", "é", "😀"])
-        assert ui.buf == "abcé😀"
-
-    def test_control_chars_not_inserted(self, cols, drive) -> None:
-        ui = TUI()
-        drive(ui, ["a\x01b"])
+        assert drive(ui, ["ab"]) == []
         assert ui.buf == "ab"
 
-    def test_whole_key_binding(self, cols, drive) -> None:
-        hits: list[str] = []
-        drive(
-            TUI(),
-            ["\t", ESC, ESC + "[Z"],
-            {
-                "\t": lambda: hits.append("tab"),
-                ESC: lambda: hits.append("esc"),
-                ESC + "[Z": lambda: hits.append("shift-tab"),
-            },
-        )
-        assert hits == ["tab", "esc", "shift-tab"]
+    def test_escape_sequences_are_one_key(self, cols, drive) -> None:
+        assert drive(TUI(), [ESC + "[Z", ESC]) == [ESC + "[Z", ESC]
 
-    def test_binding_fires_per_char_in_chunk(self, cols, drive) -> None:
+    def test_paste_is_cleaned_into_buf(self, cols, drive) -> None:
         ui = TUI()
-        drive(ui, ["ab\rcd"], {"\r": lambda: setattr(ui, "buf", "")})
-        assert ui.buf == "cd"
+        assert drive(ui, ["\x1b[200~a\r\nb\x1b[201~z"]) == []
+        assert ui.buf == "a\nbz"
 
-    def test_bound_key_is_not_inserted(self, cols, drive) -> None:
+    def test_empty_paste_ignored(self, cols, drive) -> None:
         ui = TUI()
-        drive(ui, ["\t"], {"\t": lambda: None})
+        assert drive(ui, ["\x1b[200~\x1b[201~"]) == []
         assert ui.buf == ""
 
-    @pytest.mark.parametrize("seq", ["[A", "[Z", "OP", "x", "\x7f"])
-    def test_unbound_escape_sequences_dropped(self, cols, drive, seq: str) -> None:
-        hits: list[str] = []
-        ui = TUI()
-        ui.buf = "ab"
-        drive(ui, [ESC + seq], {ESC: lambda: hits.append("esc")})
-        assert hits == []
-        assert ui.buf == "ab"
+    def test_on_key_exception_propagates(self, cols, monkeypatch) -> None:
+        async def fake_keys() -> AsyncGenerator[str]:
+            yield "\r"
 
-    def test_binding_exception_propagates(self, cols, drive) -> None:
-        def quit() -> None:
-            raise EOFError
+        def boom(k: str) -> None:
+            raise RuntimeError
 
-        with pytest.raises(EOFError):
-            drive(TUI(), ["\x03"], {"\x03": quit})
+        monkeypatch.setattr(tty, "keys", fake_keys)
+        with pytest.raises(RuntimeError):
+            asyncio.run(TUI().input_loop(boom))
 
-    def test_paste_in_one_chunk_keeps_trailing_input(self, cols, drive) -> None:
-        ui = TUI()
-        drive(ui, ["\x1b[200~l1\nl2\x1b[201~y"])
-        assert ui.buf == "l1\nl2y"
-
-    def test_paste_content_does_not_trigger_bindings(self, cols, drive) -> None:
-        hits: list[str] = []
-        ui = TUI()
-        drive(
-            ui,
-            ["\x1b[200~a\rb\x1b[201~"],
-            {"\r": lambda: hits.append("cr")},
-        )
-        assert hits == []
-        assert ui.buf == "a\nb"
-
-    def test_redraws_after_every_key(self, cols, drive, capsys) -> None:
+    def test_redraws_initially_and_after_each_chunk(self, cols, drive, capsys) -> None:
         drive(TUI(lambda: "> "), ["a", "b"])
         assert capsys.readouterr().out.count("\r\x1b[K") == 3
 
@@ -244,39 +165,6 @@ class TestKeys:
                 return out
 
         assert asyncio.run(go()) == char + "!"
-
-    @pytest.mark.parametrize(
-        "parts,tokens",
-        [
-            (
-                ["\x1b[200~a\r", "b\t", "c\x1b[201~z"],
-                ["\x1b[200~a\rb\tc\x1b[201~", "z"],
-            ),
-            (["hi\x1b[200~x", "\x1b[201~"], ["h", "i", "\x1b[200~x\x1b[201~"]),
-            (["hi\x1b[20", "0~x\x1b[201~"], ["h", "i", "\x1b[200~x\x1b[201~"]),
-            (["\x1b[200~ab\x1b[20", "1~c"], ["\x1b[200~ab\x1b[201~", "c"]),
-        ],
-    )
-    def test_paste_never_split_across_yields(self, pipe, parts, tokens) -> None:
-        _, w = pipe
-
-        async def feed() -> None:
-            for p in parts:
-                os.write(w, p.encode())
-                await asyncio.sleep(0.01)
-
-        async def go() -> list[str]:
-            got = ""
-            task = asyncio.ensure_future(feed())
-            async with contextlib.aclosing(tty.keys()) as ks:
-                while got != "".join(parts):
-                    chunk = await asyncio.wait_for(anext(ks), 1)
-                    assert chunk.count("\x1b[200~") == chunk.count("\x1b[201~")
-                    got += chunk
-            await task
-            return [m[0] for m in tty.TOKEN.finditer(got)]
-
-        assert asyncio.run(go()) == tokens
 
     def test_eof_raises(self, pipe) -> None:
         _, w = pipe
@@ -326,10 +214,3 @@ class TestRaw:
         assert new[6][termios.VSUSP] == b"\xff"
         assert new[6][termios.VMIN] == 1
         assert old[3] == 0xFFFF
-
-
-def test_draw_shows_tab_as_one_cell(capsys) -> None:
-    ui = TUI()
-    ui.buf = "a\tb"
-    ui.draw()
-    assert capsys.readouterr().out == "\r\x1b[Ka b"

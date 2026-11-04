@@ -8,13 +8,12 @@ from anthropic import AsyncAnthropic
 from .anthropic import agent
 from .logging import DIM, RED, RESET, configure_logging
 from .tools import bash, edit_file, read_file, write_file
-from .tty import TUI, TUIHandler
+from .tty import TUI
 from .utils import load_env
 
 logger = logging.getLogger(__name__)
 
 MODELS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
-THINKING = {"type": "adaptive", "display": "summarized"}
 
 
 class AgentCLI:
@@ -35,52 +34,44 @@ class AgentCLI:
         self.kwargs = {
             "model": MODELS[0],
             "max_tokens": 20000,
-            "thinking": THINKING,
+            "thinking": {"type": "adaptive", "display": "summarized"},
         }
         paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
         parts = [p.read_text(encoding="utf-8").strip() for p in paths if p.exists()]
         if system := "\n\n".join(parts).strip():
             self.kwargs["system"] = system
-        self.bindings = {
-            "\r": self.submit,  # enter
-            "\x1b": self.escape,  # esc
-            "\t": self.switch_model,  # tab
-            "\x1b[Z": self.cycle_mode,  # shift-tab
-        }
 
     def label(self) -> str:
-        busy = "●" if self.turn else "○"
         model = self.kwargs["model"].split("-")[1]
-        queued = self.q.qsize() or ""
-        return f"{self.mode.lower()}|{model}|{busy}{queued} "
+        pending = self.q.qsize() + bool(self.turn)
+        return f"{self.mode.lower()}|{model}|{pending} "
 
-    def switch_model(self) -> None:
-        i = MODELS.index(self.kwargs["model"])
-        self.kwargs["model"] = MODELS[(i + 1) % len(MODELS)]
-
-    def cycle_mode(self) -> None:
-        self.mode = self.modes[(self.modes.index(self.mode) + 1) % len(self.modes)]
-
-    def escape(self) -> None:
-        if self.tui.buf:
+    def on_key(self, k: str) -> None:
+        if k == "\r":
+            if line := self.tui.buf.strip():
+                self.q.put_nowait(line)
             self.tui.buf = ""
-        elif self.turn:
-            self.turn.cancel()
-
-    def submit(self) -> None:
-        if line := self.tui.buf.strip():
-            self.q.put_nowait(line)
-        self.tui.buf = ""
+        elif k == "\x1b":
+            if self.tui.buf:
+                self.tui.buf = ""
+            elif self.turn:
+                self.turn.cancel()
+        elif k == "\t":
+            i = MODELS.index(self.kwargs["model"])
+            self.kwargs["model"] = MODELS[(i + 1) % len(MODELS)]
+        elif k == "\x1b[Z":
+            i = self.modes.index(self.mode)
+            self.mode = self.modes[(i + 1) % len(self.modes)]
 
     async def run(self) -> None:
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(self.tui.input_loop(self.bindings))
+            tg.create_task(self.tui.input_loop(self.on_key))
             while True:
                 parts = [await self.q.get()]
                 while not self.q.empty():
                     parts.append(self.q.get_nowait())
                 text = "\n".join(parts)
-                self.tui.log(f"{DIM}{self.label()}{text}{RESET}\n")
+                self.tui.write(f"{DIM}{self.label()}{text}{RESET}\n\n")
                 prefix = f"CWD: {Path.cwd()} Mode: {self.mode}. {self.start_phrase} "
                 self.msgs.append({"role": "user", "content": prefix + text})
                 self.turn = asyncio.create_task(
@@ -104,7 +95,7 @@ def main() -> None:
     level = int(os.environ.get("NKD_LOG_LEVEL", logging.INFO))
     try:
         cli = AgentCLI()
-        configure_logging(TUIHandler(cli.tui), level=level, metadata=False)
+        configure_logging(logging.StreamHandler(cli.tui), level=level, metadata=False)
         asyncio.run(cli.run())
     except* (KeyboardInterrupt, EOFError):
         print(f"\n{DIM}Exiting...{RESET}")
