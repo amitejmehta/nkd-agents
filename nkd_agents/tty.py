@@ -1,34 +1,17 @@
 import asyncio
 import codecs
 import contextlib
-import logging
 import os
 import re
 import shutil
 import sys
 import termios
-import unicodedata
 from collections.abc import AsyncGenerator, Callable, Iterator
 
 
 def write(s: str) -> None:
     sys.stdout.write(s)
     sys.stdout.flush()
-
-
-def cell_width(c: str) -> int:
-    if unicodedata.combining(c):
-        return 0
-    return 2 if unicodedata.east_asian_width(c) in "WF" else 1
-
-
-def clip(s: str, room: int) -> str:
-    used = 0
-    for i, c in enumerate(s):
-        used += cell_width(c)
-        if used > room:
-            return s[:i]
-    return s
 
 
 @contextlib.contextmanager
@@ -40,12 +23,12 @@ def raw(fd: int) -> Iterator[None]:
     new[6][termios.VSUSP] = bytes([os.fpathconf(fd, "PC_VDISABLE")])
     new[6][termios.VMIN], new[6][termios.VTIME] = 1, 0
     termios.tcsetattr(fd, termios.TCSANOW, new)
-    write("\x1b[?2004h")  # paste on
+    write("\x1b[?2004h")
 
     try:
         yield
     finally:
-        write("\x1b[?2004l")  # paste off
+        write("\x1b[?2004l")
 
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
@@ -53,6 +36,11 @@ def raw(fd: int) -> Iterator[None]:
 TOKEN = re.compile(
     r"\x1b\[200~(?P<paste>.*?)\x1b\[201~|\x1b(?:\[[0-9;]*[@-~]|O?.)?|.", re.S
 )
+
+
+def clean(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\t", "    ")
+    return "".join(c for c in text if c.isprintable() or c == "\n")
 
 
 async def keys() -> AsyncGenerator[str]:
@@ -67,22 +55,18 @@ async def keys() -> AsyncGenerator[str]:
             q.put_nowait(b"")
 
     loop.add_reader(fd, on_readable)
-    buf = ""
     try:
         with raw(fd):
-            while True:
-                data = await q.get()
-                if not data:
-                    raise EOFError
+            buf = ""
+            while data := await q.get():
                 buf += dec.decode(data)
-                if (cut := buf.rfind("\x1b[200~")) <= buf.rfind("\x1b[201~"):
-                    start = "\x1b[200~"
-                    cut = len(buf) - next(
-                        (n for n in range(5, 1, -1) if buf.endswith(start[:n])), 0
-                    )
-                if cut:
-                    yield buf[:cut]
-                    buf = buf[cut:]
+                if (
+                    buf.rfind("\x1b[200~") < buf.rfind("\x1b[201~")
+                    or "\x1b[200~" not in buf
+                ):
+                    yield buf
+                    buf = ""
+            raise EOFError
     finally:
         loop.remove_reader(fd)
 
@@ -94,40 +78,25 @@ class TUI:
 
     def draw(self) -> None:
         cols = shutil.get_terminal_size().columns
-        label = clip(self.label().replace("\n", " "), cols // 2)
-        text = self.buf.replace("\n", " ").replace("\t", " ")
-        used, start = sum(map(cell_width, label)), len(text)
-        while start and used + cell_width(text[start - 1]) <= cols - 1:
-            start -= 1
-            used += cell_width(text[start])
-        write(f"\r\x1b[K{label}{text[start:]}")
+        text = self.label() + self.buf.replace("\n", " ").replace("\t", " ")
+        write("\r\x1b[K" + text[-(cols - 1) :])
 
-    def log(self, line: str) -> None:
-        write("\r\x1b[K" + line.replace("\n", "\r\n") + "\r\n")
+    def write(self, s: str) -> None:
+        write("\r\x1b[K" + s)
         self.draw()
 
-    def paste(self, text: str) -> None:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-        self.buf += "".join(c for c in text if c.isprintable() or c in "\n\t")
+    def flush(self) -> None:
+        pass
 
-    async def input_loop(self, bindings: dict[str, Callable[[], None]]) -> None:
+    async def input_loop(self, on_key: Callable[[str], None]) -> None:
         self.draw()
         async with contextlib.aclosing(keys()) as ks:
             async for s in ks:
                 for m in TOKEN.finditer(s):
                     if m["paste"] is not None:
-                        self.paste(m["paste"])
-                    elif fn := bindings.get(m[0]):
-                        fn()
+                        self.buf += clean(m["paste"])
                     elif m[0].isprintable():
                         self.buf += m[0]
+                    else:
+                        on_key(m[0])
                 self.draw()
-
-
-class TUIHandler(logging.Handler):
-    def __init__(self, tui: TUI) -> None:
-        super().__init__()
-        self.tui = tui
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self.tui.log(self.format(record))
