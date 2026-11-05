@@ -1,6 +1,7 @@
 import asyncio
 import codecs
 import contextlib
+import copy
 import os
 import re
 import shutil
@@ -17,19 +18,17 @@ def write(s: str) -> None:
 @contextlib.contextmanager
 def raw(fd: int) -> Iterator[None]:
     old = termios.tcgetattr(fd)
-    new = termios.tcgetattr(fd)
+    new = copy.deepcopy(old)
     new[0] &= ~(termios.IXON | termios.ICRNL)
     new[3] &= ~(termios.ECHO | termios.ICANON | termios.IEXTEN)
     new[6][termios.VSUSP] = bytes([os.fpathconf(fd, "PC_VDISABLE")])
     new[6][termios.VMIN], new[6][termios.VTIME] = 1, 0
     termios.tcsetattr(fd, termios.TCSANOW, new)
     write("\x1b[?2004h")
-
     try:
         yield
     finally:
         write("\x1b[?2004l")
-
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
@@ -60,10 +59,7 @@ async def keys() -> AsyncGenerator[str]:
             buf = ""
             while data := await q.get():
                 buf += dec.decode(data)
-                if (
-                    buf.rfind("\x1b[200~") < buf.rfind("\x1b[201~")
-                    or "\x1b[200~" not in buf
-                ):
+                if buf.rfind("\x1b[200~") <= buf.rfind("\x1b[201~"):
                     yield buf
                     buf = ""
             raise EOFError
@@ -78,7 +74,7 @@ class TUI:
 
     def draw(self) -> None:
         cols = shutil.get_terminal_size().columns
-        text = self.label() + self.buf.replace("\n", " ").replace("\t", " ")
+        text = self.label() + self.buf.replace("\n", " ")
         write("\r\x1b[K" + text[-(cols - 1) :])
 
     def write(self, s: str) -> None:
