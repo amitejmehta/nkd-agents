@@ -1,17 +1,6 @@
-<nkd-agents>
-- Strip abstractions: an agent is just LLM + Loop + Tools. Loop: call LLM → if tool calls, execute → repeat. Stop when LLM returns text.
+<nkd>
 - Favor elegance through simplicity: build a powerful agent framework + Claude Code-style CLI in remarkably few lines. Reach for sophisticated patterns (context isolation, auto JSON schema) only where they earn their keep. Less is more.
-- Verify all checks before pushing:
-  ```bash
-  ruff check --fix nkd_agents/ examples/ tests/
-  ruff format nkd_agents/ examples/ tests/
-  pyright nkd_agents/ examples/
-  xenon --max-average A --max-modules A --max-absolute B nkd_agents/ examples/
-  pytest tests/ -v --cov=nkd_agents --cov-report=term-missing 2>&1 | tail -20
-  ```
-- No `docs/` in the repo: the codebase is small enough that an LLM reading the code directly is faster and more reliable than maintaining docs that quickly go stale.
-- After framework changes (e.g. `anthropic.py`/`openai.py`), run the examples to verify:
-  ```bash
-  for f in examples/anthropic/test_*.py; do python3 -m "$(echo "${{f%.py}}" | tr / .)" & done; wait
-  ```
-</nkd-agents>
+- Verify before pushing: ruff (check --fix, format), pyright, xenon (average A, modules A, absolute B), pytest.
+- Test the CLI by driving `python3 -m nkd_agents.cli` in a pty.
+- After framework changes (`anthropic.py`/`openai.py`), run `examples/anthropic/test_*.py` as modules (`python3 -m examples.anthropic.test_x`).
+</nkd>
