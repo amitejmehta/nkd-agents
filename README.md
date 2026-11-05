@@ -9,6 +9,10 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 
 ## The framework
 
+```bash
+pip install git+https://github.com/amitejmehta/nkd-agents.git
+```
+
 - `agent()` is a thin wrapper: every `**kwarg` passes through verbatim to `client.messages.create()`/`client.responses.create()`, no translation/wrapping layer — typed against the provider SDK's own `TypedDict`s, so full type safety comes for free.
 - Tools within a turn run concurrently via `asyncio.gather()`; request-scoped state (e.g. current working directory) threads in via `contextvars.ContextVar`, which each coroutine inherits automatically.
 - Auto schema gen from a docstring and type annotations, no DSL — `tool_schema(func)` supports `str`, `int`, `float`, `bool`, `Literal[...]`; `Literal` also constrains token generation to the enum's choices, which a plain string can't. Schemas are always `strict` with every param `required`, so the model writes every value on every call and tool functions can't have default values (they raise); put guidance like "use 30 unless..." in the docstring. Override with a custom `tools=` (the SDK's own type) if you need more.
@@ -17,20 +21,27 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 
 ## The CLI
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
+```
+
+Update: `nkd-install`
+
 Over time, I've actually removed more than I've added. Here's what remains.
 
+- autonomy: full by default, because this is the way.
 - tools:
-  - shell: `bash`
-  - files: `read_file` (text, images, PDF) · `write_file` · `edit_file`
-  - web: `fetch_url` (saves to local md) · `web_search` (DuckDuckGo via Playwright/Chrome)
-  - note: models prefer `bash` over `write_file`/`edit_file`; kept since I occasionally prefer colored diffs
-- input: `tty.py` is an async, tail-only (no cursor or cursor movement) raw-terminal handler; consumers bind all keys, including `enter`.
-- keys: `enter` send · `ctrl+c` quit · `esc` clear buffer / interrupt LLM · `tab` cycle model · `shift+tab` cycle mode
-  - `backspace` and `option+backspace` intentionally unbound: encourages faster typing, since the LLM understands typos.
+  - `bash`
+  - `read_file` (text, images, PDF) · `write_file` · `edit_file`
+  - `fetch_url` (saves to local md) · `web_search` (DuckDuckGo via Playwright/Chrome)
+  - models prefer `bash` over `write_file`/`edit_file`; kept for the occasional colored diff.
+- input: `tty.py` is an async, tail-only (no cursor movement) raw-terminal handler; consumers bind every key, including `enter`.
+- keys: `enter` send · `ctrl+c` quit · `esc` clear buffer / interrupt · `tab` cycle model · `shift+tab` cycle mode
+  - `backspace` and `option+backspace` are unbound on purpose: it pushes me to type faster, and the LLM understands typos.
 - prefix: each message is sent as `CWD: <cwd> Mode: <mode>. <start phrase> <message>`, e.g. `CWD: /Users/me/proj Mode: Act. Be brief and exacting. fix the bug`
-  - mode: a label from `NKD_MODES` (default `Act,Plan,Socratic`): all that's required to shift behavior.
+  - mode: a label from `NKD_MODES` (default `Act,Plan,Socratic`); all it takes to shift behavior.
   - start phrase: `NKD_START_PHRASE` (default `Be brief and exacting.`) steers behavior reliably over long contexts.
-- autonomy: full by default because this is the way.
+- config: env vars are read from `~/.claude/nkd/.env` or your shell: `ANTHROPIC_API_KEY` (required), `NKD_LOG_LEVEL` (default `20`, INFO), plus the two above. System prompt: `~/.claude/CLAUDE.md` and `./CLAUDE.md`.
 
 Here's what I've deprecated and why:
 
@@ -49,29 +60,3 @@ I've replaced all forms of context management with the following line in my glob
 > When my entire message is just the word "end": write a short handoff note to `/Users/amitej/Desktop/scratch/handoffs/<task-slug>.md` (new name, never overwrite), then reply with just the path. Keep only what can't be recovered from the repo/git: goal, my constraints/preferences, decisions with why (incl. rejected options and non-issues), open questions, next steps, hard-won facts. Skip file lists, command output, and process narrative.
 
 This, plus good hygiene (killing sessions, keeping state external), works great.
-
-## Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
-```
-
-Installs [uv](https://docs.astral.sh/uv/), the `nkd` CLI via [uv tool](https://docs.astral.sh/uv/guides/tools/), prompts for your Anthropic API key, and adds an `nkd-install` alias. The `web` extra (`fetch_url`, `web_search`) is installed by default.
-
-To update later: `nkd-install`
-
-**Framework only:**
-```bash
-pip install git+https://github.com/amitejmehta/nkd-agents.git
-```
-
-## Configuration
-
-All config via environment variables, set in `~/.claude/nkd/.env` (loaded at startup) or the shell environment. The global system prompt is read from `~/.claude/CLAUDE.md` (plus `./CLAUDE.md`).
-
-| Variable | Default | Description |
-|----------|---------|--------------|
-| `ANTHROPIC_API_KEY` | *(required)* | Anthropic API key |
-| `NKD_LOG_LEVEL` | `20` (INFO) | Python logging level integer |
-| `NKD_START_PHRASE` | `"Be brief and exacting."` | Prefix prepended to every user message |
-| `NKD_MODES` | `"Act,Plan,Socratic"` | Comma-separated list cycled by `shift+tab` |
