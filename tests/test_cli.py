@@ -257,6 +257,14 @@ class TestRunWiring:
         assert e.group_contains(EOFError)
 
 
+class TestMain:
+    @pytest.mark.parametrize("exc", [EOFError, KeyboardInterrupt])
+    def test_exits_cleanly(self, exc, capsys):
+        with patch.object(AgentCLI, "run", side_effect=exc):
+            cli_module.main()
+        assert "Exiting" in capsys.readouterr().out
+
+
 class TestFns:
     def test_includes_web_tools_when_available(self):
         from nkd_agents.web import fetch_url, web_search

@@ -153,13 +153,15 @@ class TestKeys:
 
     def test_yields_read_chunks(self, pipe) -> None:
         _, w = pipe
-        os.write(w, b"abc")
 
-        async def go() -> str:
+        async def go() -> list[str]:
             async with contextlib.aclosing(tty.keys()) as ks:
-                return await asyncio.wait_for(anext(ks), 1)
+                os.write(w, b"abc")
+                first = await asyncio.wait_for(anext(ks), 1)
+                os.write(w, b"d")
+                return [first, await asyncio.wait_for(anext(ks), 1)]
 
-        assert asyncio.run(go()) == "abc"
+        assert asyncio.run(go()) == ["abc", "d"]
 
     @pytest.mark.parametrize("char", ["é", "€", "😀"])
     def test_utf8_split_across_reads(self, pipe, char: str) -> None:
@@ -193,12 +195,14 @@ class TestKeys:
     def test_lone_esc_flushes_after_timeout(self, pipe) -> None:
         _, w = pipe
 
-        async def go() -> str:
+        async def go() -> list[str]:
             async with contextlib.aclosing(tty.keys()) as ks:
                 os.write(w, b"\x1b")
-                return await asyncio.wait_for(anext(ks), 1)
+                first = await asyncio.wait_for(anext(ks), 1)
+                os.write(w, b"a")
+                return [first, await asyncio.wait_for(anext(ks), 1)]
 
-        assert asyncio.run(go()) == "\x1b"
+        assert asyncio.run(go()) == ["\x1b", "a"]
 
     def test_ss3_split_across_reads_is_held(self, pipe) -> None:
         _, w = pipe
@@ -222,9 +226,18 @@ class TestKeys:
 
         assert asyncio.run(go()) == "\x1b[200~hi\r\x1b[201~"
 
-    def test_eof_raises(self, pipe) -> None:
+    @pytest.mark.parametrize("fail", ["eof", "oserror"])
+    def test_eof_or_read_error_raises(self, pipe, monkeypatch, fail: str) -> None:
         _, w = pipe
-        os.close(w)
+        if fail == "eof":
+            os.close(w)
+        else:
+
+            def broken(fd: int, n: int) -> bytes:
+                raise OSError
+
+            monkeypatch.setattr(tty.os, "read", broken)
+            os.write(w, b"x")
 
         async def go() -> None:
             async with contextlib.aclosing(tty.keys()) as ks:
