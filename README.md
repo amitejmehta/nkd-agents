@@ -21,10 +21,9 @@ Over time, I've actually removed more than I've added. Here's what remains.
 
 - tools:
   - shell: `bash`
-  - read: `read_file` (text, images, PDF)
-  - write: `write_file` · `edit_file`
+  - files: `read_file` (text, images, PDF) · `write_file` · `edit_file`
   - web: `fetch_url` (saves to local md) · `web_search` (DuckDuckGo via Playwright/Chrome)
-  - note: models prefer `bash` (customizable, chainable) over `write_file`/`edit_file`; I kept them occasionaly prefer the colored diffs
+  - note: models prefer `bash` over `write_file`/`edit_file`; kept since I occasionally prefer colored diffs
 - input: `tty.py` is an async, tail-only (no cursor or cursor movement) raw-terminal handler; consumers bind all keys, including `enter`.
 - keys: `enter` send · `ctrl+c` quit · `esc` clear buffer / interrupt LLM · `tab` cycle model · `shift+tab` cycle mode
   - `backspace` and `option+backspace` intentionally unbound: encourages faster typing, since the LLM understands typos.
