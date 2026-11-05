@@ -33,7 +33,7 @@ Over time I've removed more than I've added. What remains:
 - tools:
   - `bash`
   - `read_file` (text, images, PDF) · `write_file` · `edit_file`
-  - `fetch_url` (saves to local md) · `web_search` (DuckDuckGo via Playwright/Chrome)
+  - `fetch_url` (saves page text via Playwright/Chrome) · `web_search` (DuckDuckGo via Playwright/Chrome)
   - models prefer `bash`; `write_file`/`edit_file` stay for the occasional colored diff.
 - input: `tty.py`, an async, tail-only raw-terminal handler (no cursor movement); every key is bound by the consumer.
 - keys: `enter` send · `ctrl+c` quit · `esc` clear buffer / interrupt · `tab` cycle model · `shift+tab` cycle mode

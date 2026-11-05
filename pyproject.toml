@@ -23,9 +23,7 @@ nkd = "nkd_agents.cli:main"
 
 [project.optional-dependencies]
 web = [
-    "httpx2>=2.13.1,<3.0.0", # fetch_url tool
-    "playwright>=1.58.0,<2.0.0", # web search with browser automation
-    "trafilatura>=2.0.0,<3.0.0", # fetch_url tool
+    "playwright>=1.58.0,<2.0.0", # web_search and fetch_url tools
 ]
 dev = [
     "freezegun==1.5.1",

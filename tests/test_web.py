@@ -1,87 +1,107 @@
-"""Tests for web tools (fetch_url)."""
-
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx2
 import pytest
 
-from nkd_agents.web import fetch_url
+from nkd_agents.web import browser_page, fetch_url, web_search
 
 
 @pytest.fixture
 def mock_cwd(tmp_path):
-    """Set cwd_ctx to a temp directory."""
     with patch("nkd_agents.tools.cwd_ctx") as mock:
         mock.get.return_value = tmp_path
         yield tmp_path
 
 
 @pytest.fixture
-def mock_httpx_success():
-    """Mock successful HTTP response."""
-    with patch("nkd_agents.web.httpx2.AsyncClient") as mock:
-        response = MagicMock()
-        response.text = "<html><body>Hello World</body></html>"
-        response.raise_for_status = MagicMock()
+def page():
+    page = MagicMock()
+    page.goto = AsyncMock()
+    page.wait_for_timeout = AsyncMock()
+    page.wait_for_selector = AsyncMock()
+    page.inner_text = AsyncMock(return_value="Hello World")
+    page.eval_on_selector_all = AsyncMock(return_value=[])
 
-        client = AsyncMock()
-        client.get = AsyncMock(return_value=response)
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
-        mock.return_value = client
-        yield response
+    @asynccontextmanager
+    async def fake():
+        yield page
 
-
-@pytest.mark.asyncio
-async def test_fetch_url_success(mock_cwd, mock_httpx_success):
-    """Successful fetch writes file and returns char count."""
-    with patch(
-        "nkd_agents.web.trafilatura.extract", return_value="# Extracted Content"
-    ):
-        result = await fetch_url("https://example.com", "output.md")
-
-    assert "19 chars" in result
-    assert str(mock_cwd / "output.md") in result
-    assert (mock_cwd / "output.md").read_text() == "# Extracted Content"
+    with patch("nkd_agents.web.browser_page", fake):
+        yield page
 
 
 @pytest.mark.asyncio
-async def test_fetch_url_no_content_extracted(mock_cwd, mock_httpx_success):
-    """Returns error when trafilatura extracts nothing."""
-    with patch("nkd_agents.web.trafilatura.extract", return_value=None):
-        result = await fetch_url("https://example.com", "output.md")
+async def test_fetch_url_saves_body_text_to_nested_path(mock_cwd, page):
+    result = await fetch_url("https://example.com", "sub/output.txt")
 
-    assert "Error" in result
+    path = mock_cwd / "sub" / "output.txt"
+    assert path.read_text() == "Hello World"
+    assert f"Saved 11 chars to {path}" in result
+    assert page.goto.await_args.args == ("https://example.com",)
+    page.inner_text.assert_awaited_once_with("body")
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_empty_page_writes_nothing(mock_cwd, page):
+    page.inner_text.return_value = "  \n"
+
+    result = await fetch_url("https://example.com", "output.txt")
+
     assert "No content extracted" in result
-    assert not (mock_cwd / "output.md").exists()
+    assert not (mock_cwd / "output.txt").exists()
 
 
 @pytest.mark.asyncio
-async def test_fetch_url_http_error(mock_cwd):
-    """Returns error on HTTP failure."""
-    with patch("nkd_agents.web.httpx2.AsyncClient") as mock:
-        client = AsyncMock()
-        client.get = AsyncMock(
-            side_effect=httpx2.HTTPStatusError(
-                "Not Found", request=MagicMock(), response=MagicMock()
-            )
-        )
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
-        mock.return_value = client
+async def test_fetch_url_navigation_error_propagates(mock_cwd, page):
+    page.goto.side_effect = RuntimeError("boom")
 
-        with pytest.raises(httpx2.HTTPStatusError):
-            await fetch_url("https://example.com/404", "output.md")
+    with pytest.raises(RuntimeError):
+        await fetch_url("https://example.com/404", "output.txt")
 
-    assert not (mock_cwd / "output.md").exists()
+    assert not (mock_cwd / "output.txt").exists()
 
 
 @pytest.mark.asyncio
-async def test_fetch_url_relative_path_resolution(mock_cwd, mock_httpx_success):
-    """Relative paths resolve against cwd_ctx."""
-    with patch("nkd_agents.web.trafilatura.extract", return_value="content"):
-        result = await fetch_url("https://example.com", "subdir/output.md")
+async def test_web_search_formats_results(page):
+    page.eval_on_selector_all.return_value = [
+        {"title": "A", "url": "https://a.com", "snippet": "about a"},
+        {"title": "B", "url": "https://b.com", "snippet": "about b"},
+    ]
 
-    expected_path = mock_cwd / "subdir" / "output.md"
-    assert expected_path.exists()
-    assert str(expected_path) in result
+    result = await web_search("hello world", 2)
+
+    assert result == (
+        "Title: A\nURL: https://a.com\nSnippet: about a\n\n"
+        "Title: B\nURL: https://b.com\nSnippet: about b"
+    )
+    assert "q=hello+world" in page.goto.await_args.args[0]
+    assert "slice(0, 2)" in page.eval_on_selector_all.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_web_search_no_results(page):
+    assert await web_search("nothing", 5) == "No results found"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [None, RuntimeError("boom")])
+async def test_browser_page_always_closes_browser(error):
+    browser = MagicMock()
+    browser.close = AsyncMock()
+    browser.new_context = AsyncMock()
+    playwright = MagicMock()
+    playwright.chromium.launch = AsyncMock(return_value=browser)
+    manager = MagicMock()
+    manager.__aenter__ = AsyncMock(return_value=playwright)
+    manager.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("nkd_agents.web.async_playwright", return_value=manager):
+        try:
+            async with browser_page():
+                if error:
+                    raise error
+        except RuntimeError:
+            pass
+
+    playwright.chromium.launch.assert_awaited_once_with(headless=True, channel="chrome")
+    browser.close.assert_awaited_once()
