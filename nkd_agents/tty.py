@@ -61,6 +61,8 @@ async def keys() -> AsyncGenerator[str]:
     def on_readable() -> None:
         try:
             q.put_nowait(os.read(fd, 4096))
+        except BlockingIOError:
+            pass
         except OSError:
             q.put_nowait(b"")
 

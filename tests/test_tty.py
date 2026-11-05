@@ -246,6 +246,26 @@ class TestKeys:
         with pytest.raises(EOFError):
             asyncio.run(go())
 
+    def test_spurious_wakeup_is_ignored(self, pipe, monkeypatch) -> None:
+        _, w = pipe
+        real, calls = os.read, []
+
+        def flaky(fd: int, n: int) -> bytes:
+            calls.append(1)
+            if len(calls) == 1:
+                raise BlockingIOError
+            return real(fd, n)
+
+        monkeypatch.setattr(tty.os, "read", flaky)
+        os.write(w, b"x")
+
+        async def go() -> str:
+            async with contextlib.aclosing(tty.keys()) as ks:
+                return await asyncio.wait_for(anext(ks), 1)
+
+        assert asyncio.run(go()) == "x"
+        assert len(calls) == 2
+
     def test_reader_removed_on_close(self, pipe) -> None:
         r, _ = pipe
 
