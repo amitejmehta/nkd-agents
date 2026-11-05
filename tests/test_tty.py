@@ -58,6 +58,11 @@ class TestDraw:
         ui.draw()
         assert capsys.readouterr().out == "\r\x1b[Ka b c"
 
+    def test_wide_chars_count_double(self, cols, capsys) -> None:
+        cols(6)
+        TUI(lambda: "日本語日本").draw()
+        assert capsys.readouterr().out == "\r\x1b[K日本"
+
 
 class TestWrite:
     def test_clears_line_writes_and_redraws(self, cols, capsys) -> None:
@@ -165,6 +170,18 @@ class TestKeys:
                 return out
 
         assert asyncio.run(go()) == char + "!"
+
+    def test_csi_split_across_reads_is_held(self, pipe) -> None:
+        _, w = pipe
+
+        async def go() -> str:
+            async with contextlib.aclosing(tty.keys()) as ks:
+                os.write(w, b"\x1b[1;")
+                await asyncio.sleep(0.01)
+                os.write(w, b"5A")
+                return await asyncio.wait_for(anext(ks), 1)
+
+        assert asyncio.run(go()) == "\x1b[1;5A"
 
     def test_eof_raises(self, pipe) -> None:
         _, w = pipe
