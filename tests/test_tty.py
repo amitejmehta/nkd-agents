@@ -52,6 +52,13 @@ class TestDraw:
         TUI(lambda: "abcdefghij").draw()
         assert capsys.readouterr().out == "\r\x1b[Kfghij"
 
+    def test_huge_buffer_keeps_tail(self, cols, capsys) -> None:
+        cols(6)
+        ui = TUI()
+        ui.buf = "x" * 1_000_000 + "abcde"
+        ui.draw()
+        assert capsys.readouterr().out == "\r\x1b[Kabcde"
+
     def test_newlines_become_spaces(self, cols, capsys) -> None:
         ui = TUI()
         ui.buf = "a\nb c"

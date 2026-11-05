@@ -33,12 +33,10 @@ def raw(fd: int) -> Iterator[None]:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
-TOKEN = re.compile(
-    r"\x1b\[200~(?P<paste>.*?)\x1b\[201~|\x1b(?:\[[0-9;]*[@-~]|O?.)?|.", re.S
-)
-
-
 START, END = "\x1b[200~", "\x1b[201~"
+PASTE = f"{re.escape(START)}(?P<paste>.*?){re.escape(END)}"
+ESCAPE = r"\x1b(?:\[[0-9;]*[@-~]|O?.)?"
+TOKEN = re.compile(f"{PASTE}|{ESCAPE}|.", re.S)
 PARTIAL = re.compile(r"\x1b(?:\[[0-9;]*|O)?$")
 
 
@@ -95,7 +93,7 @@ class TUI:
 
     def draw(self) -> None:
         cols = shutil.get_terminal_size().columns
-        text = self.label() + self.buf.replace("\n", " ")
+        text = (self.label() + self.buf.replace("\n", " "))[-cols:]
         while width(text) >= cols:
             text = text[1:]
         write("\r\x1b[K" + text)
