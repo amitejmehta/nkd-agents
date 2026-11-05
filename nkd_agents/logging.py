@@ -25,7 +25,7 @@ def configure_logging(
     handler: logging.Handler | None = None,
     level: int = logging.INFO,
     metadata: bool = True,
-):
+) -> None:
     prefix = "%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)s - "
     if not metadata:
         prefix = ""
@@ -34,7 +34,6 @@ def configure_logging(
     handler.addFilter(ContextFilter())
     logging.basicConfig(level=level, format=fmt, handlers=[handler], force=True)
     logging.getLogger("httpx2").setLevel(logging.WARNING)
-    return handler
 
 
 def display_diff(old: str, new: str, path: str) -> None:
