@@ -47,7 +47,7 @@ class AgentCLI:
         return f"{self.mode.lower()}|{model}|{pending} "
 
     def on_key(self, k: str) -> None:
-        cycle = lambda xs, x: xs[(xs.index(x) + 1) % len(xs)]  
+        cycle = lambda xs, x: xs[(xs.index(x) + 1) % len(xs)]  # noqa: E731
         if k == "\r":
             if line := self.tui.buf.strip():
                 self.q.put_nowait(line)
