@@ -4,8 +4,8 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 
 `nkd-agents` is two things:
 
-1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI. Full type safety and direct control of provider SDK primitives, with zero overhead.
-2. **A Python terminal coding assistant** built on top of it. I build production agents daily, yet used Claude Code as a black box. Building my own made me a producer instead of a consumer: I watch closely how it behaves, and every interaction is a first-principles lesson in how agents work. It's now my primary workflow because it's fully customized to how I think, and owning it lets me deprecate features that encode outdated habits, like approving every edit.
+1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI. Full type safety and direct control of SDK primitives, zero overhead.
+2. **A Python terminal coding assistant** built on it. I build production agents daily but used Claude Code as a black box. Building my own made me a producer, not a consumer: every interaction is a first-principles lesson in how agents work. It's now my primary workflow, fully shaped to how I think, and owning it lets me drop outdated habits like approving every edit.
 
 ## The framework
 
@@ -13,11 +13,13 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 pip install git+https://github.com/amitejmehta/nkd-agents.git
 ```
 
-- `agent()` is a thin wrapper: every `**kwarg` passes through verbatim to `client.messages.create()`/`client.responses.create()`, no translation/wrapping layer — typed against the provider SDK's own `TypedDict`s, so full type safety comes for free.
-- Tools within a turn run concurrently via `asyncio.gather()`; request-scoped state (e.g. current working directory) threads in via `contextvars.ContextVar`, which each coroutine inherits automatically.
-- Auto schema gen from a docstring and type annotations, no DSL — `tool_schema(func)` supports `str`, `int`, `float`, `bool`, `Literal[...]`; `Literal` also constrains token generation to the enum's choices, which a plain string can't. Schemas are always `strict` with every param `required`, so the model writes every value on every call and tool functions can't have default values (they raise); put guidance like "use 30 unless..." in the docstring. Override with a custom `tools=` (the SDK's own type) if you need more.
-- `messages`/`input` mutated in-place, atomically, after each completed turn — an interrupt never leaves an orphaned `tool_use` block.
-- Two OTel spans following the GenAI semconv, `invoke_agent` and `execute_tool` (with `gen_ai.tool.name`, `gen_ai.tool.call.id`, `error.type`) — no dedicated LLM-call span since tracing providers' auto-instrumentation already covers the SDK call.
+- thin wrapper: `agent()` is just the basic loop: call the LLM; tool calls? run them, add results, repeat; none? return the text.
+- full type safety: `agent(**kwargs)` is typed as `Unpack[...]` of the provider SDK's own params `TypedDict` (e.g. Anthropic's `MessageCreateParamsNonStreaming`).
+- concurrency: tools in a turn run in parallel via `asyncio.gather()`. Tool context / deps just work via `contextvars`.
+- tool schemas: `tool_schema(func)` builds them from type hints and the docstring. Supports `str`, `int`, `float`, `bool`, `Literal[...]` (which also constrains generation to its choices).
+  - schemas are always `strict`, every param `required`, so defaults raise. Need more? Pass the SDK's own `tools=`.
+- history: `messages` / `input` is mutated in place, atomically, after each full turn, so an interrupt never leaves an orphaned `tool_use`.
+- tracing: two OTel spans per GenAI semconv, `invoke_agent` and `execute_tool`. LLM calls are left to provider auto-instrumentation.
 
 ## The CLI
 
@@ -25,38 +27,33 @@ pip install git+https://github.com/amitejmehta/nkd-agents.git
 curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
 ```
 
-Update: `nkd-install`
+Over time I've removed more than I've added. What remains:
 
-Over time, I've actually removed more than I've added. Here's what remains.
-
-- autonomy: full by default, because this is the way.
+- autonomy: full by default.
 - tools:
   - `bash`
   - `read_file` (text, images, PDF) · `write_file` · `edit_file`
   - `fetch_url` (saves to local md) · `web_search` (DuckDuckGo via Playwright/Chrome)
-  - models prefer `bash` over `write_file`/`edit_file`; kept for the occasional colored diff.
-- input: `tty.py` is an async, tail-only (no cursor movement) raw-terminal handler; consumers bind every key, including `enter`.
+  - models prefer `bash`; `write_file`/`edit_file` stay for the occasional colored diff.
+- input: `tty.py`, an async, tail-only raw-terminal handler (no cursor movement); every key is bound by the consumer.
 - keys: `enter` send · `ctrl+c` quit · `esc` clear buffer / interrupt · `tab` cycle model · `shift+tab` cycle mode
-  - `backspace` and `option+backspace` are unbound on purpose: it pushes me to type faster, and the LLM understands typos.
-- prefix: each message is sent as `CWD: <cwd> Mode: <mode>. <start phrase> <message>`, e.g. `CWD: /Users/me/proj Mode: Act. Be brief and exacting. fix the bug`
-  - mode: a label from `NKD_MODES` (default `Act,Plan,Socratic`); all it takes to shift behavior.
-  - start phrase: `NKD_START_PHRASE` (default `Be brief and exacting.`) steers behavior reliably over long contexts.
-- config: env vars are read from `~/.claude/nkd/.env` or your shell: `ANTHROPIC_API_KEY` (required), `NKD_LOG_LEVEL` (default `20`, INFO), plus the two above. System prompt: `~/.claude/CLAUDE.md` and `./CLAUDE.md`.
+  - `backspace` / `option+backspace` unbound on purpose: I type faster, and the LLM reads typos fine.
+- prefix: every message is sent as `CWD: <cwd> Mode: <mode>. <start phrase> <message>`.
+  - mode: a label from `NKD_MODES` (default `Act,Plan,Socratic`); enough to shift behavior.
+  - start phrase: `NKD_START_PHRASE` (default `Be brief and exacting.`); steers reliably over long contexts.
+- system prompt: `~/.claude/CLAUDE.md` + `./CLAUDE.md`.
+- config: env vars from `~/.claude/nkd/.env` or the shell: `ANTHROPIC_API_KEY` (required), `NKD_LOG_LEVEL` (default `20`), plus `NKD_MODES` / `NKD_START_PHRASE`.
 
-Here's what I've deprecated and why:
+What I've deprecated, and why:
 
 - edit approval: clicking "yes" forever isn't oversight.
-- standalone `grep`/`glob` tools: `bash` (`grep`, `rg`, `find`, `ls`) is chainable, so one turn replaces several.
-- docker sandbox: rarely used, impractical (too many OS-level deps).
-- thinking toggle: newer Claude models don't accept `disabled` (and think fairly judiciously anyway).
-- context management:
-  - cache warming (auto-warmed Anthropic's cache each turn, 5 min TTL): misses are cheap when context stays small.
-  - saved conversation history: most relevant state is already external (code, git), and fresh starts on new tasks force capturing the rest externally (writing, docs, research).
-  - subagents (via tool or headless mode): overkill.
-  - auto-compact (Haiku summarized history past a token threshold): replaced, see below.
+- `grep`/`glob` tools: `bash` chains `rg`, `find`, `ls`, so one turn replaces several.
+- docker sandbox: rarely used, too many OS-level deps.
+- thinking toggle: newer Claude models reject `disabled`, and think judiciously anyway.
+- context management, all replaced by short sessions (below):
+  - cache warming (re-warmed Anthropic's 5 min cache each turn)
+  - saved history
+  - subagents (tool or headless)
+  - auto-compact (Haiku summarized history past a token limit)
 
-I've replaced all forms of context management with the following line in my global `~/.claude/CLAUDE.md`.
-
-> When my entire message is just the word "end": write a short handoff note to `/Users/amitej/Desktop/scratch/handoffs/<task-slug>.md` (new name, never overwrite), then reply with just the path. Keep only what can't be recovered from the repo/git: goal, my constraints/preferences, decisions with why (incl. rejected options and non-issues), open questions, next steps, hard-won facts. Skip file lists, command output, and process narrative.
-
-This, plus good hygiene (killing sessions, keeping state external), works great.
+What replaced them: kill sessions early and often. The artifact being edited (code, or the doc when writing) already holds most of the state. Anything else worth keeping (research, decisions) gets written down outside the session. Contexts stay small, so cache misses are cheap and the model stays sharp.

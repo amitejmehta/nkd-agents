@@ -13,7 +13,7 @@ from anthropic.types import (
     Usage,
 )
 from anthropic.types.json_output_format_param import JSONOutputFormatParam
-from anthropic.types.message_create_params import MessageCreateParamsBase
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.tool_result_block_param import Content
 from opentelemetry import trace
 from pydantic import BaseModel
@@ -126,7 +126,7 @@ async def tool(
 async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
     fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]] = (),
-    **kwargs: Unpack[MessageCreateParamsBase],
+    **kwargs: Unpack[MessageCreateParamsNonStreaming],
 ) -> str:
     if not isinstance(kwargs["messages"], list):
         raise ValueError("messages is mutated in-place as history and must be a list")
