@@ -47,6 +47,7 @@ class AgentCLI:
         return f"{self.mode.lower()}|{model}|{pending} "
 
     def on_key(self, k: str) -> None:
+        cycle = lambda xs, x: xs[(xs.index(x) + 1) % len(xs)]  
         if k == "\r":
             if line := self.tui.buf.strip():
                 self.q.put_nowait(line)
@@ -57,11 +58,9 @@ class AgentCLI:
             elif self.turn:
                 self.turn.cancel()
         elif k == "\t":
-            i = MODELS.index(self.kwargs["model"])
-            self.kwargs["model"] = MODELS[(i + 1) % len(MODELS)]
+            self.kwargs["model"] = cycle(MODELS, self.kwargs["model"])
         elif k == "\x1b[Z":
-            i = self.modes.index(self.mode)
-            self.mode = self.modes[(i + 1) % len(self.modes)]
+            self.mode = cycle(self.modes, self.mode)
 
     async def run(self) -> None:
         async with asyncio.TaskGroup() as tg:

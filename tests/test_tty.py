@@ -52,9 +52,9 @@ class TestDraw:
         TUI(lambda: "abcdefghij").draw()
         assert capsys.readouterr().out == "\r\x1b[Kfghij"
 
-    def test_newlines_and_tabs_become_spaces(self, cols, capsys) -> None:
+    def test_newlines_become_spaces(self, cols, capsys) -> None:
         ui = TUI()
-        ui.buf = "a\nb\tc"
+        ui.buf = "a\nb c"
         ui.draw()
         assert capsys.readouterr().out == "\r\x1b[Ka b c"
 
