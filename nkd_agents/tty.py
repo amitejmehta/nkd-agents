@@ -38,7 +38,12 @@ TOKEN = re.compile(
 )
 
 
-PARTIAL = re.compile(r"\x1b\[[0-9;]*$")
+START, END = "\x1b[200~", "\x1b[201~"
+PARTIAL = re.compile(r"\x1b(?:\[[0-9;]*|O)?$")
+
+
+def in_paste(buf: str) -> bool:
+    return buf.rfind(START) > buf.rfind(END)
 
 
 def width(text: str) -> int:
@@ -65,14 +70,20 @@ async def keys() -> AsyncGenerator[str]:
     try:
         with raw(fd):
             buf = ""
-            while data := await q.get():
+            while True:
+                timeout = (1 if in_paste(buf) else 0.05) if buf else None
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout)
+                except TimeoutError:
+                    yield buf + (END if in_paste(buf) else "")
+                    buf = ""
+                    continue
+                if not data:
+                    raise EOFError
                 buf += dec.decode(data)
-                if buf.rfind("\x1b[200~") <= buf.rfind(
-                    "\x1b[201~"
-                ) and not PARTIAL.search(buf):
+                if not in_paste(buf) and not PARTIAL.search(buf):
                     yield buf
                     buf = ""
-            raise EOFError
     finally:
         loop.remove_reader(fd)
 

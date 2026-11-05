@@ -183,6 +183,38 @@ class TestKeys:
 
         assert asyncio.run(go()) == "\x1b[1;5A"
 
+    def test_lone_esc_flushes_after_timeout(self, pipe) -> None:
+        _, w = pipe
+
+        async def go() -> str:
+            async with contextlib.aclosing(tty.keys()) as ks:
+                os.write(w, b"\x1b")
+                return await asyncio.wait_for(anext(ks), 1)
+
+        assert asyncio.run(go()) == "\x1b"
+
+    def test_ss3_split_across_reads_is_held(self, pipe) -> None:
+        _, w = pipe
+
+        async def go() -> str:
+            async with contextlib.aclosing(tty.keys()) as ks:
+                os.write(w, b"\x1bO")
+                await asyncio.sleep(0.01)
+                os.write(w, b"P")
+                return await asyncio.wait_for(anext(ks), 1)
+
+        assert asyncio.run(go()) == "\x1bOP"
+
+    def test_unterminated_paste_flushes_as_paste(self, pipe) -> None:
+        _, w = pipe
+
+        async def go() -> str:
+            async with contextlib.aclosing(tty.keys()) as ks:
+                os.write(w, b"\x1b[200~hi\r")
+                return await asyncio.wait_for(anext(ks), 3)
+
+        assert asyncio.run(go()) == "\x1b[200~hi\r\x1b[201~"
+
     def test_eof_raises(self, pipe) -> None:
         _, w = pipe
         os.close(w)
