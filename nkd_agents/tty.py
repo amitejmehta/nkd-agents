@@ -5,6 +5,7 @@ import copy
 import os
 import re
 import shutil
+import signal
 import sys
 import termios
 import unicodedata
@@ -67,6 +68,7 @@ async def keys() -> AsyncGenerator[str]:
             q.put_nowait(b"")
 
     loop.add_reader(fd, on_readable)
+    loop.add_signal_handler(signal.SIGTERM, q.put_nowait, b"")
     try:
         with raw(fd):
             buf = ""
@@ -86,6 +88,7 @@ async def keys() -> AsyncGenerator[str]:
                     buf = ""
     finally:
         loop.remove_reader(fd)
+        loop.remove_signal_handler(signal.SIGTERM)
 
 
 class TUI:
