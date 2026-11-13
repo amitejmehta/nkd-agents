@@ -1,27 +1,34 @@
 import asyncio
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from nkd_agents import cli as cli_module
-from nkd_agents.cli import (
-    MODELS,
-    AgentCLI,
-)
+from nkd_agents.cli import PROVIDERS, AgentCLI
 from nkd_agents.tools import bash, edit_file, read_file, write_file
 from nkd_agents.tty import TUI
 
 ESC = "\x1b"
 
 FNS = (read_file, write_file, edit_file, bash)
+MODELS = PROVIDERS["anthropic"]["models"]
+
+
+@contextmanager
+def fake_llm(provider="anthropic", **kwargs):
+    mock = AsyncMock(**kwargs)
+    with patch.dict(cli_module.PROVIDERS[provider], {"agent": mock}):
+        yield mock
 
 
 @pytest.fixture(autouse=True)
 def env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-    for name in ("NKD_MODES", "NKD_START_PHRASE"):
+    for name in ("NKD_MODES", "NKD_START_PHRASE", "NKD_PROVIDER"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -80,6 +87,48 @@ class TestInit:
         assert "system prompt" in AgentCLI().kwargs["system"]
 
 
+class TestOpenAI:
+    @pytest.fixture
+    def oa(self, tui, monkeypatch) -> AgentCLI:
+        monkeypatch.setenv("NKD_PROVIDER", "openai")
+        return AgentCLI()
+
+    def test_defaults(self, oa: AgentCLI):
+        models = PROVIDERS["openai"]["models"]
+        assert oa.kwargs["model"] == models[0]
+        assert oa.kwargs["input"] is oa.msgs
+        assert oa.kwargs["max_output_tokens"] == 20000
+        assert oa.kwargs["reasoning"] == {"summary": "auto"}
+        assert "messages" not in oa.kwargs
+
+    def test_system_is_instructions(self, tui, tmp_path, monkeypatch):
+        monkeypatch.setenv("NKD_PROVIDER", "openai")
+        (tmp_path / "CLAUDE.md").write_text("system prompt")
+        c = AgentCLI()
+        assert "system prompt" in c.kwargs["instructions"]
+        assert "system" not in c.kwargs
+
+    def test_tab_cycles_openai_models(self, oa: AgentCLI):
+        models = PROVIDERS["openai"]["models"]
+        oa.on_key("\t")
+        assert oa.kwargs["model"] == models[1]
+
+    def test_label(self, oa: AgentCLI):
+        assert oa.label() == "act|sol|0 "
+        oa.on_key("\t")
+        assert oa.label() == "act|astra|0 "
+
+    async def test_runs_openai_agent(self, oa: AgentCLI):
+        oa.tui.draw = MagicMock()
+        oa.tui.write = MagicMock()
+        oa.tui.input_loop = AsyncMock(side_effect=forever)
+        with fake_llm("openai") as llm:
+            oa.q.put_nowait("hi")
+            await run_until_idle(oa)
+        assert llm.call_args.kwargs["input"] is oa.msgs
+        assert oa.msgs[0]["content"].endswith("hi")
+
+
 class TestSystemPrompt:
     def test_global_then_local(self, tui, tmp_path):
         (tmp_path / ".claude").mkdir()
@@ -97,7 +146,7 @@ class TestSystemPrompt:
 class TestRun:
     async def test_prepends_cwd_mode_and_phrase(self, cli: AgentCLI, tmp_path):
         cli.on_key(ESC + "[Z")
-        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
+        with fake_llm() as llm:
             cli.q.put_nowait("hello")
             await run_until_idle(cli)
         assert cli.msgs == [
@@ -113,7 +162,7 @@ class TestRun:
         assert kwargs["model"] == MODELS[0]
 
     async def test_batches_queued_submissions(self, cli: AgentCLI):
-        with patch.object(cli_module, "agent", new_callable=AsyncMock) as llm:
+        with fake_llm() as llm:
             cli.q.put_nowait("a")
             cli.q.put_nowait("b")
             await run_until_idle(cli)
@@ -131,7 +180,7 @@ class TestRun:
             if calls == 1:
                 raise asyncio.CancelledError
 
-        with patch.object(cli_module, "agent", side_effect=fake):
+        with fake_llm(side_effect=fake):
             cli.q.put_nowait("first")
             task = asyncio.create_task(cli.run())
             await asyncio.sleep(0.02)
@@ -150,14 +199,13 @@ class TestRun:
 
         tui.input_loop = quit_soon
         cli.q.put_nowait("go")
-        with patch.object(cli_module, "agent", side_effect=slow):
+        with fake_llm(side_effect=slow):
             with pytest.raises(ExceptionGroup) as e:
                 await asyncio.wait_for(cli.run(), 1)
         assert e.group_contains(EOFError)
 
     async def test_logs_error_and_continues(self, cli: AgentCLI, caplog):
-        fake = AsyncMock(side_effect=[RuntimeError("boom"), None])
-        with patch.object(cli_module, "agent", fake):
+        with fake_llm(side_effect=[RuntimeError("boom"), None]) as fake:
             cli.q.put_nowait("first")
             task = asyncio.create_task(cli.run())
             await asyncio.sleep(0.02)
@@ -173,7 +221,7 @@ class TestRun:
         async def fake(*args, **kwargs):
             seen.append(cli.turn is not None)
 
-        with patch.object(cli_module, "agent", side_effect=fake):
+        with fake_llm(side_effect=fake):
             cli.q.put_nowait("x")
             await run_until_idle(cli)
         assert seen == [True]

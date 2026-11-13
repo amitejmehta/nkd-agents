@@ -4,16 +4,41 @@ import os
 from pathlib import Path
 
 from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
-from .anthropic import agent
+from .anthropic import agent as anthropic_agent
 from .logging import DIM, RED, RESET, configure_logging
+from .openai import agent as openai_agent
 from .tools import bash, edit_file, read_file, write_file
 from .tty import TUI
 from .utils import load_env
 
 logger = logging.getLogger(__name__)
 
-MODELS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+PROVIDERS = {
+    "anthropic": {
+        "agent": anthropic_agent,
+        "client": lambda: AsyncAnthropic(max_retries=4),
+        "models": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"],
+        "history": "messages",
+        "system": "system",
+        "kwargs": {
+            "max_tokens": 20000,
+            "thinking": {"type": "adaptive", "display": "summarized"},
+        },
+    },
+    "openai": {
+        "agent": openai_agent,
+        "client": lambda: AsyncOpenAI(max_retries=4),
+        "models": ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna"],
+        "history": "input",
+        "system": "instructions",
+        "kwargs": {
+            "max_output_tokens": 20000,
+            "reasoning": {"summary": "auto"},
+        },
+    },
+}
 
 
 def cycle(xs: list[str], x: str) -> str:
@@ -30,23 +55,24 @@ class AgentCLI:
             self.fns += (fetch_url, web_search)
         except ImportError:
             logger.warning("web tools unavailable; install via [web] extra")
-        self.client = AsyncAnthropic(max_retries=4)
+        self.p = PROVIDERS[os.environ.get("NKD_PROVIDER", "anthropic")]
+        self.client = self.p["client"]()
         self.msgs, self.q, self.turn = [], asyncio.Queue(), None
         self.modes = os.environ.get("NKD_MODES", "Act,Plan,Socratic").split(",")
         self.mode = self.modes[0]
         self.start_phrase = os.environ.get("NKD_START_PHRASE", "Be brief and exacting.")
         self.kwargs = {
-            "model": MODELS[0],
-            "max_tokens": 20000,
-            "thinking": {"type": "adaptive", "display": "summarized"},
+            "model": self.p["models"][0],
+            self.p["history"]: self.msgs,
+            **self.p["kwargs"],
         }
         paths = (Path.home() / ".claude" / "CLAUDE.md", Path("CLAUDE.md"))
         parts = [p.read_text(encoding="utf-8").strip() for p in paths if p.exists()]
         if system := "\n\n".join(parts).strip():
-            self.kwargs["system"] = system
+            self.kwargs[self.p["system"]] = system
 
     def label(self) -> str:
-        model = self.kwargs["model"].split("-")[1]
+        model = [x for x in self.kwargs["model"].split("-") if x.isalpha()][-1]
         pending = self.q.qsize() + bool(self.turn)
         return f"{self.mode.lower()}|{model}|{pending} "
 
@@ -61,7 +87,7 @@ class AgentCLI:
             elif self.turn:
                 self.turn.cancel()
         elif k == "\t":
-            self.kwargs["model"] = cycle(MODELS, self.kwargs["model"])
+            self.kwargs["model"] = cycle(self.p["models"], self.kwargs["model"])
         elif k == "\x1b[Z":
             self.mode = cycle(self.modes, self.mode)
 
@@ -77,7 +103,7 @@ class AgentCLI:
                 prefix = f"CWD: {Path.cwd()} Mode: {self.mode}. {self.start_phrase} "
                 self.msgs.append({"role": "user", "content": prefix + text})
                 self.turn = asyncio.create_task(
-                    agent(self.client, fns=self.fns, messages=self.msgs, **self.kwargs)
+                    self.p["agent"](self.client, fns=self.fns, **self.kwargs)
                 )
                 self.tui.draw()
                 try:

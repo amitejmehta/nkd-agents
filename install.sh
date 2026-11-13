@@ -22,10 +22,21 @@ echo -e "${GREEN}✓${NC}${WHITE} nkd${NC}"
 # ── .env / API key ────────────────────────────────────────────────────────────
 mkdir -p ~/.claude/nkd
 if [ ! -f ~/.claude/nkd/.env ]; then
-  echo -e "${WHITE}Enter your Anthropic API key:${NC}"
-  read -r api_key </dev/tty
-  echo "ANTHROPIC_API_KEY=$api_key" > ~/.claude/nkd/.env
-  echo -e "${GREEN}✓${NC}${WHITE} API key saved${NC}"
+  while true; do
+    echo -e "${WHITE}Default provider: anthropic or openai [anthropic]:${NC}"
+    read -r provider </dev/tty
+    provider=${provider:-anthropic}
+    case "$provider" in
+      anthropic) key_name=ANTHROPIC_API_KEY; break ;;
+      openai) key_name=OPENAI_API_KEY; break ;;
+      *) echo -e "${RED}Choose anthropic or openai.${NC}" ;;
+    esac
+  done
+  echo -e "${WHITE}Enter your $key_name:${NC}"
+  read -rs api_key </dev/tty
+  echo
+  (umask 077; printf 'NKD_PROVIDER=%s\n%s=%s\n' "$provider" "$key_name" "$api_key" > ~/.claude/nkd/.env)
+  echo -e "${GREEN}✓${NC}${WHITE} Provider and API key saved${NC}"
 else
   echo -e "${GREEN}✓${NC}${WHITE} ~/.claude/nkd/.env${NC}"
 fi
