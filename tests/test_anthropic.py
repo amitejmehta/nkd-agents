@@ -20,7 +20,7 @@ from nkd_agents.anthropic import (
     tool,
     tool_schema,
 )
-from nkd_agents.tools import FileContent, read_file
+from nkd_agents.tools import read_file
 
 
 def test_output_format():
@@ -210,46 +210,46 @@ async def test_tool_returns_content_blocks():
 
 @pytest.mark.asyncio
 async def test_tool_file_content_image():
-    """FileContent with image ext is converted to Anthropic image block."""
+    """bytes with image ext is converted to Anthropic image block."""
     image_data = b"\xff\xd8\xff"
 
-    async def read_img(path: str) -> FileContent:
+    async def read_img(path: str) -> bytes:
         """Read image"""
-        return FileContent(data=image_data, ext="jpg")
+        return image_data
 
     tool_call = ToolUseBlock(
         type="tool_use", id="t1", name="read_img", input={"path": "img.jpg"}
     )
     result = await tool(tool_call, [read_img])
-    assert result["content"] == [bytes_to_content(image_data, "jpg")]
+    assert result["content"] == [bytes_to_content(image_data)]
     assert result["content"][0]["type"] == "image"
 
 
 @pytest.mark.asyncio
 async def test_tool_file_content_pdf():
-    """FileContent with pdf ext is converted to Anthropic document block."""
+    """bytes with pdf ext is converted to Anthropic document block."""
     pdf_data = b"%PDF-1.4"
 
-    async def read_pdf(path: str) -> FileContent:
+    async def read_pdf(path: str) -> bytes:
         """Read pdf"""
-        return FileContent(data=pdf_data, ext="pdf")
+        return pdf_data
 
     tool_call = ToolUseBlock(
         type="tool_use", id="t2", name="read_pdf", input={"path": "doc.pdf"}
     )
     result = await tool(tool_call, [read_pdf])
-    assert result["content"] == [bytes_to_content(pdf_data, "pdf")]
+    assert result["content"] == [bytes_to_content(pdf_data)]
     assert result["content"][0]["type"] == "document"
 
 
 @pytest.mark.asyncio
 async def test_tool_file_content_text():
-    """FileContent with text ext is decoded and returned as text block."""
+    """bytes with text ext is decoded and returned as text block."""
     text_data = b"hello world"
 
-    async def read_txt(path: str) -> FileContent:
+    async def read_txt(path: str) -> bytes:
         """Read txt"""
-        return FileContent(data=text_data, ext="txt")
+        return text_data
 
     tool_call = ToolUseBlock(
         type="tool_use", id="t3", name="read_txt", input={"path": "f.txt"}
@@ -400,7 +400,7 @@ TEXT_CASES = [
 
 @pytest.mark.parametrize("text", TEXT_CASES)
 def test_bytes_to_content_preserves_text(text):
-    assert bytes_to_content(text.encode("utf-8"), "txt") == {
+    assert bytes_to_content(text.encode("utf-8")) == {
         "type": "text",
         "text": text,
     }

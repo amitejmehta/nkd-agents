@@ -28,7 +28,7 @@ from nkd_agents.openai import (
     tool,
     tool_schema,
 )
-from nkd_agents.tools import FileContent, read_file
+from nkd_agents.tools import read_file
 
 
 def _response(output, model="gpt-4o") -> Response:
@@ -192,18 +192,22 @@ async def test_tool_content_blocks():
 def test_bytes_to_content_image():
     data = b"\xff\xd8\xff"
     b64 = base64.standard_b64encode(data).decode()
-    assert bytes_to_content(data, "jpg") == [
+    assert bytes_to_content(data) == [
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
     ]
-    assert bytes_to_content(data, "png") == [
-        {"type": "input_image", "image_url": f"data:image/png;base64,{b64}"}
+    png = b"\x89PNG\r\n\x1a\n"
+    assert bytes_to_content(png) == [
+        {
+            "type": "input_image",
+            "image_url": f"data:image/png;base64,{base64.standard_b64encode(png).decode()}",
+        }
     ]
 
 
 def test_bytes_to_content_pdf():
     data = b"%PDF-1.4"
     b64 = base64.standard_b64encode(data).decode()
-    assert bytes_to_content(data, "pdf") == [
+    assert bytes_to_content(data) == [
         {
             "type": "input_file",
             "filename": "file.pdf",
@@ -213,18 +217,18 @@ def test_bytes_to_content_pdf():
 
 
 def test_bytes_to_content_text():
-    assert bytes_to_content(b"hello world", "txt") == "hello world"
+    assert bytes_to_content(b"hello world") == "hello world"
 
 
 @pytest.mark.asyncio
 async def test_tool_file_content_image():
-    """FileContent with image ext produces input_image content list."""
+    """bytes with image ext produces input_image content list."""
     image_data = b"\xff\xd8\xff"
     b64 = base64.standard_b64encode(image_data).decode()
 
-    async def read_img(path: str) -> FileContent:
+    async def read_img(path: str) -> bytes:
         """Read image"""
-        return FileContent(data=image_data, ext="jpg")
+        return image_data
 
     result = await tool(_tool_call("c1", "read_img", '{"path": "x.jpg"}'), [read_img])
     assert result["output"] == [
@@ -234,13 +238,13 @@ async def test_tool_file_content_image():
 
 @pytest.mark.asyncio
 async def test_tool_file_content_pdf():
-    """FileContent with pdf ext produces input_file content list."""
+    """bytes with pdf ext produces input_file content list."""
     pdf_data = b"%PDF-1.4"
     b64 = base64.standard_b64encode(pdf_data).decode()
 
-    async def read_pdf(path: str) -> FileContent:
+    async def read_pdf(path: str) -> bytes:
         """Read pdf"""
-        return FileContent(data=pdf_data, ext="pdf")
+        return pdf_data
 
     result = await tool(_tool_call("c2", "read_pdf", '{"path": "x.pdf"}'), [read_pdf])
     assert result["output"] == [
@@ -254,11 +258,11 @@ async def test_tool_file_content_pdf():
 
 @pytest.mark.asyncio
 async def test_tool_file_content_text():
-    """FileContent with text ext is decoded to a plain string."""
+    """bytes with text ext is decoded to a plain string."""
 
-    async def read_txt(path: str) -> FileContent:
+    async def read_txt(path: str) -> bytes:
         """Read txt"""
-        return FileContent(data=b"hello world", ext="txt")
+        return b"hello world"
 
     result = await tool(_tool_call("c3", "read_txt", '{"path": "f.txt"}'), [read_txt])
     assert result["output"] == "hello world"
@@ -378,7 +382,7 @@ TEXT_CASES = [
 
 @pytest.mark.parametrize("text", TEXT_CASES)
 def test_bytes_to_content_preserves_text(text):
-    assert bytes_to_content(text.encode("utf-8"), "txt") == text
+    assert bytes_to_content(text.encode("utf-8")) == text
 
 
 @pytest.mark.asyncio

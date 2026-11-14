@@ -8,6 +8,7 @@ import pytest
 from nkd_agents.utils import (
     load_env,
     param_schemas,
+    sniff,
 )
 
 
@@ -34,7 +35,7 @@ class TestExtractFunctionParams:
         async def func(name: str, unannotated):
             pass
 
-        with pytest.raises(ValueError, match="Unsupported type"):
+        with pytest.raises(ValueError, match="Missing type annotation"):
             param_schemas(func)
 
     @pytest.mark.asyncio
@@ -199,3 +200,30 @@ class TestLoadEnv:
         assert "# OLD" not in os.environ
         assert os.environ["REAL3"] == "val"
         del os.environ["REAL3"]
+
+
+@pytest.mark.parametrize(
+    "data,kind",
+    [
+        (b"\xff\xd8\xff\xe0", "jpeg"),
+        (b"\x89PNG\r\n\x1a\n", "png"),
+        (b"GIF89a", "gif"),
+        (b"RIFF\x00\x00\x00\x00WEBP", "webp"),
+        (b"RIFF\x00\x00\x00\x00WAVE", "text"),
+        (b"%PDF-1.4", "pdf"),
+        (b"hello", "text"),
+        (b"", "text"),
+    ],
+)
+def test_sniff(data, kind):
+    assert sniff(data) == kind
+
+
+def test_string_annotations():
+    async def f(x: "int", y: "Literal['a', 'b']") -> str:
+        return ""
+
+    assert param_schemas(f) == {
+        "x": {"type": "integer"},
+        "y": {"type": "string", "enum": ["a", "b"]},
+    }

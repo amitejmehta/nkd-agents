@@ -7,12 +7,11 @@ import shlex
 import signal
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, mock_open, patch
 
 import pytest
 
 from nkd_agents.tools import (
-    FileContent,
     bash,
     cwd_ctx,
     edit_file,
@@ -25,27 +24,23 @@ from nkd_agents.tools import (
 class TestReadFile:
     @pytest.mark.asyncio
     async def test_read_file_text(self, tmp_path):
-        """Text file returns FileContent with raw bytes and ext."""
+        """Text file returns raw bytes."""
         file_path = tmp_path / "test.txt"
         content = "Hello, World!"
         file_path.write_text(content)
 
         result = await read_file(str(file_path))
-        assert isinstance(result, FileContent)
-        assert result.ext == "txt"
-        assert result.data == content.encode("utf-8")
+        assert result == content.encode("utf-8")
 
     @pytest.mark.asyncio
     async def test_read_file_image_jpg(self, tmp_path):
-        """JPG returns FileContent with ext='jpg'."""
+        """JPG returns raw bytes."""
         file_path = tmp_path / "test.jpg"
         image_data = b"\xff\xd8\xff\xe0\x00\x10JFIF"
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-        assert isinstance(result, FileContent)
-        assert result.ext == "jpg"
-        assert result.data == image_data
+        assert result == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_image_png(self, tmp_path):
@@ -54,9 +49,7 @@ class TestReadFile:
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-        assert isinstance(result, FileContent)
-        assert result.ext == "png"
-        assert result.data == image_data
+        assert result == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_image_gif(self, tmp_path):
@@ -65,9 +58,7 @@ class TestReadFile:
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-        assert isinstance(result, FileContent)
-        assert result.ext == "gif"
-        assert result.data == image_data
+        assert result == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_image_webp(self, tmp_path):
@@ -76,9 +67,7 @@ class TestReadFile:
         file_path.write_bytes(image_data)
 
         result = await read_file(str(file_path))
-        assert isinstance(result, FileContent)
-        assert result.ext == "webp"
-        assert result.data == image_data
+        assert result == image_data
 
     @pytest.mark.asyncio
     async def test_read_file_pdf(self, tmp_path):
@@ -87,18 +76,14 @@ class TestReadFile:
         file_path.write_bytes(pdf_data)
 
         result = await read_file(str(file_path))
-        assert isinstance(result, FileContent)
-        assert result.ext == "pdf"
-        assert result.data == pdf_data
+        assert result == pdf_data
 
     @pytest.mark.asyncio
     async def test_read_file_no_extension(self, tmp_path):
         file_path = tmp_path / "Makefile"
         file_path.write_text("all:")
 
-        result = await read_file(str(file_path))
-        assert isinstance(result, FileContent)
-        assert result.ext == ""
+        assert await read_file(str(file_path)) == b"all:"
 
     @pytest.mark.asyncio
     async def test_read_file_too_large(self, tmp_path):
@@ -108,6 +93,55 @@ class TestReadFile:
 
         with pytest.raises(ValueError, match="too large"):
             await read_file(str(file_path))
+
+    @pytest.mark.asyncio
+    async def test_read_file_large_text_only_reads_header(self):
+        opener = mock_open(read_data=b"x" * 12)
+        with (
+            patch.object(Path, "open", opener),
+            patch("nkd_agents.tools.os.fstat") as stat,
+        ):
+            stat.return_value.st_size = 1000000000
+            with pytest.raises(ValueError, match="1,000,000,000 bytes"):
+                await read_file("big.txt")
+        opener().read.assert_called_once_with(12)
+        stat.assert_called_once_with(opener().fileno())
+
+    @pytest.mark.asyncio
+    async def test_read_file_media_header_checked_first(self):
+        data = b"%PDF-1.4" + b"x" * 60000
+        opener = mock_open(read_data=data)
+        with (
+            patch.object(Path, "open", opener),
+            patch("nkd_agents.tools.os.fstat") as stat,
+        ):
+            stat.return_value.st_size = len(data)
+            assert await read_file("document") == data
+        assert opener().read.call_args_list == [call(12), call()]
+
+    @pytest.mark.asyncio
+    async def test_read_file_text_at_limit(self, tmp_path):
+        file_path = tmp_path / "text"
+        data = b"x" * 50000
+        file_path.write_bytes(data)
+        assert await read_file(str(file_path)) == data
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "header",
+        [
+            b"\xff\xd8\xff",
+            b"\x89PNG\r\n\x1a\n",
+            b"GIF89a",
+            b"RIFF0000WEBP",
+            b"%PDF-1.4",
+        ],
+    )
+    async def test_read_file_large_media(self, tmp_path, header):
+        file_path = tmp_path / "media"
+        data = header + b"x" * 60000
+        file_path.write_bytes(data)
+        assert await read_file(str(file_path)) == data
 
     @pytest.mark.asyncio
     async def test_read_file_not_found(self):
@@ -601,9 +635,7 @@ class TestCwdContext:
         token = cwd_ctx.set(subdir)
         try:
             result = await read_file(path="test.txt")
-            assert isinstance(result, FileContent)
-            assert result.data == b"content"
-            assert result.ext == "txt"
+            assert result == b"content"
         finally:
             cwd_ctx.reset(token)
 
@@ -652,5 +684,5 @@ class TestCwdContext:
         result2 = await read_file(path="file.txt")
         cwd_ctx.reset(token2)
 
-        assert isinstance(result1, FileContent) and result1.data == b"dir1_content"
-        assert isinstance(result2, FileContent) and result2.data == b"dir2_content"
+        assert result1 == b"dir1_content"
+        assert result2 == b"dir2_content"

@@ -9,6 +9,7 @@ from typing import (
     TypedDict,
     get_args,
     get_origin,
+    get_type_hints,
 )
 
 
@@ -21,13 +22,37 @@ def load_env(path: str = ".env") -> None:
             os.environ.setdefault(k, v)
 
 
+SIGNATURES = (
+    ("jpeg", 0, b"\xff\xd8\xff"),
+    ("png", 0, b"\x89PNG\r\n\x1a\n"),
+    ("gif", 0, b"GIF8"),
+    ("pdf", 0, b"%PDF-"),
+    ("webp", 8, b"WEBP"),
+)
+
+
+def sniff(data: bytes) -> str:
+    return next(
+        (kind for kind, at, magic in SIGNATURES if data.startswith(magic, at)),
+        "text",
+    )
+
+
 Scalar = str | int | float | bool
 
-TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
+
+JsonType = Literal["string", "integer", "number", "boolean"]
+
+TYPE_MAP: dict[type, JsonType] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+}
 
 
 class ParamSchema(TypedDict):
-    type: str
+    type: JsonType
     enum: NotRequired[list[Scalar]]
 
 
@@ -44,6 +69,7 @@ def param_schemas(
     func: Callable[..., Awaitable[object]],
 ) -> dict[str, ParamSchema]:
     params: dict[str, ParamSchema] = {}
+    hints = get_type_hints(func)
 
     for param in inspect.signature(func).parameters.values():
         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
@@ -54,11 +80,14 @@ def param_schemas(
             raise ValueError(
                 f"Default values not supported: {func.__name__}.{param.name}"
             )
-        param_sig = f"{func.__name__}.{param.name}: {param.annotation}"
-        if get_origin(param.annotation) is Literal:
-            params[param.name] = _process_literal(get_args(param.annotation), param_sig)
-        elif param.annotation in TYPE_MAP:
-            params[param.name] = {"type": TYPE_MAP[param.annotation]}
+        if param.name not in hints:
+            raise ValueError(f"Missing type annotation: {func.__name__}.{param.name}")
+        annotation = hints[param.name]
+        param_sig = f"{func.__name__}.{param.name}: {annotation}"
+        if get_origin(annotation) is Literal:
+            params[param.name] = _process_literal(get_args(annotation), param_sig)
+        elif annotation in TYPE_MAP:
+            params[param.name] = {"type": TYPE_MAP[annotation]}
         else:
             raise ValueError(f"Unsupported type: {param_sig}")
     return params

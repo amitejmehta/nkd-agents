@@ -4,10 +4,10 @@ import logging
 import os
 import signal
 from contextvars import ContextVar
-from dataclasses import dataclass
 from pathlib import Path
 
 from .logging import display_diff
+from .utils import sniff
 
 logger = logging.getLogger(__name__)
 
@@ -30,25 +30,19 @@ def resolve(path: str) -> Path:
     return resolved
 
 
-@dataclass(frozen=True, slots=True)
-class FileContent:
-    """Raw file bytes with extension — returned by read_file; providers convert to their content format."""
-
-    data: bytes
-    ext: str
-
-
-async def read_file(path: str) -> FileContent:
+async def read_file(path: str) -> bytes:
     """Read and return the contents of a file at the given path. Only works with files, not directories.
     Supports image (jpg, jpeg, png, gif, webp), PDF, and all text files."""
     p = resolve(path)
     logger.info(f"< {p}")
-    ext, size = p.suffix[1:].lower(), p.stat().st_size
-    if ext not in {"jpg", "jpeg", "png", "gif", "webp", "pdf"} and size > 50000:
-        raise ValueError(
-            f"File too large ({size:,} bytes) to read directly. Use bash() with grep to search for specific content."
-        )
-    return FileContent(data=p.read_bytes(), ext=ext)
+    with p.open("rb") as f:
+        header = f.read(12)
+        size = os.fstat(f.fileno()).st_size
+        if size > 50000 and sniff(header) == "text":
+            raise ValueError(
+                f"File too large ({size:,} bytes) to read directly. Use bash() with grep to search for specific content."
+            )
+        return header + f.read()
 
 
 async def write_file(path: str, content: str) -> str:

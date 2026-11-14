@@ -19,8 +19,7 @@ from opentelemetry import trace
 from pydantic import BaseModel
 from typing_extensions import Unpack
 
-from .tools import FileContent
-from .utils import param_schemas
+from .utils import param_schemas, sniff
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("nkd-agents.anthropic")
@@ -32,7 +31,7 @@ def output_format(model: type[BaseModel]) -> JSONOutputFormatParam:
 
 
 def tool_schema(
-    func: Callable[..., Awaitable[str | FileContent | Iterable[Content]]],
+    func: Callable[..., Awaitable[str | bytes | Iterable[Content]]],
 ) -> ToolParam:
     if not func.__doc__:
         raise ValueError(f"Function {func.__name__} must have a docstring")
@@ -73,9 +72,8 @@ def extract_text_and_tool_calls(response: Message) -> tuple[str, list[ToolUseBlo
     return text, tool_calls
 
 
-def bytes_to_content(data: bytes, ext: str) -> Content:
-    ext = ext.lower().replace("jpg", "jpeg")
-
+def bytes_to_content(data: bytes) -> Content:
+    ext = sniff(data)
     if ext in ("jpeg", "png", "gif", "webp"):
         media_type = f"image/{ext}"
         assert media_type in ("image/jpeg", "image/png", "image/gif", "image/webp")
@@ -97,7 +95,7 @@ def bytes_to_content(data: bytes, ext: str) -> Content:
 
 async def tool(
     tool_call: ToolUseBlock,
-    fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]],
+    fns: Sequence[Callable[..., Awaitable[str | bytes | Iterable[Content]]]],
 ) -> ToolResultBlockParam:
     attributes = {
         "gen_ai.operation.name": "execute_tool",
@@ -116,8 +114,8 @@ async def tool(
             span.record_exception(e)
             span.set_attribute("error.type", type(e).__name__)
             span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-        if isinstance(result, FileContent):
-            result = [bytes_to_content(result.data, result.ext)]
+        if isinstance(result, bytes):
+            result = [bytes_to_content(result)]
         if isinstance(result, str):
             result = [TextBlockParam(type="text", text=result)]
         return {"type": "tool_result", "tool_use_id": tool_call.id, "content": result}
@@ -125,7 +123,7 @@ async def tool(
 
 async def agent(
     client: AsyncAnthropic | AsyncAnthropicVertex,
-    fns: Sequence[Callable[..., Awaitable[str | FileContent | Iterable[Content]]]] = (),
+    fns: Sequence[Callable[..., Awaitable[str | bytes | Iterable[Content]]]] = (),
     **kwargs: Unpack[MessageCreateParamsNonStreaming],
 ) -> str:
     if not isinstance(kwargs["messages"], list):

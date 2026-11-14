@@ -21,8 +21,7 @@ from opentelemetry import trace
 from pydantic import BaseModel
 from typing_extensions import Unpack
 
-from .tools import FileContent
-from .utils import param_schemas
+from .utils import param_schemas, sniff
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("nkd-agents.openai")
@@ -41,7 +40,7 @@ def output_format(model: type[BaseModel]) -> ResponseFormatTextConfigParam:
 
 def tool_schema(
     func: Callable[
-        ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
+        ..., Awaitable[str | bytes | ResponseFunctionCallOutputItemListParam]
     ],
 ) -> FunctionToolParam:
     if not func.__doc__:
@@ -94,9 +93,9 @@ def extract_text_and_tool_calls(
 
 
 def bytes_to_content(
-    data: bytes, ext: str
+    data: bytes,
 ) -> str | ResponseFunctionCallOutputItemListParam:
-    ext = ext.lower().replace("jpg", "jpeg")
+    ext = sniff(data)
     if ext in ("jpeg", "png", "gif", "webp"):
         b64 = base64.standard_b64encode(data).decode("utf-8")
         return [{"type": "input_image", "image_url": f"data:image/{ext};base64,{b64}"}]
@@ -115,9 +114,7 @@ def bytes_to_content(
 async def tool(
     tool_call: ResponseFunctionToolCall,
     fns: Sequence[
-        Callable[
-            ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
-        ]
+        Callable[..., Awaitable[str | bytes | ResponseFunctionCallOutputItemListParam]]
     ],
 ) -> FunctionCallOutput:
     attributes = {
@@ -137,8 +134,8 @@ async def tool(
             span.record_exception(e)
             span.set_attribute("error.type", type(e).__name__)
             span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-        if isinstance(result, FileContent):
-            result = bytes_to_content(result.data, result.ext)
+        if isinstance(result, bytes):
+            result = bytes_to_content(result)
         return {
             "type": "function_call_output",
             "call_id": tool_call.call_id,
@@ -149,9 +146,7 @@ async def tool(
 async def agent(
     client: AsyncOpenAI,
     fns: Sequence[
-        Callable[
-            ..., Awaitable[str | FileContent | ResponseFunctionCallOutputItemListParam]
-        ]
+        Callable[..., Awaitable[str | bytes | ResponseFunctionCallOutputItemListParam]]
     ] = (),
     **kwargs: Unpack[ResponseCreateParamsNonStreaming],
 ) -> str:
