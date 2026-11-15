@@ -42,7 +42,7 @@ Over time I've removed more than I've added. What remains:
   - mode: a label from `NKD_MODES` (default `Act,Plan,Socratic`); enough to shift behavior.
   - start phrase: `NKD_START_PHRASE` (default `Be brief and exacting.`); steers reliably over long contexts.
 - system prompt: `~/.claude/CLAUDE.md` + `./CLAUDE.md`.
-- config: env vars from the shell or `~/.claude/nkd/.env` (file values win): `NKD_PROVIDER` (`anthropic` or `openai`, default `anthropic`), the chosen provider's key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`), `NKD_LOG_LEVEL` (default `20`), plus `NKD_MODES` / `NKD_START_PHRASE`.
+- config: env vars from the shell or `~/.claude/nkd/.env` (shell values win): `NKD_PROVIDER` (`anthropic` or `openai`, default `anthropic`), the chosen provider's key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`), `NKD_LOG_LEVEL` (default `20`), plus `NKD_MODES` / `NKD_START_PHRASE`.
 
 What I've deprecated, and why:
 

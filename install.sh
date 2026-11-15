@@ -21,25 +21,15 @@ echo -e "${GREEN}✓${NC}${WHITE} nkd${NC}"
 
 # ── .env / API key ────────────────────────────────────────────────────────────
 mkdir -p ~/.claude/nkd
-if [ ! -f ~/.claude/nkd/.env ]; then
-  while true; do
-    echo -e "${WHITE}Default provider: anthropic or openai [anthropic]:${NC}"
-    read -r provider </dev/tty
-    provider=${provider:-anthropic}
-    case "$provider" in
-      anthropic) key_name=ANTHROPIC_API_KEY; break ;;
-      openai) key_name=OPENAI_API_KEY; break ;;
-      *) echo -e "${RED}Choose anthropic or openai.${NC}" ;;
-    esac
-  done
-  echo -e "${WHITE}Enter your $key_name:${NC}"
+ENV_FILE=~/.claude/nkd/.env
+for key_name in ANTHROPIC_API_KEY OPENAI_API_KEY; do
+  grep -qs "^${key_name}=" "$ENV_FILE" && continue
+  echo -e "${WHITE}Enter your $key_name (Enter to skip):${NC}"
   read -rs api_key </dev/tty
   echo
-  (umask 077; printf 'NKD_PROVIDER=%s\n%s=%s\n' "$provider" "$key_name" "$api_key" > ~/.claude/nkd/.env)
-  echo -e "${GREEN}✓${NC}${WHITE} Provider and API key saved${NC}"
-else
-  echo -e "${GREEN}✓${NC}${WHITE} ~/.claude/nkd/.env${NC}"
-fi
+  [ -z "$api_key" ] || (umask 077; printf '\n%s=%s\n' "$key_name" "$api_key" >> "$ENV_FILE")
+done
+echo -e "${GREEN}✓${NC}${WHITE} API keys${NC}"
 
 # ── shell rc ──────────────────────────────────────────────────────────────────
 SHELL_RC="$HOME/.zshrc"
@@ -58,12 +48,14 @@ if ! grep -q "# nkd-agents" "$SHELL_RC" 2>/dev/null; then
   echo "# nkd-agents" >> "$SHELL_RC"
 fi
 
+add_alias "nkdo" "NKD_PROVIDER=openai nkd"
 add_alias "nkd-install" "curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash"
 
 CYAN='\033[0;36m'
 echo ""
 echo -e "${WHITE}commands:${NC}"
-echo -e "  ${CYAN}nkd${NC}${WHITE}          start the agent${NC}"
+echo -e "  ${CYAN}nkd${NC}${WHITE}          start the agent with anthropic${NC}"
+echo -e "  ${CYAN}nkdo${NC}${WHITE}         start the agent with openai${NC}"
 echo -e "  ${CYAN}nkd-install${NC}${WHITE}  install the agent${NC}"
 echo ""
 YELLOW='\033[1;33m'
