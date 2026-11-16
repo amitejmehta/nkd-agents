@@ -13,8 +13,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-import nkd_agents.openai as openai_provider
-from nkd_agents.openai import agent
+import nkd.openai as openai_provider
+from nkd.openai import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -28,7 +28,7 @@ def setup_otel() -> InMemorySpanExporter:
     provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
-    openai_provider.tracer = provider.get_tracer("nkd-agents.openai")
+    openai_provider.tracer = provider.get_tracer("nkd.openai")
     return exporter
 
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nkd-agents"
+name = "nkd"
 version = "1.0.0"
-description = "nkd-agents is a package for building agents using only what you really need: an llm, a loop, and a few tools."
+description = "An LLM, a loop, and a few tools: a zero-abstraction Python agent framework, plus a terminal coding assistant built on it."
 readme = "README.md"
 license = "MIT"
 authors = [
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-nkd = "nkd_agents.cli:main"
+nkd = "nkd.cli:main"
 
 [project.optional-dependencies]
 web = [
@@ -39,7 +39,7 @@ dev = [
 
 # Explicitly specify the packages to include
 [tool.setuptools]
-packages = ["nkd_agents"]
+packages = ["nkd"]
 # Default ruff configuration from: https://github.com/astral-sh/ruff?tab=readme-ov-file#configuration
 
 [tool.ruff]
@@ -118,6 +118,6 @@ testpaths = ["tests"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
-include = ["nkd_agents", "examples"]
+include = ["nkd", "examples"]
 exclude = ["**/__pycache__"]
 pythonVersion = "3.12"

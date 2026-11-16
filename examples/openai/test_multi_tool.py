@@ -3,7 +3,7 @@ from typing import Literal
 
 from openai import AsyncOpenAI
 
-from nkd_agents.openai import agent
+from nkd.openai import agent
 
 from ..utils import test
 from .config import KWARGS

@@ -1,8 +1,8 @@
-# nkd-agents ("naked agents")
+# nkd ("naked agents")
 
 When you strip them down, AI agents are just LLMs running in loops with tools.
 
-`nkd-agents` is two things:
+`nkd` is two things:
 
 1. **A zero-abstraction async Python agent framework** for Anthropic and OpenAI. Full type safety and direct control of SDK primitives, zero overhead.
 2. **A Python terminal coding assistant** built on it. I build production agents daily but used Claude Code as a black box. Building my own made me a producer, not a consumer: every interaction is a first-principles lesson in how agents work. It's now my primary workflow, fully shaped to how I think, and owning it lets me drop outdated habits like approving every edit.
@@ -10,7 +10,7 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 ## The framework
 
 ```bash
-pip install git+https://github.com/amitejmehta/nkd-agents.git
+pip install git+https://github.com/amitejmehta/nkd.git
 ```
 
 - thin wrapper: `agent()` is just the basic loop: call the LLM; tool calls? run them, add results, repeat; none? return the text.
@@ -24,7 +24,7 @@ pip install git+https://github.com/amitejmehta/nkd-agents.git
 ## The CLI
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd/main/install.sh | bash
 ```
 
 Over time I've removed more than I've added. What remains:

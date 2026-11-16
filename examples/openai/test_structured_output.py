@@ -3,7 +3,7 @@ import logging
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from nkd_agents.openai import agent, output_format
+from nkd.openai import agent, output_format
 
 from ..utils import test
 from .config import KWARGS

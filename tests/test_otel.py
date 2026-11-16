@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode, set_tracer_provider
 
-from nkd_agents import anthropic, openai
+from nkd import anthropic, openai
 
 # ── fixtures ─────────────────────────────────────────────────
 
@@ -31,8 +31,8 @@ def otel_setup():
     )
     set_tracer_provider(provider)
     # Re-bind tracers so they pick up the new provider
-    anthropic.tracer = provider.get_tracer("nkd-agents.anthropic")
-    openai.tracer = provider.get_tracer("nkd-agents.openai")
+    anthropic.tracer = provider.get_tracer("nkd.anthropic")
+    openai.tracer = provider.get_tracer("nkd.openai")
     yield exporter
     provider.shutdown()
 

@@ -2,7 +2,7 @@ import logging
 
 from anthropic import AsyncAnthropic
 
-from nkd_agents.anthropic import agent
+from nkd.anthropic import agent
 
 from ..utils import test
 from .config import KWARGS

@@ -24,7 +24,7 @@ from typing_extensions import Unpack
 from .utils import param_schemas, sniff
 
 logger = logging.getLogger(__name__)
-tracer = trace.get_tracer("nkd-agents.openai")
+tracer = trace.get_tracer("nkd.openai")
 
 
 def output_format(model: type[BaseModel]) -> ResponseFormatTextConfigParam:

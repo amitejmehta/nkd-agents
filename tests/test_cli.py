@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nkd_agents import cli as cli_module
-from nkd_agents.cli import PROVIDERS, AgentCLI
-from nkd_agents.tools import bash, edit_file, read_file, write_file
-from nkd_agents.tty import TUI
+from nkd import cli as cli_module
+from nkd.cli import PROVIDERS, AgentCLI
+from nkd.tools import bash, edit_file, read_file, write_file
+from nkd.tty import TUI
 
 ESC = "\x1b"
 
@@ -315,7 +315,7 @@ class TestMain:
 
 class TestFns:
     def test_includes_web_tools_when_available(self):
-        from nkd_agents.web import fetch_url, web_search
+        from nkd.web import fetch_url, web_search
 
         assert AgentCLI().fns[-2:] == (fetch_url, web_search)
 

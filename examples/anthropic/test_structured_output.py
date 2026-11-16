@@ -3,7 +3,7 @@ import logging
 from anthropic import AsyncAnthropic
 from pydantic import BaseModel
 
-from nkd_agents.anthropic import agent, output_format
+from nkd.anthropic import agent, output_format
 
 from ..utils import test
 from .config import KWARGS

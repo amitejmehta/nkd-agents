@@ -6,7 +6,7 @@ WHITE='\033[1;37m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${WHITE}Installing nkd-agents...${NC}"
+echo -e "${WHITE}Installing nkd...${NC}"
 
 # ── uv ────────────────────────────────────────────────────────────────────────
 if ! command -v uv &>/dev/null; then
@@ -16,7 +16,7 @@ fi
 echo -e "${GREEN}✓${NC}${WHITE} uv${NC}"
 
 # ── nkd CLI ───────────────────────────────────────────────────────────────────
-uv tool install --force 'git+https://github.com/amitejmehta/nkd-agents.git[web]'
+uv tool install --force 'git+https://github.com/amitejmehta/nkd.git[web]'
 echo -e "${GREEN}✓${NC}${WHITE} nkd${NC}"
 
 # ── .env / API key ────────────────────────────────────────────────────────────
@@ -43,13 +43,13 @@ add_alias() {
   echo "alias ${name}=\"${body}\"" >> "$SHELL_RC"
 }
 
-if ! grep -q "# nkd-agents" "$SHELL_RC" 2>/dev/null; then
+if ! grep -q "# nkd" "$SHELL_RC" 2>/dev/null; then
   echo "" >> "$SHELL_RC"
-  echo "# nkd-agents" >> "$SHELL_RC"
+  echo "# nkd" >> "$SHELL_RC"
 fi
 
 add_alias "nkdo" "NKD_PROVIDER=openai nkd"
-add_alias "nkd-install" "curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd-agents/main/install.sh | bash"
+add_alias "nkd-install" "curl -fsSL https://raw.githubusercontent.com/amitejmehta/nkd/main/install.sh | bash"
 
 CYAN='\033[0;36m'
 echo ""

@@ -1,4 +1,4 @@
-"""Comprehensive tests for nkd_agents/tools.py"""
+"""Comprehensive tests for nkd/tools.py"""
 
 import asyncio
 import contextlib
@@ -11,7 +11,7 @@ from unittest.mock import call, mock_open, patch
 
 import pytest
 
-from nkd_agents.tools import (
+from nkd.tools import (
     bash,
     cwd_ctx,
     edit_file,
@@ -99,7 +99,7 @@ class TestReadFile:
         opener = mock_open(read_data=b"x" * 12)
         with (
             patch.object(Path, "open", opener),
-            patch("nkd_agents.tools.os.fstat") as stat,
+            patch("nkd.tools.os.fstat") as stat,
         ):
             stat.return_value.st_size = 1000000000
             with pytest.raises(ValueError, match="1,000,000,000 bytes"):
@@ -113,7 +113,7 @@ class TestReadFile:
         opener = mock_open(read_data=data)
         with (
             patch.object(Path, "open", opener),
-            patch("nkd_agents.tools.os.fstat") as stat,
+            patch("nkd.tools.os.fstat") as stat,
         ):
             stat.return_value.st_size = len(data)
             assert await read_file("document") == data

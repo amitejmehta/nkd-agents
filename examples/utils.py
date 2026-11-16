@@ -5,8 +5,8 @@ import logging
 from collections.abc import Coroutine
 from typing import Any, Callable
 
-from nkd_agents.logging import GREEN, RESET, configure_logging, logging_ctx
-from nkd_agents.utils import load_env
+from nkd.logging import GREEN, RESET, configure_logging, logging_ctx
+from nkd.utils import load_env
 
 logger = logging.getLogger(__name__)
 

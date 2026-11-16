@@ -3,7 +3,7 @@ import logging
 from openai import AsyncOpenAI
 from openai.types.responses import ResponseInputItemParam
 
-from nkd_agents.openai import agent
+from nkd.openai import agent
 
 from ..utils import test
 from .config import KWARGS

@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from nkd_agents import tty
-from nkd_agents.tty import TUI
+from nkd import tty
+from nkd.tty import TUI
 
 ESC = "\x1b"
 

@@ -13,8 +13,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-import nkd_agents.anthropic as anthropic
-from nkd_agents.anthropic import agent
+import nkd.anthropic as anthropic
+from nkd.anthropic import agent
 
 from ..utils import test
 from .config import KWARGS
@@ -28,7 +28,7 @@ def setup_otel() -> InMemorySpanExporter:
     provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
-    anthropic.tracer = provider.get_tracer("nkd-agents.anthropic")
+    anthropic.tracer = provider.get_tracer("nkd.anthropic")
     return exporter
 
 

@@ -43,28 +43,28 @@ jobs:
 
     - name: Run ruff linting
       run: |
-        ruff check nkd_agents/ examples/ tests/
+        ruff check nkd/ examples/ tests/
 
     - name: Run ruff formatting check
       run: |
-        ruff format --check nkd_agents/ examples/ tests/
+        ruff format --check nkd/ examples/ tests/
 
     - name: Run pytest
       run: |
-        pytest tests/ -v --cov=nkd_agents --cov-report=term-missing
+        pytest tests/ -v --cov=nkd --cov-report=term-missing
 
     - name: Run pyright type checking
       run: |
-        pyright nkd_agents/ examples/
+        pyright nkd/ examples/
 
     - name: Run xenon cyclomatic complexity analysis
       run: |
-        xenon --max-average A --max-modules A --max-absolute B nkd_agents/ examples/
+        xenon --max-average A --max-modules A --max-absolute B nkd/ examples/
 
     - name: Generate complexity report
       run: |
         echo "## Cyclomatic Complexity Report" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "### nkd_agents/" >> $GITHUB_STEP_SUMMARY
-        radon cc nkd_agents/ -s
+        echo "### nkd/" >> $GITHUB_STEP_SUMMARY
+        radon cc nkd/ -s
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

@@ -19,7 +19,7 @@ from openai.types.responses.response_usage import (
 )
 from pydantic import BaseModel
 
-from nkd_agents.openai import (
+from nkd.openai import (
     agent,
     bytes_to_content,
     extract_text_and_tool_calls,
@@ -28,7 +28,7 @@ from nkd_agents.openai import (
     tool,
     tool_schema,
 )
-from nkd_agents.tools import read_file
+from nkd.tools import read_file
 
 
 def _response(output, model="gpt-4o") -> Response:
@@ -296,7 +296,7 @@ async def test_agent_logs_turn_format(caplog):
         _response([_tool_call("c1", "echo", '{"text": "x"}')]),
         _response([_text_msg("done")]),
     )
-    with caplog.at_level(logging.INFO, logger="nkd_agents.openai"):
+    with caplog.at_level(logging.INFO, logger="nkd.openai"):
         await agent(
             client,
             [echo],

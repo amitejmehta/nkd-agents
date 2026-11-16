@@ -5,7 +5,7 @@ from typing import Literal
 
 import pytest
 
-from nkd_agents.utils import (
+from nkd.utils import (
     load_env,
     param_schemas,
     sniff,

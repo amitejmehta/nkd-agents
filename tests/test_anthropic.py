@@ -11,7 +11,7 @@ from anthropic.types import (
 )
 from pydantic import BaseModel
 
-from nkd_agents.anthropic import (
+from nkd.anthropic import (
     agent,
     bytes_to_content,
     extract_text_and_tool_calls,
@@ -20,7 +20,7 @@ from nkd_agents.anthropic import (
     tool,
     tool_schema,
 )
-from nkd_agents.tools import read_file
+from nkd.tools import read_file
 
 
 def test_output_format():
@@ -292,7 +292,7 @@ async def test_agent_logs_turn_format(caplog):
         ),
         _message([TextBlock(type="text", text="done")]),
     )
-    with caplog.at_level(logging.INFO, logger="nkd_agents.anthropic"):
+    with caplog.at_level(logging.INFO, logger="nkd.anthropic"):
         await agent(
             client,
             [echo],

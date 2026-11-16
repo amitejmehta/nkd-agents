@@ -1,6 +1,6 @@
 import logging
 
-from nkd_agents.logging import (
+from nkd.logging import (
     ContextFilter,
     configure_logging,
     display_diff,

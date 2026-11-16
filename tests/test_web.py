@@ -3,12 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nkd_agents.web import browser_page, fetch_url, web_search
+from nkd.web import browser_page, fetch_url, web_search
 
 
 @pytest.fixture
 def mock_cwd(tmp_path):
-    with patch("nkd_agents.tools.cwd_ctx") as mock:
+    with patch("nkd.tools.cwd_ctx") as mock:
         mock.get.return_value = tmp_path
         yield tmp_path
 
@@ -26,7 +26,7 @@ def page():
     async def fake():
         yield page
 
-    with patch("nkd_agents.web.browser_page", fake):
+    with patch("nkd.web.browser_page", fake):
         yield page
 
 
@@ -95,7 +95,7 @@ async def test_browser_page_always_closes_browser(error):
     manager.__aenter__ = AsyncMock(return_value=playwright)
     manager.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("nkd_agents.web.async_playwright", return_value=manager):
+    with patch("nkd.web.async_playwright", return_value=manager):
         try:
             async with browser_page():
                 if error:
