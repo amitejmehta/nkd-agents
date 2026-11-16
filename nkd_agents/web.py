@@ -1,8 +1,3 @@
-"""Web tools requiring browser automation (playwright).
-
-Only loaded when playwright is installed (pip install nkd_agents[web]).
-"""
-
 import logging
 from contextlib import asynccontextmanager
 from urllib.parse import quote_plus
