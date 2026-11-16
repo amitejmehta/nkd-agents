@@ -10,7 +10,7 @@ When you strip them down, AI agents are just LLMs running in loops with tools.
 ## The framework
 
 ```bash
-pip install git+https://github.com/amitejmehta/nkd.git
+pip install nkd
 ```
 
 - thin wrapper: `agent()` is just the basic loop: call the LLM; tool calls? run them, add results, repeat; none? return the text.

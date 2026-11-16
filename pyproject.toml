@@ -9,7 +9,7 @@ description = "An LLM, a loop, and a few tools: a zero-abstraction Python agent 
 readme = "README.md"
 license = "MIT"
 authors = [
-    { name = "Amitej Mehta", email = "amitejmehta@berkeley.edu" }
+    { name = "Amitej Mehta", email = "amitejmehta@gmail.com" }
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -17,6 +17,10 @@ dependencies = [
     "openai>=3.26.1,<4.0.0",
     "opentelemetry-api>=1.20.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/amitejmehta/nkd"
+Repository = "https://github.com/amitejmehta/nkd"
 
 [project.scripts]
 nkd = "nkd.cli:main"

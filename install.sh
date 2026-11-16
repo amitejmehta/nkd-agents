@@ -16,7 +16,7 @@ fi
 echo -e "${GREEN}✓${NC}${WHITE} uv${NC}"
 
 # ── nkd CLI ───────────────────────────────────────────────────────────────────
-uv tool install --force 'git+https://github.com/amitejmehta/nkd.git[web]'
+uv tool install --force --upgrade 'nkd[web]'
 echo -e "${GREEN}✓${NC}${WHITE} nkd${NC}"
 
 # ── .env / API key ────────────────────────────────────────────────────────────
